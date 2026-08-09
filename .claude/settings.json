@@ -3,12 +3,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge.mjs\"",
-            "if": "Bash(gh *)",
             "timeout": 15
           }
         ]
