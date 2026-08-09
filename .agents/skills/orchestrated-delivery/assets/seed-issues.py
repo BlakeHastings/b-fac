@@ -92,7 +92,13 @@ def load_state():
     return {}
 
 
-def save_state(state):
+def save_state(state, dry):
+    # A dry run must not write state. It records 0 for every key, and because
+    # the resume check tests the VALUE rather than the key, a poisoned file
+    # turns the real run into a silent no-op that prints "exists as #0" for
+    # everything and creates nothing.
+    if dry:
+        return
     with open(STATE_FILE, "w", encoding="utf-8") as handle:
         json.dump(state, handle, indent=2)
 
@@ -130,17 +136,17 @@ def main():
 
     print("Epics")
     for key, title, labels, body in EPICS:
-        if key in state:
+        if state.get(key):
             print(f"  {key} exists as #{state[key]}")
             continue
         number = create_issue(title, body, labels, args.dry_run)
         print(f"  {key} -> #{number}")
         state[key] = number
-        save_state(state)
+        save_state(state, args.dry_run)
 
     print("Issues")
     for key, epic_key, title, labels, body in ISSUES:
-        if key in state:
+        if state.get(key):
             print(f"  {key} exists as #{state[key]}")
             continue
         parent = state.get(epic_key, 0)
@@ -150,7 +156,7 @@ def main():
         number = create_issue(title, full, labels, args.dry_run)
         print(f"  {key} -> #{number}")
         state[key] = number
-        save_state(state)
+        save_state(state, args.dry_run)
 
     print("Linking sub-issues")
     for key, epic_key, *_ in ISSUES:
@@ -163,7 +169,7 @@ def main():
         link_sub(parent, child, args.dry_run)
         print(f"  #{child} under #{parent}")
         state[link_key] = True
-        save_state(state)
+        save_state(state, args.dry_run)
 
 
 if __name__ == "__main__":
