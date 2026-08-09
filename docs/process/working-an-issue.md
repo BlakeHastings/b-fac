@@ -1,18 +1,15 @@
 # Working an issue
 
-How a change gets from an issue to the default branch. Read `review.md` first:
+How a change gets from an issue to `main` in this repo. Read `review.md` first:
 it defines what "done" means. This file is only the mechanics.
-
-> Template. Replace the bracketed parts with this repo's real commands and check
-> names, then delete this note.
 
 ## Before you start
 
 Read, in this order:
 
-1. `AGENTS.md` for the invariants and how to run the environment
-2. `[the domain doc, if there is one]`
-3. `docs/process/review.md` for the three review lenses
+1. `AGENTS.md` for the invariants and how to run things
+2. `docs/process/review.md` for the three review lenses
+3. Any ADR in `docs/architecture/decisions/` the issue names
 4. The issue itself, including its parent epic
 
 If the issue conflicts with something you find in the code, say so on the issue
@@ -25,7 +22,7 @@ checking the premise is part of the job.
 <area>/<issue-number>-<short-slug>
 ```
 
-for example `platform/14-ci-pipeline` or `intake/20-eligibility-gating`.
+for example `platform/14-ci-pipeline` or `skill/20-briefing-examples`.
 
 Commit messages say **why**, not what. The diff already says what.
 
@@ -34,16 +31,25 @@ Commit messages say **why**, not what. The diff already says what.
 Do not open a PR you have not run.
 
 ```bash
-[the command that brings up the environment, isolated per worktree]
-[the command that tells you this run's URLs]
+npm run check         # tests, mirror drift, vocabulary
+npm run check:plugin  # claude plugin validate . --strict
 ```
 
-Then exercise the change the way the real user would, and confirm the mechanical
-gates pass locally (typecheck, lint, tests, build).
+Then exercise the change the way a real user would, which for this repo means
+loading the skill and using it rather than reading it:
 
-Tear down by explicit path when you are done, before your worktree is removed.
-An unscoped teardown stops every environment on the machine, including the ones
-other agents are working in.
+```bash
+claude --plugin-dir .
+```
+
+If you changed skill content, activate the skill and check the part you changed
+actually reads the way you intended in context. If you changed the manifests,
+confirm the plugin still loads and the skill still appears. A green
+`plugin validate` says the JSON parses; it does not say the skill loaded.
+
+**If you touched `.agents/skills/`, run `npm run sync`** and commit the mirror
+in the same change. CI fails otherwise, and the failure looks like an unrelated
+drift error on someone else's branch.
 
 ## The pull request
 
@@ -58,8 +64,6 @@ write "not applicable, docs only" rather than leaving it blank.
 If you are an agent working an issue, these are prohibited, without exception:
 
 - `gh pr merge` in any form
-- `git push` to the default branch, including `git push origin HEAD:main`
-- `git merge` while standing on the default branch
 - merging through `gh api`
 
 Push your branch, open the PR, report back, and stop. The orchestrator reviews
@@ -68,23 +72,27 @@ trivial, and even when you are confident.
 
 ## Merge discipline
 
-CI runs [N] checks: `[names]`.
+CI runs two checks: `Checks` and `Plugin`.
 
-**GitHub itself does not enforce them.** Branch protection needs a paid plan on a
-private repo, and this repo cannot be public. Three things stand in for it, and
-each is worth exactly what it covers:
+Three things stand between a change and `main`, and each is worth exactly what
+it covers. See ADR 0001 for why this repo's set differs from the one the skill
+ships to private repos.
 
-1. **`node scripts/merge-pr.mjs <n>`**, the only sanctioned way to land a PR. It
-   refuses unless all required checks are green, and always squash merges.
-   *Not covered:* anyone who does not use the command. It is a tool, not a gate.
-2. **`scripts/guard-merge.mjs`**, a PreToolUse hook wired up in
-   `.claude/settings.json`. It denies the commands above before they run.
-   *Not covered:* sessions that did not load it. A net, not a guarantee.
-3. **`scripts/check-main-provenance.mjs`**, run on every push to the default
-   branch. It asks the API whether each new commit belongs to a merged pull
-   request and fails loudly when one does not.
-   *Not covered:* prevention. It notices afterwards, which is why it cannot be
-   bypassed.
+1. **The ruleset on `main`**, which requires a pull request and both checks,
+   blocks force pushes and deletion, and has **no bypass actors**. This is the
+   real control. It applies to the owner too, which is the difference between a
+   control and a habit.
+   *Not covered:* merging. Anyone with write access can land a green PR, and
+   agents run with the owner's credentials.
+2. **`scripts/guard-merge.mjs`**, a PreToolUse hook, which denies the two
+   commands above before they run. This is the layer that enforces "agents do
+   not land code", which the ruleset does not.
+   *Not covered:* sessions that did not load it, and humans at a terminal. A
+   net, not a guarantee.
+3. **`node scripts/merge-pr.mjs <n>`**, which refuses unless every required
+   check is green and always squash merges. A convenience rather than a control
+   here, kept because it says *which* check is red where a merge button does
+   not.
 
 Landing a PR:
 
@@ -93,16 +101,17 @@ node scripts/merge-pr.mjs 42
 ```
 
 **Squash, always.** One issue becomes one commit, so the log stays a readable
-list of changes and reverting means reverting one commit.
+list of changes and reverting means reverting one commit. The repo is
+configured squash-only, so this is enforced rather than remembered.
 
-If a commit ever reaches the default branch outside this path, treat it as a
-**defect in the guard** rather than a mistake by whoever did it: work out what
-the guard missed, add the case, and say so.
+If a commit ever reaches `main` outside this path, treat it as a **defect in the
+controls** rather than a mistake by whoever did it: work out what was missed,
+add the case, and say so.
 
 ## When the process is the problem
 
 If the same manual check is done on every issue, that check belongs in CI, not
 in a reviewer's head. If a rule keeps getting broken by accident, it probably
-needs a linter rule rather than another paragraph in `AGENTS.md`.
+needs a check rather than another paragraph in `AGENTS.md`.
 
 Open an issue and say what you observed. Improving the process is in scope.

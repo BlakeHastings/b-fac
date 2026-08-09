@@ -1,0 +1,4 @@
+# Aider is the other harness that does not read AGENTS.md on its own. Unlike
+# Claude Code it has no import directive, so it gets told to read the file.
+# There is no duplicated copy here, which is the point.
+read: AGENTS.md

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "b-fac",
+  "description": "Run a project as an orchestrator driving implementation subagents against a GitHub issue backlog: break work into issues, brief agents that work in isolated worktrees, verify what comes back rather than accepting it, and merge through a path that mechanically refuses red checks.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Blake Hastings",
+    "url": "https://github.com/BlakeHastings"
+  },
+  "homepage": "https://github.com/BlakeHastings/b-fac",
+  "repository": "https://github.com/BlakeHastings/b-fac",
+  "license": "MIT",
+  "skills": ["./.agents/skills/"],
+  "keywords": [
+    "orchestration",
+    "subagents",
+    "delegation",
+    "code-review",
+    "github",
+    "workflow",
+    "delivery"
+  ]
+}

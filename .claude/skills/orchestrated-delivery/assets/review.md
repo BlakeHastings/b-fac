@@ -4,39 +4,43 @@ An issue is done when it passes **three lenses**. Mechanical checks are not one
 of the lenses: they are the price of admission, they run in CI, and no human or
 agent should spend judgment on them.
 
+> Template. Replace the bracketed parts with this repo's real commands, then
+> delete this note.
+
 ## Gate 0: mechanical (automated, no judgment)
 
-CI runs these as the `Checks` and `Plugin` jobs. If they are red, the work is
-not ready for review.
+CI runs these. If they are red, the work is not ready for review.
 
-- the guard tests pass, in both the deny and the allow direction
-- `.claude/skills/` is in sync with `.agents/skills/`
-- no vocabulary from the original engagement has come back
-- the marketplace and plugin manifests validate under `--strict`
+- typecheck, lint, format
+- unit and integration tests
+- production build succeeds
+- database migrations apply cleanly to an empty database and are reversible
 
 Never ask a reviewer to run these by hand. If a mechanical check is missing,
 adding it is cheaper than reviewing for it forever.
 
 ## Lens 1: functionality, proven by interaction
 
-**The reviewer drives the running app.** For this repo the app is the skill, and
-driving it means loading it in a harness and using it, not reading it.
+**The reviewer drives the running app.** Not the tests, the app.
 
 ```bash
-npm run check
-claude --plugin-dir .
+[bring up the environment]
+[run the end-to-end suite]
 ```
 
-Then exercise **the change itself** as the actual user would. Confirm:
+Run the end-to-end suite first: what it covers, you do not have to re-check.
 
-- the skill still activates, and the changed part reads as intended in context
-- one realistic failure path behaves sanely (a check that should fail, does)
-- no manifest warnings, and the skill is not silently missing from the listing
+Then exercise **the change itself** as the actual user would, since no suite
+covers what landed today. Confirm:
 
-"Tests pass" is not evidence of functionality, and neither is a green
-`plugin validate` — that says the JSON parses, not that anything loaded. A
-skill whose `SKILL.md` contains nothing but a file path validates perfectly.
-Say what you actually did and what you actually saw.
+- the happy path works end to end
+- one realistic failure path behaves sanely (bad input, expired link, network drop)
+- no console errors, no unhandled promise rejections
+- no new error-level logs or failed spans
+
+"Tests pass" is not evidence of functionality. A green suite over an app that
+does not load is a common and embarrassing outcome. Say what you actually did
+and what you actually saw.
 
 ## Lens 2: code quality, proven by comprehension
 
@@ -77,7 +81,7 @@ The point is that the decision is findable later, not that it is ceremonious.
 Take the next number after everything on the default branch **and** everything
 in an open pull request. Work runs in parallel here, so the next free number on
 your branch is usually already claimed on someone else's.
-`npm run check:collisions` fails a duplicate, and CI runs it on the merge
+`[the collision check]` fails a duplicate, and CI runs it on the merge
 commit, so a collision that does not exist on your branch yet still turns the PR
 red.
 

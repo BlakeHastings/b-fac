@@ -27,9 +27,19 @@ const BANNED = [
   [/\bcoverage[- ]gating\b/i, 'use "eligibility-gating"'],
   [/\bcontribution fields?\b/i, 'use "fee-schedule fields"'],
   [/\b75201\b/, 'a real postal code from the original examples; use 02139'],
-  [/aspire start/i, 'an incidental stack fingerprint; use a bracketed placeholder'],
-  [/check:collisions/i, 'an incidental script name; use a bracketed placeholder'],
 ]
+
+// Incidental stack fingerprints. These are only wrong inside the shipped
+// skill, where they pin someone else's toolchain in a template meant to be
+// filled in. They are perfectly legitimate elsewhere in this repo, which runs
+// its own collision check under exactly that name — and a guard that flags a
+// repo's own tooling gets switched off, taking the real patterns with it.
+const BANNED_IN_PAYLOAD = [
+  [/aspire start/i, 'an incidental stack fingerprint; use a bracketed placeholder'],
+  [/check:collisions/i, "another repo's script name; use a bracketed placeholder"],
+]
+
+const PAYLOAD = /^\.(agents|claude)\/skills\//
 
 // ADR 0002 documents the substitutions and necessarily quotes both sides, and
 // this file lists the patterns. Excluding them by name beats a magic comment.
@@ -38,16 +48,24 @@ const EXEMPT = new Set([
   'scripts/check-vocabulary.mjs',
 ])
 
-const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' })
+// `--others --exclude-standard` matters more than it looks. With plain
+// `ls-files` this check passed while scanning none of the payload, because the
+// skill had been added to the tree but not yet staged. A vocabulary check that
+// silently skips the files it exists to protect is worse than no check: it
+// reports green and nobody looks again. Ignored files stay excluded.
+const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+  encoding: 'utf8',
+})
   .split('\0')
   .filter((f) => f && !EXEMPT.has(f))
   .filter((f) => /\.(md|mjs|js|json|py|ya?ml|txt)$/.test(f))
 
 const findings = []
 for (const file of files) {
+  const patterns = PAYLOAD.test(file) ? [...BANNED, ...BANNED_IN_PAYLOAD] : BANNED
   const lines = readFileSync(file, 'utf8').split('\n')
   lines.forEach((line, i) => {
-    for (const [pattern, why] of BANNED) {
+    for (const [pattern, why] of patterns) {
       if (pattern.test(line)) findings.push({ file, line: i + 1, text: line.trim(), why })
     }
   })

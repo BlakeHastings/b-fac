@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "b-fac",
+  "description": "A factory for running real projects with agents: orchestration workflows packaged to work across coding harnesses rather than only inside one.",
+  "owner": {
+    "name": "Blake Hastings",
+    "url": "https://github.com/BlakeHastings"
+  },
+  "plugins": [
+    {
+      "name": "b-fac",
+      "source": "./",
+      "description": "Run a project as an orchestrator driving implementation subagents against a GitHub issue backlog: break work into issues, brief agents that work in isolated worktrees, verify what comes back rather than accepting it, and merge through a path that mechanically refuses red checks.",
+      "category": "workflow",
+      "keywords": [
+        "orchestration",
+        "subagents",
+        "delegation",
+        "code-review",
+        "github",
+        "workflow",
+        "delivery"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,206 @@
+---
+name: orchestrated-delivery
+description: >-
+  Run a project as an orchestrator driving implementation subagents against a
+  GitHub issue backlog: break work into issues, brief agents that work in
+  isolated worktrees, review what comes back, and merge through a path that
+  mechanically refuses red checks. Use when asked to "orchestrate", "act as an
+  orchestrator", "manage agents", "keep working while I'm away", "break this
+  down into GitHub issues", or when taking over a repo that already has
+  docs/process/orchestrating.md. Also use when setting this workflow up in a new
+  repo, when a subagent's PR needs reviewing before merge, when several agents
+  must run in parallel without colliding, or when deciding what to escalate to
+  the human owner instead of guessing. Covers brief anatomy, verification that
+  proves rather than accepts, merge discipline without branch protection, and
+  how the loop revises itself.
+---
+
+# Orchestrated delivery
+
+A loop for building a real project with agents, distilled from one that reached
+40 ADRs, 72 issues and 47 merged pull requests in four days without losing
+architectural control.
+
+Most of what follows is a **default**: what worked once, with the reason
+attached so you can tell when the reason stops applying. Five things are
+**constraints**. Those are load-bearing, and each is here because breaking it
+produced a specific failure rather than because it sounded disciplined.
+
+## The five constraints
+
+**1. Do not review your own work.** You brief, review and merge; you do not
+write features. Narrow exceptions: discovery artifacts, process docs, and
+preserving work an agent abandoned. When an agent stops mid-task, resume it or
+discard it, but do not quietly finish it yourself.
+
+**2. Agents do not land code.** Push, open the PR, report, stop. Landing is
+yours, through a path that checks mechanically rather than asking politely.
+
+**3. Verify the central claim yourself.** Not everything: the one thing that, if
+false, makes the change worthless or dangerous. A report that is honest is still
+not evidence.
+
+**4. Whatever prevention you have, add detection.** A preventive layer that can
+be bypassed is silent when it is bypassed. Detection runs on the result, which
+is the one thing a bypass cannot avoid producing.
+
+**5. Decisions live in the repo, not in the conversation.** Issues, ADRs, a
+gotchas file. If you correct an instruction, correct it where the next person
+will meet it, not just in chat. Never write an invariant ahead of the code that
+holds it: one `AGENTS.md` claimed sensitive fields were masked before anything
+implemented it, and an invariant that is not true is worse than an absent one
+because the next person builds against it.
+
+Everything else in this skill is calibration.
+
+## The loop
+
+1. Pick work that unblocks the most. Prefer finishing a journey to starting a
+   second one.
+2. Batch what would collide; split what would not.
+3. Write the brief. `references/briefing.md`.
+4. Dispatch. Implementation agents are `general-purpose` with
+   `isolation: "worktree"`, launched as several tool calls in one message.
+   Read-only agents get no worktree.
+5. While they run, touch nothing they touch. Reviewing, filing, answering the
+   owner and mining the record are safe. Editing is not.
+6. Review. `references/reviewing.md`.
+7. Post what you independently verified, then merge or send it back.
+8. File what surfaced and could not be fixed there.
+
+## Improving the loop
+
+The loop is supposed to change. An orchestrator who runs it exactly as written a
+month from now has stopped observing.
+
+**Change it when you have seen the same thing twice.** Once is an incident.
+Twice is a property of the system, and only then do you know whether you are
+fixing the cause or decorating a symptom.
+
+Route the fix to the cheapest layer that actually holds:
+
+| What you observed | Where the fix belongs |
+| --- | --- |
+| Reviewers checking the same thing by hand every time | CI |
+| A rule broken by accident, repeatedly | A linter, a hook, or a type |
+| An agent rebuilding a decision already made | The reading order in the brief |
+| Two agents discovering the same constraint separately | A relay, then a doc |
+| A gate that has never caught anything | Delete it |
+
+**Delete as readily as you add.** A gotchas entry goes in when something has
+bitten twice and comes out when the cause is fixed, deleted rather than
+annotated as historical, because a trap that is no longer real sends the next
+reader looking for something that is not there. The same applies to guards: when
+the thing they substitute for becomes available, remove them. A control that no
+longer prevents anything is a maintenance cost pretending to be safety.
+
+**Say what changed and why.** A process edit with no observation attached is
+indistinguishable from a preference, and the next orchestrator cannot tell
+whether to keep it.
+
+## Defaults worth starting from
+
+Calibrations, not rules. Each has its reason, so you can tell when to deviate.
+
+- **Three agents per wave.** Three directories is comfortable; two agents in one
+  module is a rebase you chose. The real variable is collision surface, not
+  count.
+- **Batch by what would collide, not by theme.** Issues touching one registry go
+  together. Unrelated surfaces go apart even when they sound like one feature.
+- **Hand out ADR numbers explicitly**, checked against the default branch *and*
+  every open PR. Agents taking "the next free number" collide, and a caught
+  collision still costs a rebase.
+- **Three lenses for done**: functionality proven by driving the app, code
+  proven by comprehension, architecture proven by entropy accounting. Mechanical
+  checks are the price of admission, not a lens. Install the full text as a
+  process doc from `assets/review.md`; it is the version agents read.
+- **Issues carry a "watch out for" section.** The part most issues lack and the
+  part that pays.
+
+## Escalation
+
+**Decide yourself:** sequencing, batching, which of two reasonable
+implementations, whether a follow-up is worth an issue.
+
+**Ask the owner:** anything about what the business promises or wants. Retention
+on a deletion request, whether a field is genuinely retired, the format a
+downstream system accepts. You cannot derive these, and guessing produces
+confident, wrong software.
+
+Give a recommendation and say what it costs. When the answer differs from your
+steer, record that the tradeoff was seen and accepted so nobody relitigates it,
+then implement it properly without hedging.
+
+**Refuse to start work whose inputs are missing.** Starting produces work built
+on a guess, and the guess is invisible afterwards.
+
+## Working without the owner
+
+The owner is out of the loop for most decisions, and the loop has to keep
+moving. Two instructions recur and both mean more than they say:
+
+- **"Keep working until you are out of options that do not need me."** Take it
+  literally. Work every branch that does not depend on an unanswered question,
+  and stop only at genuine blocks.
+- **"Where are we at, and what do you need from me?"** An audit. Read the real
+  issue and PR state rather than your memory of it, and answer in those parts.
+
+Raw feedback, often dictated, becomes issues without losing the owner's phrasing.
+Quote rather than paraphrase: the wording carries what actually annoys.
+
+## Three shapes of agent
+
+**The builder.** One issue, one branch, one PR. The default.
+
+**The hunting pass.** Told explicitly to change nothing and report findings.
+Point it at a whole user journey and tell it to behave like a real user rather
+than someone testing. It works because a lot lands in quick succession, each
+piece verified alone, and integration defects live exactly between them. Say
+that finding nothing serious is a legitimate outcome, or you get a list of taste
+to triage. Safest thing to run alongside other agents, because it touches
+nothing.
+
+**The auditor.** Pointed at the record rather than the code. Weaker in practice:
+several died before reporting. Scope it narrowly and have it write to a file
+incrementally.
+
+## Setting this up in a new repo
+
+Discovery first, if anything is derived from something outside the repo: measure
+it, commit the measurement, then derive from it. Never let an agent eyeball a
+source. Doing this yourself is one of the few times you should touch the code.
+
+Then `AGENTS.md` for invariants and how to run things, the two process docs from
+`assets/`, a seeded backlog, and the enforcement layer. Write `orchestrating.md`
+last, from what you actually did.
+
+| Asset | Goes to | Edit first |
+| --- | --- | --- |
+| `review.md` | `docs/process/` | The bracketed commands |
+| `working-an-issue.md` | `docs/process/` | Commands and check names |
+| `pull_request_template.md` | `.github/` | Nothing |
+| `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
+| `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
+| `guard-merge.mjs` | `scripts/` | `DEFAULT_BRANCH` if not `main` |
+| `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
+
+## References
+
+| File | Read it when |
+| --- | --- |
+| `references/briefing.md` | Writing a brief or an issue |
+| `references/reviewing.md` | A PR is waiting |
+| `references/parallelism.md` | Running more than one agent |
+| `references/enforcement.md` | Installing the controls, or one misfired |
+| `references/github-backlog.md` | Seeding or maintaining the issue graph |
+
+## What the loop is worth
+
+Agents on one project found: a document that would have told an inspecting
+authority a contractor held an endorsement they waived, a form that put
+applicant answers in the URL, a validator pair that had already silently
+disagreed, and an identifier losing its leading zero at submit time.
+
+**None of those were in an issue.** They were found because the briefs said
+where to look and the reviews rewarded looking. That is the part to keep when
+you change everything else.
