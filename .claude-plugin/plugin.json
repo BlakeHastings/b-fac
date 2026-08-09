@@ -10,7 +10,7 @@
   "homepage": "https://github.com/BlakeHastings/b-fac",
   "repository": "https://github.com/BlakeHastings/b-fac",
   "license": "MIT",
-  "skills": ["./.agents/skills/"],
+  "skills": ["./docs/"],
   "keywords": [
     "orchestration",
     "subagents",
