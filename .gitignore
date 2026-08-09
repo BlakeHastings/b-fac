@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+
+# Resumable state written by docs/process/seed-issues.py
+.seed-state.json
+
+# Local harness state, not the committed adapter output
+.claude/settings.local.json
