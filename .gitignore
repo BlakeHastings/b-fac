@@ -2,8 +2,10 @@ node_modules/
 dist/
 *.log
 
-# Resumable state written by docs/process/seed-issues.py
-.seed-state.json
+# Resumable state written by docs/process/seed-issues.py. Local bookkeeping for
+# a one-shot script, not a record: committing it means a fresh clone believes
+# the backlog is already seeded.
+docs/process/issues-created.json
 
 # Local harness state, not the committed adapter output
 .claude/settings.local.json
