@@ -7,6 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const GUARD = fileURLToPath(new URL('./guard-merge.mjs', import.meta.url))
@@ -68,4 +69,38 @@ for (const command of ALLOWED) {
 test('a malformed payload does not deny', () => {
   const out = execFileSync('node', [GUARD], { input: 'not json', encoding: 'utf8' })
   assert.equal(out.trim(), '')
+})
+
+// The guard being correct is worth nothing if it is wired to only one of the
+// shell tools available. A real session ran `git push origin main` through a
+// PowerShell tool and was not denied, because the hook matched `Bash` only.
+// The skill's own enforcement.md still ships that wiring.
+const settings = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../.claude/settings.json', import.meta.url)), 'utf8'),
+)
+const entries = settings.hooks?.PreToolUse ?? []
+const guardEntries = entries.filter((e) =>
+  (e.hooks ?? []).some((h) => (h.command ?? '').includes('guard-merge.mjs')),
+)
+
+test('the guard is actually wired as a PreToolUse hook', () => {
+  assert.equal(guardEntries.length > 0, true, 'nothing invokes guard-merge.mjs')
+})
+
+test('the guard covers every shell-capable tool, not just Bash', () => {
+  for (const tool of ['Bash', 'PowerShell']) {
+    const covered = guardEntries.some((e) => new RegExp(`^(${e.matcher})$`).test(tool))
+    assert.equal(covered, true, `${tool} is not matched, so it bypasses the guard`)
+  }
+})
+
+test('no `if` clause narrows the guard back to a single tool', () => {
+  // `if` uses permission-rule syntax, which names one tool: `Bash(gh *)` does
+  // not fire for PowerShell. The script already filters on command text and
+  // exits immediately, so the filter buys latency at the cost of a hole.
+  for (const entry of guardEntries) {
+    for (const hook of entry.hooks ?? []) {
+      assert.equal(hook.if, undefined, `\`if: ${hook.if}\` re-narrows the guard to one tool`)
+    }
+  }
 })

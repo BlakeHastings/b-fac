@@ -55,6 +55,21 @@ a text file containing the link target and exits 0. `.claude/skills/` is
 therefore a generated copy, gated by `npm run check:sync`. Do not "simplify" it
 to a symlink.
 
+**A hook matches on tool NAME, so a second shell tool walks straight past it.**
+The skill's `enforcement.md` ships `"matcher": "Bash"`, and a real session ran
+`git push origin main` through a PowerShell tool and was not denied. This
+machine has both tools. The matcher here is `Bash|PowerShell` with no `if`
+clause, because `if` uses permission-rule syntax that names a single tool —
+`Bash(gh *)` does not fire for PowerShell — and a filter that buys latency at
+the cost of a hole is a bad trade. `npm test` asserts this and goes red if the
+matcher is narrowed.
+
+**A hook does not protect the session that installs it.** `.claude/settings.json`
+is read at startup, so the session that adds the guard runs unguarded to the
+end. Verified: `gh pr merge --help` was not denied in the session that wired it.
+After changing hook config, restart before relying on it, and do not treat a
+non-denial in that session as evidence the guard is broken.
+
 **Renaming a CI job breaks merging invisibly.** `scripts/merge-pr.mjs` matches
 job names as strings, and a name that never appears is treated as "never ran",
 which refuses the merge. The job `name:`, the `REQUIRED` array, and the

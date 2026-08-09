@@ -9,3 +9,8 @@ docs/process/issues-created.json
 
 # Local harness state, not the committed adapter output
 .claude/settings.local.json
+
+# Agent worktrees. Committing one adds a gitlink that breaks every clone, and
+# `git add -A` from the repo root picks them up silently. parallelism.md
+# records this happening on another project; it happened here too.
+.claude/worktrees/
