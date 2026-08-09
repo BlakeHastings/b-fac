@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # The repo has no runtime dependencies, so this exists for one reason: a
+  # public repo's workflows are a supply-chain surface, and an unattended
+  # action tag is the part that moves under you.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

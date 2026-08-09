@@ -1,24 +1,29 @@
-// The only sanctioned way to land a PR on the default branch.
+// The sanctioned way to land a PR on the default branch.
 //
-// WHAT THIS PREVENTS
-// GitHub cannot enforce required checks here: branch protection needs a paid
-// plan on a private repo. Without enforcement, "check the run first" is a
-// habit, and habits lapse exactly when things are busy. This does the check
-// mechanically and refuses otherwise.
+// WHAT THIS IS
+// A convenience, not a control. On this repository the ruleset is the control:
+// it requires a pull request and green checks, with no bypass actors, so
+// GitHub refuses a bad merge whether or not anyone runs this. See
+// docs/architecture/decisions/0001.
 //
-// Always squash: one issue becomes one commit on main, so `git log --oneline`
-// stays a readable list of changes rather than a wall of "fix lint" noise, and
-// reverting a change means reverting one commit.
+// It is still worth keeping for two reasons. It says *which* check is red and
+// why, where the merge button says only that checks have not passed. And it
+// gives guard-merge.mjs a specific command to point agents away from, which a
+// button cannot.
+//
+// On a private repository without a ruleset this file is load-bearing rather
+// than convenient, which is the situation the shipped template assumes.
 //
 //   node scripts/merge-pr.mjs 42
 import { execFileSync } from 'node:child_process'
 
-// SETUP: the exact `name:` of each required CI job, as GitHub reports it in
-// the check rollup. Take them from a real run, not from the workflow file:
+// The exact `name:` of each required job as GitHub reports it in the check
+// rollup. Take them from a real run, not from the workflow file:
 //   gh pr view <n> --json statusCheckRollup --jq '.statusCheckRollup[].name'
 // A name that never appears is treated as "never ran" and refuses the merge.
 // That is the safe direction, but a typo here looks like a broken script.
-const REQUIRED = ['Invariants', 'Web app']
+// These must stay in step with .github/workflows/checks.yml and the ruleset.
+const REQUIRED = ['Checks']
 
 const prNumber = process.argv[2]
 if (!prNumber || !/^\d+$/.test(prNumber)) {
@@ -29,6 +34,10 @@ if (!prNumber || !/^\d+$/.test(prNumber)) {
 function gh(args) {
   return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
+
+const defaultBranch =
+  gh(['repo', 'view', '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name']).trim() ||
+  'main'
 
 let pr
 try {
@@ -53,15 +62,16 @@ const refuse = (why) => {
 
 if (pr.state !== 'OPEN') refuse(`state is ${pr.state}, not OPEN.`)
 if (pr.isDraft) refuse('it is a draft.')
-if (pr.mergeable === 'CONFLICTING') refuse('it has conflicts with main. Rebase or merge main in first.')
+if (pr.mergeable === 'CONFLICTING') {
+  refuse(`it conflicts with ${defaultBranch}. Send it back to rebase and re-verify.`)
+}
 
 // Latest conclusion per check name; a rerun should not be judged on its first result.
 const latest = new Map()
 for (const check of pr.statusCheckRollup ?? []) {
   const name = check.name ?? check.context
   if (!name) continue
-  const state = check.conclusion || check.state || 'PENDING'
-  latest.set(name, state)
+  latest.set(name, check.conclusion || check.state || 'PENDING')
 }
 
 const problems = []
@@ -80,7 +90,7 @@ if (problems.length > 0) {
 }
 
 console.log(`PR #${prNumber}: ${pr.title}`)
-console.log(`All ${REQUIRED.length} required checks green. Squash merging...`)
+console.log(`All ${REQUIRED.length} required check(s) green. Squash merging...`)
 
 try {
   // The REST endpoint rather than `gh pr merge`, which the guard blocks by name.
@@ -97,9 +107,11 @@ try {
   process.exit(1)
 }
 
+// The repo is set to delete branches on merge, so this is usually a no-op that
+// fails harmlessly. Kept for the case where that setting is ever turned off.
 try {
   gh(['api', '--method', 'DELETE', `repos/{owner}/{repo}/git/refs/heads/${pr.headRefName}`])
   console.log(`Merged and deleted branch ${pr.headRefName}.`)
 } catch {
-  console.log(`Merged. Branch ${pr.headRefName} could not be deleted; remove it manually.`)
+  console.log(`Merged. Branch ${pr.headRefName} was already gone or could not be deleted.`)
 }

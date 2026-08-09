@@ -25,7 +25,7 @@ checking the premise is part of the job.
 <area>/<issue-number>-<short-slug>
 ```
 
-for example `platform/14-ci-pipeline` or `questionnaire/20-coverage-gating`.
+for example `platform/14-ci-pipeline` or `intake/20-eligibility-gating`.
 
 Commit messages say **why**, not what. The diff already says what.
 

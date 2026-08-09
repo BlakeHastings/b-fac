@@ -1,0 +1,46 @@
+# The mechanical gate. Everything here is the price of admission, not a review
+# lens: if it is red the work is not ready to look at. See docs/process/review.md.
+#
+# The job `name:` below is what GitHub reports in the check rollup, and it is
+# what scripts/merge-pr.mjs matches on and what the ruleset requires. Renaming
+# the job silently turns "never ran" into a refused merge, so change all three
+# together.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only by default. Nothing here needs to write to the repo, and a public
+# repo should not hand a write token to a workflow that does not use one.
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # check-vocabulary.mjs enumerates files with `git ls-files`, which
+          # needs a real working tree rather than a sparse or shallow one.
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # No dependencies on purpose, so there is no install step and no
+      # lockfile to drift. node:test and node:assert are enough. If that ever
+      # stops being true, add `npm ci` here and commit the lockfile.
+      - name: Guard tests
+        run: npm test
+
+      - name: Vocabulary
+        run: npm run check:vocabulary

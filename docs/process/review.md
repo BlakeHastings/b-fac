@@ -81,7 +81,7 @@ The point is that the decision is findable later, not that it is ceremonious.
 Take the next number after everything on the default branch **and** everything
 in an open pull request. Work runs in parallel here, so the next free number on
 your branch is usually already claimed on someone else's.
-`npm run check:collisions` fails a duplicate, and CI runs it on the merge
+`[the collision check]` fails a duplicate, and CI runs it on the merge
 commit, so a collision that does not exist on your branch yet still turns the PR
 red.
 
