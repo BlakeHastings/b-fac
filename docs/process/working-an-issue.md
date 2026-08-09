@@ -31,8 +31,9 @@ Commit messages say **why**, not what. The diff already says what.
 Do not open a PR you have not run.
 
 ```bash
-npm run check         # tests, mirror drift, vocabulary
-npm run check:plugin  # claude plugin validate . --strict
+npm run check              # tests, mirror drift, vocabulary
+npm run check:plugin       # claude plugin validate . --strict
+npm run check:plugin-load  # the real loader finds the skills
 ```
 
 Then exercise the change the way a real user would, which for this repo means
@@ -43,9 +44,9 @@ claude --plugin-dir .
 ```
 
 If you changed skill content, activate the skill and check the part you changed
-actually reads the way you intended in context. If you changed the manifests,
-confirm the plugin still loads and the skill still appears. A green
-`plugin validate` says the JSON parses; it does not say the skill loaded.
+actually reads the way you intended in context. A green `plugin validate` says
+the JSON parses; `check:plugin-load` says the harness found the skill and is
+holding its body; neither says the words are right. That last part is yours.
 
 **If you touched `.agents/skills/`, run `npm run sync`** and commit the mirror
 in the same change. CI fails otherwise, and the failure looks like an unrelated

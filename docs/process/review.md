@@ -13,6 +13,8 @@ not ready for review.
 - `.claude/skills/` is in sync with `.agents/skills/`
 - no vocabulary from the original engagement has come back
 - the marketplace and plugin manifests validate under `--strict`
+- the Claude Code loader, given this repo as a plugin, reports every skill in
+  `.agents/skills/` in its component inventory, with a body of real size
 
 Never ask a reviewer to run these by hand. If a mechanical check is missing,
 adding it is cheaper than reviewing for it forever.
@@ -31,12 +33,17 @@ Then exercise **the change itself** as the actual user would. Confirm:
 
 - the skill still activates, and the changed part reads as intended in context
 - one realistic failure path behaves sanely (a check that should fail, does)
-- no manifest warnings, and the skill is not silently missing from the listing
+- no manifest warnings
 
 "Tests pass" is not evidence of functionality, and neither is a green
 `plugin validate` — that says the JSON parses, not that anything loaded. A
 skill whose `SKILL.md` contains nothing but a file path validates perfectly.
 Say what you actually did and what you actually saw.
+
+*"The skill is not silently missing from the listing" used to be on that list
+and is now Gate 0's job, because a reviewer checking it by hand every time is
+exactly the ceremony this document says to automate. What is left for a human
+is the part a loader cannot judge: whether the words are right.*
 
 ## Lens 2: code quality, proven by comprehension
 

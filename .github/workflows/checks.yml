@@ -76,5 +76,20 @@ jobs:
       # and watching it fail with `plugins[0] plugin.json → ...`. Before
       # trusting a newer version, re-run that check: a validator that silently
       # stops descending passes everything.
+      #
+      # Installed globally rather than invoked through npx so that the two
+      # steps below share one pinned copy and run the same npm scripts a
+      # developer runs. The version lives here and nowhere else.
+      - name: Install Claude Code CLI
+        run: npm install --global @anthropic-ai/claude-code@2.1.226
+
       - name: Validate manifests
-        run: npx --yes @anthropic-ai/claude-code@2.1.226 plugin validate . --strict
+        run: npm run check:plugin
+
+      # Both steps are in this one job on purpose. A separate job would be a
+      # third required check context, which means a third copy of a job name to
+      # keep in step with scripts/merge-pr.mjs and the ruleset. Neither step
+      # needs credentials, so a fork's pull_request run gets the same answer as
+      # a branch's.
+      - name: Plugin loads and exposes its skills
+        run: npm run check:plugin-load
