@@ -25,11 +25,15 @@ describe how work actually happens here, not an aspiration.
 ## Running things
 
 ```bash
-npm run check         # tests, mirror drift, vocabulary. The mechanical gate.
-npm run sync          # regenerate .claude/skills/ from .agents/skills/
-npm run check:plugin  # claude plugin validate . --strict
-claude --plugin-dir . # load this repo as a plugin without installing it
+npm run check              # tests, mirror drift, vocabulary. The mechanical gate.
+npm run sync               # regenerate .claude/skills/ from .agents/skills/
+npm run check:plugin       # claude plugin validate . --strict
+npm run check:plugin-load  # the real loader finds the skills, not just the JSON
+claude --plugin-dir .      # load this repo as a plugin without installing it
 ```
+
+The two `check:plugin*` scripts need the `claude` CLI, which is why `npm run
+check` leaves them out. CI runs all four.
 
 No dependencies, no lockfile, Node 22 built-ins only. If that stops being true,
 add `npm ci` to `.github/workflows/checks.yml` and commit the lockfile.
