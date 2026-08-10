@@ -58,7 +58,7 @@ Everything else in this skill is calibration.
 1. Pick work that unblocks the most. Prefer finishing a journey to starting a
    second one.
 2. Batch what would collide; split what would not.
-3. Write the brief. `references/briefing.md`.
+3. Write the brief, evidence bar included. `references/briefing.md`.
 4. Dispatch. Implementation agents are `general-purpose` with
    `isolation: "worktree"`, launched as several tool calls in one message.
    Read-only agents get no worktree.
