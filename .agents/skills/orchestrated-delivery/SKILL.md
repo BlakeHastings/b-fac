@@ -142,9 +142,9 @@ Asking is fine; asking synchronously is the defect. A multiple-choice question
 tool suspends the entire loop until a human types, which is the one thing an
 orchestrator exists not to do. One mined session made 18 such calls: 7 were
 decisions the table above already assigns to you, one bought 100 minutes of
-idle asking permission for a rehearsal it had just proven touches nothing live,
-and in 4 the owner ignored the options and answered in prose anyway. Use both
-of these instead, and neither of them waits:
+wall-clock idle asking permission for a rehearsal it had just proven touches
+nothing live, and in 4 the owner ignored the options and answered in prose
+anyway. Use both of these instead, and neither of them waits:
 
 - **An issue labelled for the owner**, carrying the recommendation and the
   cost. Durable, survives the session, and it is where the answer gets recorded
@@ -201,14 +201,20 @@ line is waiting on somebody who is not you. **If one line is waiting on you,
 that line is your `Next:`.**
 
 The reason it is a format and not advice: two mined sessions turned up roughly
-21 turns that ended with a status update while unblocked work sat there, one gap
-running 4h28m. The instruction above was present for every one of them and the
+21 turns that ended with a status update while unblocked work sat there, the
+longest gap 4h28m of wall clock between that report and the owner's next
+message. The instruction above was present for every one of them and the
 owner restated it sixteen times, which is this skill's own principle turning on
 the skill. An instruction is not a control. **The mechanism is that finishing a
 good report reads as finishing the turn.** The summary is itself a completion
 signal and it wins even when you have correctly worked out that nothing is
 blocked, because both facts live in the same turn and only one of them is a
 habit. Emphasis cannot reach that, since you already agree.
+
+**A review record is not an exception.** Posting the three headings and a
+verdict, as `references/reviewing.md` says to, is a thing you do *during* a
+turn, to the PR. It is the most convincing completion signal the loop produces
+and it still ends with these two lines.
 
 **Delete the clause that invents a decision.** "I'll start #122 unless you'd
 rather I wait", "shall I", "want me to". Three of nine stops in one session

@@ -48,7 +48,7 @@ produces or visibly does not:
 progressive-disclosure bias. A rule about when you may stop has to be resident
 at the moment of stopping, and a reference the orchestrator would have to decide
 to open is exactly the disposition this ADR says not to rely on. The body went
-from 206 to 275 lines against a ~500 line ceiling, which is affordable once.
+from 206 to 281 lines against a ~500 line ceiling, which is affordable once.
 
 ## Consequences
 
