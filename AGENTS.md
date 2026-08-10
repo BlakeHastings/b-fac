@@ -27,6 +27,7 @@ describe how work actually happens here, not an aspiration.
 ```bash
 npm run check              # tests, mirror drift, vocabulary. The mechanical gate.
 npm run sync               # regenerate .claude/skills/ from .agents/skills/
+npm run check:version      # payload changed, so plugin.json's version must too
 npm run check:plugin       # claude plugin validate . --strict
 npm run check:plugin-load  # the real loader finds the skills, not just the JSON
 claude --plugin-dir .      # load this repo as a plugin without installing it
@@ -48,6 +49,7 @@ script turns every merge into "never ran".
 | --- | --- |
 | How to work an issue here | `docs/process/working-an-issue.md` |
 | What "done" means | `docs/process/review.md` |
+| How a version bump and a release happen | `docs/process/releasing.md` |
 | Why something is the way it is | `docs/architecture/decisions/` |
 | The workflow this repo ships | `.agents/skills/orchestrated-delivery/SKILL.md` |
 
