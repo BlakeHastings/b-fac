@@ -54,11 +54,17 @@ what CI found. That is the expected pattern, not a failure of the seeding.
 ## Open questions belong in an issue
 
 Anything only the owner can answer becomes an issue labelled for it, with your
-recommendation and what it costs.
+recommendation and what it costs. **This is the escalation channel**, not a
+place to file questions you have already asked some other way: the point of
+putting the question here is that filing it costs you nothing and you keep
+working. A question that stopped the loop was not escalated, it was a halt.
 
 When the owner answers, record the outcome **in the artifact it affects** (the
 spec, the ADR) rather than leaving it in the issue thread. The decision is then
 findable from the thing it decided, and nobody relitigates it.
+
+The label is what makes this work at a glance. A question filed without it is a
+question nobody knows is waiting, and the owner finds it a week later.
 
 ## Housekeeping
 
