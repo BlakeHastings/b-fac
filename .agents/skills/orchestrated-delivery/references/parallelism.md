@@ -152,9 +152,11 @@ git worktree list --porcelain | awk '/^worktree /{print substr($0,10)}' |
   while read -r w; do echo "== $w"; git -C "$w" status --short --branch; done
 ```
 
-Run it when an agent goes quiet, and once before you stop for the day. A branch
-line with no `...origin/` upstream has never pushed anything, and every line
-under it exists nowhere else. Then, per worktree:
+Run it when an agent goes quiet, and again before you write `Next: nothing`: an
+orphan holding real work is a line waiting on you, which SKILL.md's "Before you
+stop" makes your `Next:` rather than a blocker. A branch line with no
+`...origin/` upstream has never pushed anything, and every line under it exists
+nowhere else. Then, per worktree:
 
 1. Check `git status` there before assuming anything landed.
 2. If there is real work, commit it as clearly-labelled WIP on its branch. Do
