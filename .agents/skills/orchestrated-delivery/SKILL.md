@@ -67,6 +67,8 @@ Everything else in this skill is calibration.
 6. Review. `references/reviewing.md`.
 7. Post what you independently verified, then merge or send it back.
 8. File what surfaced and could not be fixed there.
+9. Go to 1. The loop has no step that ends it, and reporting is not one. See
+   "Before you stop".
 
 ## Improving the loop
 
@@ -134,19 +136,86 @@ then implement it properly without hedging.
 **Refuse to start work whose inputs are missing.** Starting produces work built
 on a guess, and the guess is invisible afterwards.
 
+### How to ask, which is not with a tool that blocks
+
+Asking is fine; asking synchronously is the defect. A multiple-choice question
+tool suspends the entire loop until a human types, which is the one thing an
+orchestrator exists not to do. One mined session made 18 such calls: 7 were
+decisions the table above already assigns to you, one bought 100 minutes of
+idle asking permission for a rehearsal it had just proven touches nothing live,
+and in 4 the owner ignored the options and answered in prose anyway. Use both
+of these instead, and neither of them waits:
+
+- **An issue labelled for the owner**, carrying the recommendation and the
+  cost. Durable, survives the session, and it is where the answer gets recorded
+  against the thing it decides. `references/github-backlog.md`.
+- **Plain prose at the end of a turn**, phrased as a question rather than a
+  menu. Cheaper than an issue for something you need soon, and the owner can
+  answer in their own words.
+
+Then **carry on with everything that does not depend on the answer**, and where
+something does depend on it, say which assumption you took, in the brief or the
+PR body, so the guess is visible rather than baked in. That is a different
+thing from starting work whose *inputs* are missing, which you still refuse.
+
+Both channels only help if you continue afterwards. **A prose question that
+ends the turn is the same stop wearing different clothes**, so this rule and
+"Before you stop" are one rule in two places.
+
 ## Working without the owner
 
 The owner is out of the loop for most decisions, and the loop has to keep
 moving. Two instructions recur and both mean more than they say:
 
-- **"Keep working until you are out of options that do not need me."** Take it
-  literally. Work every branch that does not depend on an unanswered question,
-  and stop only at genuine blocks.
+- **"Keep working until you are out of options that do not need me."** Not a
+  sentiment to agree with. It is the obligation below, and it is failed by
+  reporting well rather than by disagreeing.
 - **"Where are we at, and what do you need from me?"** An audit. Read the real
   issue and PR state rather than your memory of it, and answer in those parts.
 
 Raw feedback, often dictated, becomes issues without losing the owner's phrasing.
 Quote rather than paraphrase: the wording carries what actually annoys.
+
+## Before you stop
+
+**Every status update ends with both of these lines, in this form, as the last
+thing in the message. Both every time, and never prose in their place:**
+
+```
+Next: dispatching #41 and #43 as one wave, briefs below.
+Blocked on: warn-or-block on an expired licence. Owner. Asked in #52.
+  Meanwhile: #42 does not touch that path, so it goes out in this wave.
+```
+
+`Next:` is work you then start, in this turn, below the report. Dispatching ends
+a turn here; summarising does not. `Blocked on:` is one line per blocker, each
+naming the question, who can answer it, and where you asked it, plus what you
+are doing meanwhile, because one blocked branch is not a blocked loop. With no
+blocker, write `Blocked on: nothing` and keep going. Both lines, verbatim,
+because a turn missing one is countable afterwards and a disposition is not.
+
+**`Next: nothing` is the expensive one.** It is a claim rather than a state, and
+you pay for it by listing every open issue and every open PR and saying what
+each is waiting on. Done honestly, a real stop looks like a list where every
+line is waiting on somebody who is not you. **If one line is waiting on you,
+that line is your `Next:`.**
+
+The reason it is a format and not advice: two mined sessions turned up roughly
+21 turns that ended with a status update while unblocked work sat there, one gap
+running 4h28m. The instruction above was present for every one of them and the
+owner restated it sixteen times, which is this skill's own principle turning on
+the skill. An instruction is not a control. **The mechanism is that finishing a
+good report reads as finishing the turn.** The summary is itself a completion
+signal and it wins even when you have correctly worked out that nothing is
+blocked, because both facts live in the same turn and only one of them is a
+habit. Emphasis cannot reach that, since you already agree.
+
+**Delete the clause that invents a decision.** "I'll start #122 unless you'd
+rather I wait", "shall I", "want me to". Three of nine stops in one session
+were this, and not one of them contained a question: the decision was already
+yours under Escalation. The clause manufactures a decision point, and a
+manufactured one stops the loop exactly as hard as a real one. Strike it and
+dispatch.
 
 ## Three shapes of agent
 

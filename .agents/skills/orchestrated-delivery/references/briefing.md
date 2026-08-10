@@ -24,6 +24,10 @@ the defect nobody knew about.
   the only element here with a measurement behind it instead of an anecdote. Its
   own section is below.
 - **Do not merge**, naming the sanctioned command as your job.
+- **What to do with a question**, because an agent that blocks on one is worse
+  off than you are: you are right there and could have answered it. Tell it to
+  take the most defensible reading, carry on, and report the assumption under
+  its own heading. A blocked agent holds a worktree open for nothing.
 - **The report contract**: which decisions to report back, not a narrative.
 
 Traps that each caught a real defect, as examples of the register:
