@@ -25,17 +25,51 @@ How real claims were actually checked:
 | "The reveal does not speak the value" | Read where the announcement string is set. The value never reaches it |
 | "The leading zero survives now" | Re-ran the exact probe that had proved the bug |
 | "The blank template is blank" | It was not. Three dropdowns shipped pre-filled |
+| "The permit search answers in 600ms" | Re-timed at the boundary. The 600ms was the reviewer's own HTTP tool finishing a TLS handshake, not the search |
+| "The intake form loads cold in 8.4s" | Timed from cold container to first byte: 23.6s. The 8.4s had started the clock once the container was already up |
 
 The pattern across all of them: check the property, not the artifact that claims
 it. A test name is not a test. A green suite is not a working app. The one time
 a check was done loosely it measured `tail`'s exit code instead of the script's,
 and proved nothing.
 
-That last row matters most. The evidence had been sitting in a day-one
+The blank-template row matters most. The evidence had been sitting in a day-one
 extraction, read as harmless noise. An agent read the same bytes and saw a
 document that would tell an inspecting authority a contractor held an
 endorsement they had waived.
 **Being the reviewer does not mean you saw it first.**
+
+### A measurement is not a discrete check
+
+Every row above except the last two is discrete: a test is red or it is not, a
+type has a field or it does not. Discrete checks survive a sloppy instrument.
+Measurements do not, and in one session three of them came back wrong in the
+same direction, the flattering one. None of the three was careless. Each number
+was obtained in a reasonable way with the nearest instrument, and the nearest
+instrument is the one that measures the wrong boundary, usually on the generous
+side of it.
+
+Three rules, cheapest and most valuable first.
+
+**State the instrument beside the number.** "23.6s from cold container to first
+byte" can be argued with. "8.4s" cannot, so it is not yet a claim, it is a
+figure. Refuse the bare figure in an agent's report and refuse it in your own.
+
+**Measure at the boundary the applicant meets.** They wait for a rendered page,
+not for a handler to return. Warm caches, in-process timings and a connection
+you already had open all move the number the same way, which is why the bias has
+a direction.
+
+**Prefer an instrumented run to a convenient one-liner.** Yours is usually the
+worse instrument, because yours is whatever was already to hand. Constraint 3
+still stands: verify the central claim yourself. When that claim is a number,
+verifying it means naming the boundary and the instrument you would accept,
+then reading the run that used them, rather than reaching for a faster copy of
+the same wrong probe.
+
+Refusing a bare figure here is the round trip an evidence bar exists to save. If
+the central claim is going to be a number, put the boundary and the instrument
+in the brief instead, as `references/briefing.md` says to do with any bar.
 
 ## Verify the merge result, not the branch
 

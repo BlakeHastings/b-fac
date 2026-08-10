@@ -35,28 +35,46 @@ result, which is the one thing a bypass cannot avoid producing.
 
 ## Wiring
 
-`.claude/settings.json`, with `if` clauses so the hook only fires on relevant
-commands:
+`.claude/settings.json`. A PreToolUse matcher selects on **tool name**, so it
+has to name every shell-capable tool the harness offers, and nothing may narrow
+it back to one of them:
 
 ```json
 {
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           { "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge.mjs\"",
-            "if": "Bash(git *)", "timeout": 15 },
-          { "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge.mjs\"",
-            "if": "Bash(gh *)", "timeout": 15 }
+            "timeout": 15 }
         ]
       }
     ]
   }
 }
 ```
+
+This file used to show `"matcher": "Bash"` with `if` clauses, so the hook fired
+only on `git` and `gh`. A session then ran `git push origin main` through a
+PowerShell tool and was **not denied**, and a second session measured the same
+hole without looking for it. `if` uses permission-rule syntax, which names a
+single tool: `Bash(gh *)` cannot fire for a different shell tool, so the filter
+reopens the hole the matcher just closed. The guard already reads the command
+text and exits on anything it does not care about, so the filter was buying
+microseconds at the cost of a bypass. Bad trade.
+
+**That tool list has a shelf life.** Tool names are harness-specific and new
+ones ship. Re-read which tools can run a shell whenever you change or upgrade
+harness, and keep an assertion beside the guard's own tests so narrowing the
+matcher goes red instead of going quiet.
+
+**A hook does not protect the session that installs it.** Settings are read at
+startup, so the session that adds the guard runs unguarded to the end. Verified:
+`gh pr merge --help` was not denied in the session that wired it. Restart before
+relying on a hook change, and do not read a non-denial in that session as
+evidence the guard is broken. From the inside those two look identical.
 
 A hook denies by writing JSON to stdout and exiting 0:
 
@@ -94,6 +112,16 @@ before the command, so a `cd` inside that command has not happened yet, and any
 check reading the working directory is reading somewhere else. That is a
 property of the mechanism, not a bug, so branch-dependent rules in a hook are
 unsound and the durable guards read only command text.
+
+**The shipped guard breaks that rule itself, and it has been caught.** For a
+bare `git push` or `git merge` it shells out to
+`git rev-parse --abbrev-ref HEAD` and denies only when the answer is the default
+branch. Run from inside a worktree, where HEAD is a feature branch, that copy
+answered `allow` on a command the main checkout denied. Same script, opposite verdict, decided by
+which copy ran. Treat the branch-dependent clause as the weakest thing in the
+file: the `gh pr merge` rules beside it read only command text, and they do not
+have this problem. Whether to drop the clause or keep it as a net for the common
+case is a decision to make deliberately, not one to inherit.
 
 Match on the command's **own arguments**, stopping at the next link in a chain,
 rather than scanning the whole line. That single mistake is what read a commit
