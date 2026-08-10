@@ -60,8 +60,8 @@ Everything else in this skill is calibration.
 2. Batch what would collide; split what would not.
 3. Write the brief, evidence bar included. `references/briefing.md`.
 4. Dispatch. Implementation agents are `general-purpose` with
-   `isolation: "worktree"`, launched as several tool calls in one message.
-   Read-only agents get no worktree.
+   `isolation: "worktree"`, launched as several tool calls in one message. A
+   read-only agent gets one too if it boots the app.
 5. While they run, touch nothing they touch. Reviewing, filing, answering the
    owner and mining the record are safe. Editing is not.
 6. Review. `references/reviewing.md`.
@@ -232,8 +232,9 @@ Point it at a whole user journey and tell it to behave like a real user rather
 than someone testing. It works because a lot lands in quick succession, each
 piece verified alone, and integration defects live exactly between them. Say
 that finding nothing serious is a legitimate outcome, or you get a list of taste
-to triage. Safest thing to run alongside other agents, because it touches
-nothing.
+to triage. Safest thing to run alongside other agents, because it touches no
+code, though one that boots the app still needs a worktree for the ports and
+volumes.
 
 **The auditor.** Pointed at the record rather than the code. Weaker in practice:
 several died before reporting. Scope it narrowly and have it write to a file
