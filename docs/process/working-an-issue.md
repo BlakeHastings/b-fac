@@ -52,6 +52,11 @@ holding its body; neither says the words are right. That last part is yours.
 in the same change. CI fails otherwise, and the failure looks like an unrelated
 drift error on someone else's branch.
 
+**If you changed the payload, bump `version` in `.claude-plugin/plugin.json`**
+in the same change too. `npm run check:version` fails otherwise, on your branch
+and in CI. `docs/process/releasing.md` says which digit moves and what counts as
+payload; docs, scripts and CI do not.
+
 ## The pull request
 
 Title: what changed, in plain language. Reference the issue with `Closes #N`.

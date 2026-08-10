@@ -30,7 +30,13 @@ jobs:
         with:
           # check-vocabulary.mjs enumerates files with `git ls-files`, which
           # needs a real working tree rather than a sparse or shallow one.
-          fetch-depth: 1
+          #
+          # 0 rather than 1 because check-version-bump.mjs asks what this branch
+          # changed relative to the merge base with main, and a shallow clone
+          # has no merge base to find. It fails loudly in that case rather than
+          # passing, so lowering this back to 1 reds the build rather than
+          # quietly disabling the check.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -55,6 +61,17 @@ jobs:
       # out the merge commit, which is what makes this catch anything.
       - name: ADR collisions
         run: npm run check:collisions
+
+      # A step inside this job rather than a job of its own, deliberately. A new
+      # job name becomes a third required check context, which is a third copy
+      # of a string already duplicated across this file, merge-pr.mjs's
+      # REQUIRED array and the ruleset. See docs/architecture/decisions/0009.
+      #
+      # On a `push` to main the merge base is main itself, the diff is empty and
+      # this reports "no payload changed". It only has anything to say on a
+      # pull request, which is where the bump can still be added.
+      - name: Version bump for payload changes
+        run: npm run check:version
 
   plugin:
     name: Plugin

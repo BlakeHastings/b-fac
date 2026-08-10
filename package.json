@@ -14,8 +14,9 @@
     "check:sync": "node scripts/sync-harnesses.mjs --check",
     "check:vocabulary": "node scripts/check-vocabulary.mjs",
     "check:collisions": "node scripts/check-collisions.mjs",
+    "check:version": "node scripts/check-version-bump.mjs",
     "check:plugin": "claude plugin validate . --strict",
     "check:plugin-load": "node scripts/check-plugin-load.mjs",
-    "check": "npm run test && npm run check:sync && npm run check:vocabulary && npm run check:collisions"
+    "check": "npm run test && npm run check:sync && npm run check:vocabulary && npm run check:collisions && npm run check:version"
   }
 }
