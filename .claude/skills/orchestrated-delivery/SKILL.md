@@ -250,8 +250,22 @@ Then `AGENTS.md` for invariants and how to run things, the two process docs from
 `assets/`, a seeded backlog, and the enforcement layer. Write `orchestrating.md`
 last, from what you actually did.
 
+**Setup ends with printed output, not with this table having been read.** Before
+installing anything, run `node <this skill>/assets/check-setup.mjs` from the repo
+root: it names every layer MISSING and exits non-zero. Install, run it again,
+and put both outputs in your first status update. It needs Node and `git`, no
+network and no `gh`, and if Node is absent that is its first finding, because
+layers 1 to 3 are Node scripts. Its `LAYERS` table is the same checklist by eye.
+
+**Copying is not installing**, which is the half it exists to catch: a guard
+script no `settings.json` invokes, a `REQUIRED` list still holding its
+placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch
+this repo does not have. Where only the instruction stood, one project skipped
+setup outright and 20 merges went through raw `gh pr merge`.
+
 | Asset | Goes to | Edit first |
 | --- | --- | --- |
+| `check-setup.mjs` | `scripts/`, and run it first | `LAYERS` paths, if they differ |
 | `review.md` | `docs/process/` | The bracketed commands |
 | `working-an-issue.md` | `docs/process/` | Commands and check names |
 | `pull_request_template.md` | `.github/` | Nothing |
