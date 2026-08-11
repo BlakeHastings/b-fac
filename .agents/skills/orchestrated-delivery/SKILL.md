@@ -274,6 +274,9 @@ setup outright and 20 merges went through raw `gh pr merge`.
 | `guard-merge.mjs` | `scripts/` | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
 
+`references/first-run.md` walks this whole sequence as one repo actually ran it,
+in the order its commits show rather than the order listed here.
+
 ## References
 
 | File | Read it when |
@@ -283,6 +286,7 @@ setup outright and 20 merges went through raw `gh pr merge`.
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph |
+| `references/first-run.md` | Setting this up in a repo that has none of it yet |
 
 ## What the loop is worth
 
