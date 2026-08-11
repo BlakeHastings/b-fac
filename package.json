@@ -1,8 +1,8 @@
 {
   "name": "b-fac",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
-  "description": "Tooling for the b-fac repository itself. Not the published plugin payload.",
+  "description": "Tooling for the b-fac repository itself. Not the published plugin payload. Pinned at 0.0.0 on purpose: the only version that means anything is in .claude-plugin/plugin.json. See docs/process/releasing.md.",
   "license": "MIT",
   "type": "module",
   "engines": {
