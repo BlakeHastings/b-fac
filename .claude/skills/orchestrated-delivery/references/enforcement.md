@@ -33,6 +33,42 @@ also cannot tell whether checks were green when the merge was taken.
 and a bypassed preventive layer is silent by construction. Detection runs on the
 result, which is the one thing a bypass cannot avoid producing.
 
+## Installed is not a state you can assume
+
+Copying these assets into a repo is not installing them, and a directory listing
+cannot tell the two apart. `assets/check-setup.mjs` reports the layers above by
+number against the repo you are standing in, so its output is this section
+rendered rather than recalled. Run it before you install anything and again
+afterwards, and keep both. A layer whose script is present and whose wiring is
+absent reports as absent rather than partial, on layer 0's reasoning: a control
+nothing invokes is an instruction.
+
+It reads files, so the principle this chapter applies to each layer applies to
+the check itself. What it does not cover:
+
+- **A hook that is configured, which is not a hook that ran.** It reads
+  `.claude/settings.json` and can tell you the wiring is there. Whether the
+  harness loaded that wiring into the session in front of you is a different
+  claim, and the check cannot reach it: a session that started before the
+  settings changed, a subagent, a worktree, a second harness reading a different
+  file. All of those look identical from here. Layer 2's stated limit is "any
+  session the harness did not load it into", and that is precisely the set the
+  check cannot enumerate. A denial you watched happen is the only thing that
+  says a hook is live.
+- **Anything at GitHub's end.** Rulesets, required contexts, bypass actors, who
+  can push at all: invisible to a check that reads the working tree. That cuts
+  both ways. On a repo that already has protected branches, most of these layers
+  should be deleted rather than reported absent, which is the revisit trigger at
+  the end of this chapter.
+- **Whether the guard's rules are right.** It checks that the matcher names
+  every shell tool and that `DEFAULT_BRANCH` matches this repo's actual default.
+  It does not read the patterns. Whether the guard denies what it should and
+  allows what it should is answered only by its own tests, in both directions,
+  and the allow direction is the one nobody writes.
+
+Green here means the layers are present and wired. It does not mean anything was
+prevented.
+
 ## Wiring
 
 `.claude/settings.json`. A PreToolUse matcher selects on **tool name**, so it
