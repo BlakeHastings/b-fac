@@ -55,3 +55,32 @@ The substitute layer still ships to users in the plugin payload, because most
 repositories installing it will be private ones where the original premise
 holds. What changed is what *this* repository runs, not what it distributes.
 That distinction is the point: the plugin has to work for repos unlike this one.
+
+**Layer 3 is deliberately absent here, so `assets/check-setup.mjs` will report it
+missing in this repository and that is the correct answer.** The asset checks
+what a private repo needs. Do not install the provenance audit here to make the
+output green.
+
+## Correction, recorded rather than edited away
+
+This ADR said `check-main-provenance.mjs` was dropped. **For eight merged pull
+requests, it was not.** A PowerShell parse error killed the script block that
+contained the `git rm`, nothing in that block ran, and the next `git add -A`
+committed the file. It then sat in `scripts/`, referenced by nothing, still
+holding `REPLACE_WITH_BASELINE_COMMIT_SHA`, while this document asserted it was
+gone. It was removed in #40.
+
+Two things worth keeping from that.
+
+The skill warns never to write an invariant ahead of the code that holds it,
+because an invariant that is not true is worse than an absent one. This is that
+failure, committed by the author of the warning, in the document that records
+the decision. Nobody caught it by reading — not in review, not across eight PRs
+that touched neighbouring files.
+
+What did catch it was `assets/check-setup.mjs`, on its first run, in under a
+second, built for #19 on the argument that reading a table is not installing
+anything. It found the same class of defect in the repository that commissioned
+it. That is the strongest evidence available for why the mechanism was worth
+building, and it is why this correction is appended here rather than quietly
+fixed in place.
