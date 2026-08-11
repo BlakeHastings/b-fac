@@ -43,10 +43,25 @@ loading the skill and using it rather than reading it:
 claude --plugin-dir .
 ```
 
+**Invoke it as `b-fac:orchestrated-delivery`. The bare name is a different
+file.** A bare skill name resolves against `~/.claude/skills/` first and
+`.claude/skills/` second, and a plugin's skills are reachable *only* through the
+`<plugin>:<skill>` namespace — so the bare form never reaches the copy
+`--plugin-dir` just loaded, however the session looks. Proved by invoking both
+forms against a marked payload: the bare name returned a stale personal copy
+even with the plugin loaded and a project copy present; only the namespaced form
+returned the marked one. ADR 0012 has the evidence.
+
+That is a habit, so it is also backed by a check: `npm run check:plugin-load`
+fails when a same-named skill in `~/.claude/skills/` disagrees with
+`.agents/skills/`, which is the case where the bare name can quietly answer with
+someone else's words. A personal copy that matches is fine.
+
 If you changed skill content, activate the skill and check the part you changed
 actually reads the way you intended in context. A green `plugin validate` says
-the JSON parses; `check:plugin-load` says the harness found the skill and is
-holding its body; neither says the words are right. That last part is yours.
+the JSON parses; `check:plugin-load` says the harness found the skill, is
+holding its body, and that nothing outranks it with different words; none of
+them say the words are right. That last part is yours.
 
 **If you touched `.agents/skills/`, run `npm run sync`** and commit the mirror
 in the same change. CI fails otherwise, and the failure looks like an unrelated

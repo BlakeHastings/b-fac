@@ -21,6 +21,10 @@
 // ANTHROPIC_API_KEY, where `claude --bare -p` exits 1 with "Not logged in".
 // That is the whole reason this check can be a required one.
 //
+// IT ALSO PREVENTS A COPY THAT IS NOT THIS ONE ANSWERING
+// Finding the plugin's skill is not the same as being unable to reach anything
+// else by that name. See "SHADOWING" below.
+//
 // WHAT IT STILL DOES NOT PROVE
 // That the model chooses the skill, or that the skill's prose is any good.
 // Only that the harness found it, parsed its frontmatter, is holding it as an
@@ -29,7 +33,8 @@
 //   node scripts/check-plugin-load.mjs
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -55,6 +60,46 @@ const SENTINEL = 'orchestrated-delivery'
 // is a floor against a gutted payload, not a size budget; raising it towards
 // the real figure would turn ordinary editing into a red build.
 const SENTINEL_MIN_TOKENS = 500
+
+// SHADOWING
+// Where a bare skill name resolves before it ever reaches this plugin. Claude
+// Code's precedence is enterprise, then personal, then project, then bundled;
+// a plugin's skills sit outside that ladder entirely and are reachable only as
+// `<plugin>:<skill>`. The docs are explicit: "enterprise overrides personal,
+// and personal overrides project ... Plugin skills use a
+// `plugin-name:skill-name` namespace, so they cannot conflict with other
+// levels." https://code.claude.com/docs/en/skills
+//
+// Read the second half of that sentence the other way round and it is the
+// problem: the bare name cannot conflict with the plugin because it never
+// reaches the plugin. Proven on this repo rather than inferred — with a stale
+// 206-line copy at ~/.claude/skills/orchestrated-delivery and the real skill
+// loaded through `--plugin-dir`, `Skill(skill: "orchestrated-delivery")`
+// returned the stale body, and it still did with a project-level copy present
+// as well. Only `b-fac:orchestrated-delivery` returned the loaded one.
+//
+// Lens 1 of docs/process/review.md asks a reviewer to load the skill and judge
+// the words. Against a shadowing copy that reviewer reads a different file and
+// reports green, which is the most expensive way for a check to be wrong. A
+// personal copy is allowed here — the owner may well want the skill outside
+// this repo — but one that *disagrees* is not, because disagreement is the
+// only part of this that can lie.
+//
+// This reads the filesystem instead of the loader because no credential-free
+// `claude` command enumerates the personal level; `plugin details` only ever
+// describes the plugin. It runs before the CLI is invoked, so a shadowed
+// machine is reported as shadowed rather than as whatever the loader says next.
+//
+// The enterprise level outranks personal and is not checked. Its path is
+// platform-specific and there is no managed-settings deployment here to verify
+// against, so it would be a code path nobody has ever run.
+const PERSONAL_SKILLS = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), 'skills')
+
+// Both the namespace a plugin skill is invoked under and the name the loader
+// must report back, so it is read once rather than assumed twice.
+const MANIFEST_NAME = JSON.parse(
+  readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8'),
+).name
 
 // The npm-installed CLI is a `.cmd` shim on Windows, which execFileSync cannot
 // exec directly. No argument below contains a space, so a shell is safe here.
@@ -108,6 +153,70 @@ if (!expected.includes(SENTINEL)) {
   )
 }
 
+// Nothing that outranks the plugin may disagree with it. See SHADOWING above.
+// Newlines are normalised because a CRLF checkout is not a difference of
+// wording, and wording is the only thing worth failing a build over.
+function skillTree(root) {
+  const files = new Map()
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else {
+        const key = relative(root, full).replaceAll('\\', '/')
+        files.set(key, readFileSync(full, 'utf8').replaceAll('\r\n', '\n'))
+      }
+    }
+  }
+  walk(root)
+  return files
+}
+
+const shadowed = []
+for (const name of expected) {
+  const personal = join(PERSONAL_SKILLS, name)
+  if (!existsSync(join(personal, 'SKILL.md'))) continue
+
+  const ours = skillTree(join(CANONICAL_SKILLS, name))
+  const theirs = skillTree(personal)
+  const differences = []
+  for (const [path, text] of ours) {
+    if (!theirs.has(path)) differences.push(`only in this repo: ${path}`)
+    else if (theirs.get(path) !== text) differences.push(`differs: ${path}`)
+  }
+  for (const path of theirs.keys()) {
+    if (!ours.has(path)) differences.push(`only in the personal copy: ${path}`)
+  }
+  if (differences.length > 0) shadowed.push({ name, personal, differences })
+}
+
+if (shadowed.length > 0) {
+  console.error('A personal skill outranks this plugin and says something different.\n')
+  for (const { name, personal, differences } of shadowed) {
+    console.error(`  ${personal}`)
+    for (const line of differences.slice(0, 10)) console.error(`    ${line}`)
+    if (differences.length > 10) {
+      console.error(`    ...and ${differences.length - 10} more`)
+    }
+    console.error(`    Invoking \`${name}\` by bare name reads that tree, not this one.`)
+    console.error('')
+  }
+  const [{ name, personal }] = shadowed
+  fail(
+    'Verifying a change to this repo in a session on this machine would exercise',
+    'the personal copy, not the change. That is how this check was earned: an',
+    'agent read 206 lines of pre-change text and would have reported it green.',
+    '',
+    'Either delete the personal copy and invoke plugin skills as',
+    `\`${MANIFEST_NAME}:${name}\`, or keep it and re-copy it from canonical`,
+    'whenever this repo\'s skill changes:',
+    '',
+    `  PowerShell: Remove-Item -Recurse -Force "${personal}"; ` +
+      `Copy-Item -Recurse "${join(CANONICAL_SKILLS, name)}" "${personal}"`,
+    `  POSIX:      rm -rf "${personal}" && cp -r "${join(CANONICAL_SKILLS, name)}" "${personal}"`,
+  )
+}
+
 // What the loader actually found. `--plugin-dir` loads the plugin for this
 // invocation only; the docs require the flag to precede the subcommand.
 const listed = JSON.parse(claude(['--plugin-dir', '.', 'plugin', 'list', '--json']))
@@ -123,10 +232,9 @@ if (session.length !== 1) {
   )
 }
 
-const manifestName = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).name
 const [plugin] = session
-if (!plugin.id.startsWith(`${manifestName}@`)) {
-  fail(`Loaded plugin is "${plugin.id}", but plugin.json declares the name "${manifestName}".`)
+if (!plugin.id.startsWith(`${MANIFEST_NAME}@`)) {
+  fail(`Loaded plugin is "${plugin.id}", but plugin.json declares the name "${MANIFEST_NAME}".`)
 }
 
 const details = claude(['--plugin-dir', '.', 'plugin', 'details', plugin.id])
@@ -206,3 +314,7 @@ console.log(
   `${plugin.id} loaded from disk with ${found.length} skill${found.length === 1 ? '' : 's'}: ${found.join(', ')}`,
 )
 console.log(`${SENTINEL} costs ${onInvoke} tokens on invoke, so its body loaded too.`)
+console.log(
+  `No skill under ${PERSONAL_SKILLS} outranks it with different words, so ` +
+    `\`${MANIFEST_NAME}:${SENTINEL}\` and the bare name agree.`,
+)
