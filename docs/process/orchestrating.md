@@ -70,6 +70,17 @@ end. Verified: `gh pr merge --help` was not denied in the session that wired it.
 After changing hook config, restart before relying on it, and do not treat a
 non-denial in that session as evidence the guard is broken.
 
+**Every merge invalidates every other open PR.** The ruleset requires branches
+to be up to date with `main`, so the moment one PR lands, every other open one
+is `BEHIND` and its green belongs to a base that no longer exists. With three
+PRs open that is a rebase chain, and it is not obvious in advance: nothing warns
+you when you dispatch the third agent. `merge-pr.mjs` now refuses a `BEHIND`
+branch and says to send it back, rather than approving it and letting GitHub
+answer with a raw `HTTP 405`. Plan for it by merging in an order you chose, and
+expect to spend a rebase per PR after the first. This is the price of strict
+required status checks, and it is the mechanical form of "verify the merge
+result, not the branch". Do not relax the ruleset to avoid it.
+
 **Renaming a CI job breaks merging invisibly.** `scripts/merge-pr.mjs` matches
 job names as strings, and a name that never appears is treated as "never ran",
 which refuses the merge. The job `name:`, the `REQUIRED` array, and the
