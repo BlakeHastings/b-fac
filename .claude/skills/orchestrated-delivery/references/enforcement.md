@@ -19,8 +19,9 @@ required check is green, always squash merges.
 **2. The PreToolUse guard.** Denies `gh pr merge`, merges through `gh api`,
 pushes to the default branch, and bare `git push`/`git merge` while standing on
 it, before the command runs.
-*Does not cover:* any session the harness did not load it into, any human at a
-terminal, and CI. A net, not a guarantee.
+*Does not cover:* any process the harness did not load it into at startup, and
+everything that process spawns for as long as it lives; any human at a terminal;
+and CI. A net, not a guarantee, and one whose absence is silent.
 
 **3. The provenance audit.** On every push to the default branch, asks the API
 which pull requests each new commit belongs to and fails when none was merged. A
@@ -46,15 +47,16 @@ nothing invokes is an instruction.
 It reads files, so the principle this chapter applies to each layer applies to
 the check itself. What it does not cover:
 
-- **A hook that is configured, which is not a hook that ran.** It reads
-  `.claude/settings.json` and can tell you the wiring is there. Whether the
-  harness loaded that wiring into the session in front of you is a different
-  claim, and the check cannot reach it: a session that started before the
-  settings changed, a subagent, a worktree, a second harness reading a different
-  file. All of those look identical from here. Layer 2's stated limit is "any
-  session the harness did not load it into", and that is precisely the set the
-  check cannot enumerate. A denial you watched happen is the only thing that
-  says a hook is live.
+- **A hook written into settings, which is not a hook that runs.** There are
+  three states and the check can only see the first. The hook is *written into
+  `.claude/settings.json`*. The hook was *loaded by this process*, which was
+  decided once at startup, before any of today's work. The hook *fires on the
+  command in front of you*, which is the only one of the three that denies
+  anything. **The middle state is invisible from inside**, so do not write a
+  status update that treats it as observed: a live guard and an inert one read
+  the same to you, to the agent, and to this check. Only a denial somebody
+  watched happen distinguishes them. The startup snapshot below is what makes
+  that middle state so easy to lose.
 - **Anything at GitHub's end.** Rulesets, required contexts, bypass actors, who
   can push at all: invisible to a check that reads the working tree. That cuts
   both ways. On a repo that already has protected branches, most of these layers
@@ -106,11 +108,31 @@ ones ship. Re-read which tools can run a shell whenever you change or upgrade
 harness, and keep an assertion beside the guard's own tests so narrowing the
 matcher goes red instead of going quiet.
 
-**A hook does not protect the session that installs it.** Settings are read at
-startup, so the session that adds the guard runs unguarded to the end. Verified:
-`gh pr merge --help` was not denied in the session that wired it. Restart before
-relying on a hook change, and do not read a non-denial in that session as
-evidence the guard is broken. From the inside those two look identical.
+**Hooks are snapshotted at process start, so installing one protects nothing
+already running, including everything that process later spawns.** This is not a
+brief window around installation. It lasts as long as the process does, and an
+orchestration session is long by design.
+
+One run measured the whole shape. The CLI process started at 10:21; the
+`PreToolUse` block was first written to `.claude/settings.json` at 13:29 the same
+day; the process then ran for two more days. Every subagent it dispatched
+inherited the hook-free snapshot, the guard never fired once across the entire
+project, and the script was fine the whole time: fed a payload by hand it
+returned a correct deny. Nothing anywhere said the layer was absent, because a
+guard that was never loaded produces exactly the same output as a guard with
+nothing to deny.
+
+So restart after any hook change before relying on it, and never read a
+non-denial as evidence about the guard. It says nothing either way.
+
+**That run also priced layer 0, by accident.** With the only preventive layer
+inert for two days and roughly fifteen agents dispatched, exactly one merged
+anything, and that one was induced by a brief demanding a condition only a merge
+could produce, not by the missing guard. The instruction held on its own nearly
+everywhere. Read that as a reason to state what each layer is actually worth,
+not as a reason to skip the guard: one unsanctioned merge is precisely what the
+guard exists to make impossible, and the run offered no way to notice it was
+gone.
 
 A hook denies by writing JSON to stdout and exiting 0:
 
