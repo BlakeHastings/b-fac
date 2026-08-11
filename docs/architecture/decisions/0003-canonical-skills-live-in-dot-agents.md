@@ -81,6 +81,12 @@ once as a project skill and once namespaced under the plugin. Plugin skills are
 namespaced so this never hard-conflicts, but the model sees two similar
 descriptions.
 
+Sourcing the plugin at `./` also means an install copies the whole repository,
+including `CLAUDE.md`, `AGENTS.md`, `docs/` and `scripts/`, and that
+`claude plugin tag` warns about `CLAUDE.md` on every release. This ADR did not
+say so when it chose the layout. **ADR 0014 measures what ships, accepts it, and
+records when that should be reconsidered.**
+
 **Rejected for now: a generator** (`ruler`, `rulesync`). Both are real and
 maintained, and `rulesync generate --check` is the only first-class drift gate
 in the category. They earn their keep when you need divergent per-harness

@@ -56,6 +56,24 @@ claude plugin tag . --push        # creates b-fac--v<version> and pushes it
 Tag from `main` after the squash merge, never from the branch. The tag is what
 makes "which commit was 0.2.0" answerable later; nothing else records it.
 
+### One warning here is expected. Exactly one
+
+`claude plugin tag` prints this every time, and it is correct:
+
+```
+⚠ CLAUDE.md: CLAUDE.md at the plugin root is not loaded as project context.
+  To ship context with your plugin, use a skill (skills/<name>/SKILL.md) instead.
+```
+
+The marketplace entry is sourced at `./`, so the plugin root is the repo root
+and `CLAUDE.md` sits in it. The file is for people working on this repo, it is
+inert for installers, and ADR 0014 measured the payload and decided to live with
+it. **Any other warning from `tag` is not expected — read it.**
+
+It is only this command. `npm run check:plugin` is
+`claude plugin validate . --strict`, which does not emit this line, so no CI log
+carries it and nothing in CI needs to be told apart from it.
+
 Publishing anywhere outward (a third-party marketplace, an announcement) is the
 owner's call, not a step in this document. See `docs/process/orchestrating.md`.
 
@@ -76,6 +94,21 @@ marketplace entry while `plugin.json` said `0.1.0` produced:
 
 So the duplicate buys nothing an installer can use, and costs a second place to
 forget. Leaving it out is not an oversight. Do not add it.
+
+## `package.json` is pinned at `0.0.0`, on purpose
+
+It said `0.1.0` while `plugin.json` had moved on without it, and because npm prints
+`b-fac@0.0.0` above every script it runs, the stale number was the version most
+often seen in a terminal in this repository.
+
+`package.json` is `private: true`, is never published, and nothing reads its
+`version` — not a script, not a check, not the plugin loader. It is pinned at
+`0.0.0`: an obviously-not-a-release value that can never be mistaken for the
+shipped version and that never has to move.
+
+**Do not align it to `plugin.json`.** That is the same trade `marketplace.json`
+was refused above: a second copy of a number, buying nothing, drifting the first
+time someone bumps one and not the other. One version number, one place.
 
 ## When a bump is wrong
 

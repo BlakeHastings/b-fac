@@ -73,7 +73,12 @@ either way. A confirmation is as useful as a bug.
 | `.claude-plugin/` | Marketplace and plugin manifests. This repo is both |
 | `docs/process/` | How *this* repo is run, which is the same loop it ships |
 | `docs/architecture/decisions/` | Why things are the way they are |
-| `scripts/` | This repo's own tooling, not part of the payload |
+| `scripts/` | This repo's own tooling, not part of what gets loaded |
+
+Installing the plugin copies **all** of that, because the marketplace entry is
+sourced at the repository root: about 64 files and 360 KB. Only
+`.agents/skills/` is loaded; the rest sits in the plugin cache doing nothing.
+ADR 0014 has the measurement and the reason it is left that way.
 
 The skill itself is five reference documents behind one `SKILL.md`, loaded on
 demand rather than all at once:
