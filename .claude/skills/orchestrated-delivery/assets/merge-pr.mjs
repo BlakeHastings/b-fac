@@ -184,12 +184,15 @@ if (pr.mergeStateStatus === 'BLOCKED') {
     clues.push(`It is not behind ${pr.baseRefName}, so staleness is not the cause.`)
   }
   refuse(
-    `GitHub reports the merge state as BLOCKED.\n` +
-      `  The ${REQUIRED.length} required check(s) above are green, so it is not those.\n` +
+    `GitHub reports the merge state as BLOCKED, which is its answer for several\n` +
+      `  different rules at once.\n\n` +
+      `  If you have just pushed, that is the likely one: the rollup this script read\n` +
+      `  lags a push by seconds, so the ${REQUIRED.length} check(s) above can be the ` +
+      `previous head's\n  green while the new run has not started. Wait for it and try again.\n` +
       (clues.length > 0 ? `\n  ${clues.join('\n  ')}\n` : '') +
-      `\n  BLOCKED covers required reviews, unresolved review threads, code owner\n` +
-      `  rules, other required contexts and repository policy. Open the PR page: the\n` +
-      `  merge box names the rule. Do not send it back to rebase without checking\n` +
+      `\n  Otherwise BLOCKED covers required reviews, unresolved review threads, code\n` +
+      `  owner rules, other required contexts and repository policy. Open the PR page:\n` +
+      `  the merge box names the rule. Do not send it back to rebase without checking\n` +
       `  which one — BLOCKED is not BEHIND.`,
   )
 }
