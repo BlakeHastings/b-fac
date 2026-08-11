@@ -24,6 +24,22 @@
 // `fetch-depth: 0`; a shallow clone makes this check unable to see and it says
 // so rather than passing.
 //
+// WHAT "NOW" MEANS HERE, AND WHY check-collisions.mjs DISAGREES
+// This check reads commits, because the question is what a merge would ship,
+// and an uncommitted edit ships nothing. check-collisions.mjs reads the
+// filesystem, because an ADR number collides the moment the file exists. The
+// two therefore mean different things by "now", on purpose.
+//
+// The cost of that is a green here that answers a question you did not ask:
+// working-an-issue.md says to run `npm run check` before committing, and with
+// an uncommitted payload edit this passed, because from git's point of view
+// nothing had changed. A reviewer read that green as "no bump needed" and
+// briefly believed they had found a hole in the check rather than in their
+// measurement. So when the working tree holds payload edits this check cannot
+// see, it says so. It does not fail on them: editing with uncommitted changes
+// is the normal state of working, and a check that reds during ordinary
+// editing gets switched off.
+//
 //   node scripts/check-version-bump.mjs             # against origin/main
 //   node scripts/check-version-bump.mjs --base=main # against something else
 import { execFileSync } from 'node:child_process'
@@ -43,8 +59,12 @@ const MANIFEST = '.claude-plugin/plugin.json'
 const baseArg = process.argv.find((arg) => arg.startsWith('--base='))
 const BASE = baseArg ? baseArg.slice('--base='.length) : process.env.VERSION_BUMP_BASE || 'origin/main'
 
+function gitRaw(args) {
+  return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+
 function git(args) {
-  return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  return gitRaw(args).trim()
 }
 
 let mergeBase
@@ -62,11 +82,55 @@ try {
 const changed = git(['diff', '--name-only', `${mergeBase}...HEAD`]).split('\n').filter(Boolean)
 const payloadChanges = changed.filter((file) => PAYLOAD.some((pattern) => pattern.test(file)))
 
+// The one thing everything above cannot see. Porcelain paths are relative to
+// the repository root, so they compare against PAYLOAD on the same terms as
+// the diff. A rename emits its old path as a second NUL-separated token, which
+// is not a changed file in its own right.
+//
+// gitRaw, not git: an unstaged entry begins with a space (" M path"), and
+// trimming the output eats that space on the first entry only, shifting one
+// path by one character so it silently stops matching PAYLOAD. Caught by
+// running it, not by reading it.
+function uncommittedPaths() {
+  const tokens = gitRaw(['status', '--porcelain=v1', '-z', '--untracked-files=all'])
+    .split('\0')
+    .filter(Boolean)
+  const paths = []
+  for (let i = 0; i < tokens.length; i += 1) {
+    paths.push(tokens[i].slice(3))
+    if (tokens[i][0] === 'R' || tokens[i][0] === 'C') i += 1
+  }
+  return paths
+}
+
+const uncommittedPayload = uncommittedPaths().filter((file) =>
+  PAYLOAD.some((pattern) => pattern.test(file)),
+)
+
+// Printed only when there is something to say. A warning on every run is one
+// nobody reads by the third day, and then it is not a warning.
+function reportUncoveredWorkingTree() {
+  if (uncommittedPayload.length === 0) return
+  console.warn(
+    `\nNot covered by the answer above: ${uncommittedPayload.length} payload file(s) with ` +
+      'uncommitted changes.',
+  )
+  for (const file of uncommittedPayload.slice(0, 10)) console.warn(`  ${file}`)
+  if (uncommittedPayload.length > 10) {
+    console.warn(`  ...and ${uncommittedPayload.length - 10} more`)
+  }
+  console.warn(
+    `This check compares commits (git diff ${BASE}...HEAD), which is what CI will see.\n` +
+      'Commit those files and run it again before you trust its verdict.',
+  )
+}
+
 if (payloadChanges.length === 0) {
   console.log(
-    `No shipped payload changed against ${BASE} (${changed.length} file(s) changed), ` +
+    `No committed payload change against ${BASE} (${changed.length} file(s) changed), ` +
       'so no version bump is required.',
   )
+  reportUncoveredWorkingTree()
   process.exit(0)
 }
 
@@ -118,6 +182,7 @@ const fail = (why) => {
   console.error('\nBump "version" in the same pull request. docs/process/releasing.md says')
   console.error('which digit. If this branch does not really change what installers get,')
   console.error('the fix is to take the payload edit out, not to bump.')
+  reportUncoveredWorkingTree()
   process.exit(1)
 }
 
@@ -137,6 +202,7 @@ if (compare(parsedAfter, parsedBefore) <= 0) {
 }
 
 console.log(
-  `Payload changed in ${payloadChanges.length} file(s) and the version moved ` +
+  `Payload changed in ${payloadChanges.length} committed file(s) and the version moved ` +
     `${before} to ${after}.`,
 )
+reportUncoveredWorkingTree()
