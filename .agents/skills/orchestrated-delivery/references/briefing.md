@@ -18,11 +18,12 @@ the defect nobody knew about.
 - **Your steer, labelled as a steer.** "Override it if you disagree after
   looking" has been taken up correctly, with reasons, more than once.
 - **What is out of scope, and its issue number.**
-- **The evidence bar, concretely.** Not "verify it works" but "seed an
-  applicant with electrical work only and confirm plumbing reads as not
+- **The evidence bar, concretely, and bounded.** Not "verify it works" but "seed
+  an applicant with electrical work only and confirm plumbing reads as not
   applicable rather than four blank fields." Required rather than optional, and
-  the only element here with a measurement behind it instead of an anecdote. Its
-  own section is below.
+  the only element here with a measurement behind it instead of an anecdote.
+  Bounded means it also names what the agent may not touch to get there. Its own
+  section is below.
 - **Do not merge**, naming the sanctioned command as your job.
 - **What to do with a question**, because an agent that blocks on one is worse
   off than you are: you are right there and could have answered it. Tell it to
@@ -119,6 +120,52 @@ something it can actually do where it is running. Asking for a screenshot from a
 worktree with no browser buys you a paragraph explaining the absence, which is
 the round trip the bar existed to save. When the environment is thin, lower the
 bar to what it can reach: the request log, the row it wrote, the file on disk.
+
+**A bar it can only meet by exceeding its authority is worse than a weak one,
+because a good agent will meet it.** Theatre is visible in the report; overreach
+is not. One brief asked for a branch deliberately behind the default branch,
+carrying green checks from its old base, so the merge wrapper could be watched
+refusing it. That state cannot exist without a ruleset enforcing strict
+up-to-date checks, so the only route to the evidence ran through the
+repository's configuration, and the brief named nothing as out of bounds. The
+agent took the least destructive route available, isolated the probe to a
+throwaway base, disclosed it unprompted and cleaned up afterwards. It behaved
+about as well as it could given what it was asked. The defect was in the bar.
+
+So a bar carries two things and not one:
+
+- **What the agent may not touch to satisfy it.** Repository and CI
+  configuration, rulesets, branches other than its own, other people's pull
+  requests, anything shared, deployed or billed. Name them beside the bar, where
+  a briefer is already standing, rather than in a general safety paragraph
+  somewhere above.
+- **Your own check that the bar is reachable inside those bounds.** Walk the
+  route before you write it: what would the agent actually run, and does any
+  step of it need something on that list? The bounds are worth exactly what
+  asking this is worth, and asking it takes a minute.
+
+Both, in one bar:
+
+- "Prove the intake API refuses a permit number that already exists. Build the
+  duplicate in your own local database: do not touch the shared staging
+  instance, the deployment config, or any branch but yours to construct the
+  condition. If it cannot be built inside those bounds, stop and tell me what it
+  would take."
+
+Then say what to do when the two collide. **Stop, report the bar as unreachable
+inside its bounds, and name what reaching it would need.** Say in the brief that
+stopping there is a success, because an agent that does it has found a defect in
+your brief, and that is worth more than the evidence would have been. Without
+that sentence the same agent reads stopping as failing the task, and goes
+looking for a route.
+
+**None of this makes infrastructure off limits.** Some conditions only exist in
+real infrastructure, and the simulated substitute hides the thing you were
+looking for. The run above found two defects that editing the script's inputs
+would have sailed straight past: a parser dropping a field it should have kept,
+and a force-push leaving the merge state blocked against a check rollup that was
+already stale. When the proof genuinely needs a live gate, say so, say who sets
+it up, and say what comes down afterwards. Bounded is not the same as small.
 
 ## Name what would prove you wrong
 
