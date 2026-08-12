@@ -6,7 +6,7 @@ harnesses read `.agents/skills/` from a plain clone with no glue. That claim was
 research. This is the observation.
 
 ```bash
-node tools/harness-verify/verify.mjs
+npm run check:harnesses
 ```
 
 It builds a container with four harness CLIs at pinned versions, mounts the
@@ -144,22 +144,60 @@ and confirm it goes red. A probe whose parser matches nothing looks exactly like
 a harness that found nothing, and both look exactly like a passing check if you
 only ever run it against a healthy tree.
 
-## Pinned versions
+## Pinned versions, and noticing when they rot
 
 The `Dockerfile` pins every CLI. A rebuild tests the same thing twice, and a
 version that went red is recoverable from the log. Bumping one is a deliberate
-commit.
+commit, and the commit that bumps it should carry a `npm run check:harnesses`
+run in its pull request body.
 
-This is worth a paragraph because of how the work started. The machine this was
-written on had `codex-cli 0.55.0` installed, 92 releases behind, with no skills
-support in the binary at all, and it was reasonable to conclude from that that
-Codex could not be verified. 0.147.0 has the best discovery surface of the four.
-Check the version before concluding a harness cannot do something.
+This is worth a section because of how the work started. The machine this was
+written on had `codex-cli 0.55.0` installed, with no skills support in the
+binary at all, and it was reasonable to conclude from that that Codex could not
+be verified. 0.147.0 has the best discovery surface of the four. Check the
+version before concluding a harness cannot do something.
 
-## Not wired into CI
+The cost of pinning is that `check:harnesses` cannot notice the pins going
+stale: that is what a pin is for. So the pins get their own check, which needs
+no Docker and takes seconds:
 
-Nothing runs this automatically yet. It needs Docker and a multi-minute image
-build, so putting it on every pull request is a different trade from the checks
-in `npm run check`, and that trade is the owner's call rather than something to
-slip in. A nightly or manually dispatched job is the obvious shape. Until then it
-is a thing a reviewer runs when the skill payload or the layout changes.
+```bash
+npm run check:harness-pins
+```
+
+It reads the versions out of the `Dockerfile` rather than restating them, asks
+the npm registry when each was published, prints the pin against today's
+`latest`, and fails when a pin passes 90 days old. It also fails when a pinned
+version is not published at all, which means the image cannot be built, and when
+a package in the install block is not pinned, which means someone floated one to
+a tag.
+
+**It measures age, not releases behind,** although the 0.55.0 story is usually
+told as "92 releases stale". Releases do not survive contact with these
+registries. On 2026-08-12, with all four pins sitting exactly on `latest`,
+`@openai/codex` had 65 versions published after its own `latest` and
+`opencode-ai` had 28, both from continuous prereleases; `opencode-ai` has
+published 11,865 versions in total. A releases-behind check would go red within
+hours of a bump and stay red. In days, the same 0.55.0 pin was 275 days old,
+which is what the 90-day threshold is calibrated against.
+
+## In CI: weekly, and advisory
+
+`.github/workflows/harnesses.yml` runs both checks as two jobs, `Harness
+discovery` and `Harness pins`, weekly and on `workflow_dispatch`. **Neither is a
+required check**, so a red one does not block a merge; `merge-pr.mjs` reports
+the merge state as `UNSTABLE` and proceeds. ADR 0020 has the reasoning, in
+short: a 2 GB image on every pull request is disproportionate against an
+eleven-second gate, and the thing most likely to break these answers changes on
+the harnesses' calendar rather than in our diffs.
+
+The one exception is a pull request touching `tools/harness-verify/**`, which
+does run both jobs, because a change to the probe's parsers is the only diff
+this check is the sole judge of.
+
+Run it by hand after bumping a pin, or when a harness ships something that
+sounds like it touches skill discovery:
+
+```bash
+gh workflow run harnesses.yml
+```
