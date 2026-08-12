@@ -113,6 +113,7 @@ confirmation is as useful as a bug.
 | `.claude-plugin/` | Marketplace and plugin manifests. This repo is both |
 | `docs/process/` | How *this* repo is run, which is the same loop it ships |
 | `docs/architecture/decisions/` | Why things are the way they are |
+| `docs/research/` | Dated surveys of what existed outside this repo when a decision was made |
 | `scripts/` | This repo's own tooling, not part of what gets loaded |
 | `tools/harness-verify/` | The container that watches other harnesses find the skill. Out of `scripts/` because it needs Docker; ADR 0019 |
 
@@ -136,7 +137,9 @@ demand rather than all at once:
 
 That table and the one in `SKILL.md` are both written by hand, so
 `npm run check:references` holds them to the directory: a reference document
-with no row fails, and so does a row naming a file that is no longer there.
+with no row fails, and so does a row naming a file that is no longer there. The
+same check holds `docs/research/README.md` to the surveys beside it, and fails a
+survey that does not say when it was verified.
 
 ## Developing
 
