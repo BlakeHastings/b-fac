@@ -188,7 +188,7 @@ asked once, because the guess is invisible afterwards.
 | PR template | Fill theirs in. Never replace it | Install `pull_request_template.md` |
 | Branch naming | Theirs, copied from real branch names | `<area>/<number>-<slug>` |
 | Commit style | Theirs, copied from real subject lines | Why, not what |
-| Check entry point | Whatever their CI invokes, run the same way locally | One command, and CI is a thin wrapper on it |
+| Check entry point | Theirs, discovered from their task runner and **proved by running it**. Not whatever their CI invokes: that describes an environment you do not have. `references/host-checks.md` | One command, and CI is a thin wrapper on it |
 | Enforcement layer | None of the owned four: a ruleset, a required check and a merge wrapper are all changes to their repository. The guest gate below is the exception, because it changes nothing tracked | ADR 0001's arithmetic, layer by layer |
 | Backlog | Their tracker, read-only until publish. The factory's working issues stay in its local store | Seed it |
 
@@ -247,6 +247,32 @@ until you run it.
 `references/enforcement.md` says what the gate covers, what it does not, and why
 it is not installed into your home directory.
 
+### Then find out what this repo actually checks, by running it
+
+The step after the boundary, and before any work. Guest mode's gate is the host
+repo's own check command, and in a repo the factory did not create nothing
+establishes what that command is:
+
+```bash
+node <this skill>/assets/discover-checks.mjs          # propose, and write nothing
+node <this skill>/assets/discover-checks.mjs --run    # run the proposal, then record
+```
+
+It ranks their task runner above the ecosystem manifest, prints their pipeline's
+commands as description and **never proposes one**, and records
+`.factory/checks.md` only for commands it has executed and seen exit 0. Where
+the evidence is thin or points two ways it refuses and prints the question to
+ask, which is the outcome you want rather than a failure of the step: a wrong
+check produces confident red or confident green about the wrong thing.
+
+**Put its output in the same status update as the gate's.** It is the same kind
+of evidence: something that was run, rather than something that was read.
+
+`references/host-checks.md` has the tiers, the escalation shape, what is
+unhandled by name, and the limit — a local gate runs a subset of their pipeline
+and never their environment, so this buys fewer round trips and not a pull
+request that will pass.
+
 ### What guest mode gives up
 
 Until the publish step there is no pull request, so there is nothing
@@ -259,7 +285,9 @@ three steps entirely — no backlog seeded outward, no ruleset, no CI.
 - **The gate is the host's own check entry point, run locally**, before work
   lands on your integration branch. That reproduces their steps by construction
   and never their environment, which is a real limit and worth saying out loud
-  rather than discovering on the pull request.
+  rather than discovering on the pull request. Which command that is comes from
+  `discover-checks.mjs` above, and it is not a guess: nothing is recorded that
+  was not executed.
 - **"Landing" means landing on your own integration branch.** The gate is
   protecting your review time rather than a trunk other people depend on, so a
   lighter gate here is the correct weight and not a compromise. The

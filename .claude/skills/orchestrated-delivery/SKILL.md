@@ -70,6 +70,12 @@ else** — `assets/guard-guest-writes.mjs --install` refuses a push, a non-read
 `gh` verb, a `gh api` write and the beads commands that write tracked files,
 and it installs into untracked local files so that saying it changed nothing is
 true. `references/enforcement.md`, and `references/first-run.md` for the order.
+Guest mode has no remote rollup either, so **its gate is the host repo's own
+check command, run locally** — which somebody has to establish in a repo the
+factory did not create. `assets/discover-checks.mjs` gathers the evidence,
+proposes, and records nothing it has not executed.
+`references/host-checks.md`, including the limit that a local gate runs a
+subset of their pipeline and never their environment.
 
 **Convention authority: ours or theirs.** Whose patterns govern? **Conform where
 the host repo has a convention, fall back to ours where it does not.** Absence
@@ -344,6 +350,7 @@ setup outright and 20 merges went through raw `gh pr merge`.
 | `guard-merge.mjs` | `scripts/` | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `.factory/` | Nothing |
+| `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `.factory/` | Nothing |
 
 `references/first-run.md` walks this whole sequence as one repo actually ran it,
 in the order its commits show rather than the order listed here.
@@ -356,6 +363,7 @@ in the order its commits show rather than the order listed here.
 | `references/reviewing.md` | A PR is waiting |
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
+| `references/host-checks.md` | Working out what a repo you did not create actually runs |
 | `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` | The same seven verbs on beads, which is what guest mode uses |

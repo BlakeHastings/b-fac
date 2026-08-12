@@ -132,6 +132,7 @@ demand rather than all at once:
 | `references/reviewing.md` — a PR is waiting |
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |
+| `references/host-checks.md` — working out what a repo you did not create actually runs |
 | `references/backlog-port.md` — the backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` — the same seven verbs on beads, which is what guest mode uses |
