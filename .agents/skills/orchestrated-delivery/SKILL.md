@@ -84,20 +84,15 @@ question, and a wrong guess toward owned opens issues on someone's real tracker.
 **Never infer the write boundary from a git remote.** A work repo is on GitHub
 too. A remote tells you the factory *can* write there, which was never the
 question; whether it *may* is a fact about the developer's authority, and no
-amount of repository inspection contains it. That is an Escalation question, not
-a derivation.
+amount of repository inspection contains it. Escalate it; do not derive it.
 
 Record both answers so neither is re-asked nor silently assumed, split by who
 they are about. **Repo facts** — where the backlog lives, which conventions won,
-the command that runs the checks — are true for everyone who clones it, so they
-are committable in owned mode. **Machine facts** — whether *this* operator, on
-*this* checkout, may publish outward — are never committed, and stay out of the
-tree through `.git/info/exclude` rather than `.gitignore`: editing a tracked
-ignore file to hide your own scratch state is itself a change to a repo you are
-a guest in.
-
-`references/first-run.md` walks the owned-and-ours corner and says what moves in
-the other three.
+the command that runs the checks — are committable in owned mode. **Machine
+facts** — whether *this* operator, on *this* checkout, may publish outward — are
+never committed, and stay out of the tree through `.git/info/exclude` rather
+than `.gitignore`: editing a tracked ignore file to hide your own scratch state
+is itself a change to a repo you are a guest in.
 
 ## The loop
 
