@@ -134,6 +134,7 @@ demand rather than all at once:
 | `references/enforcement.md` — installing the controls, or one misfired |
 | `references/backlog-port.md` — the backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
+| `references/beads-backlog.md` — the same seven verbs on beads, which is what guest mode uses |
 | `references/first-run.md` — setting this up in a repo that has none of it yet |
 
 That table and the one in `SKILL.md` are both written by hand, so
