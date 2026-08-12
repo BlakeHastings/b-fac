@@ -61,6 +61,12 @@ it merely also rides along into the cache. Removing it from the install would be
 a payload change and is out of scope here. It is recorded so that anyone who
 later argues about install size starts from the right file.
 
+**ADR 0018 took that question up and accepted the mirror**, having confirmed
+against the CLI's own validator that no manifest key excludes a path, and having
+shown with the loader that the shipped copy costs an installer nothing at load
+time. Its measurement supersedes the figures above, which were correct when
+taken and have since moved.
+
 ### The warning is narrower than it looks
 
 Two things were checked rather than assumed.

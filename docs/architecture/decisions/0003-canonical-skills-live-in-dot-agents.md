@@ -87,6 +87,11 @@ including `CLAUDE.md`, `AGENTS.md`, `docs/` and `scripts/`, and that
 say so when it chose the layout. **ADR 0014 measures what ships, accepts it, and
 records when that should be reconsidered.**
 
+The mirror is the largest thing that rides along: around 30% of the payload,
+shipped to every installer and read by none of them. **ADR 0018 asks whether it
+has to, finds that the format cannot exclude a path, and accepts it.** It does
+not disturb anything decided here.
+
 **Rejected for now: a generator** (`ruler`, `rulesync`). Both are real and
 maintained, and `rulesync generate --check` is the only first-class drift gate
 in the category. They earn their keep when you need divergent per-harness

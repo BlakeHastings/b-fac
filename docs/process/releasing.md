@@ -4,7 +4,7 @@ There is one version number in this repository that anyone outside it can see:
 `version` in `.claude-plugin/plugin.json`. Everything below is about keeping it
 honest.
 
-## Every merged payload change is a release
+## `main` is the release channel, and the version is the release
 
 There is no release branch and no release day. A payload change lands on `main`
 and is immediately what a new installer gets, so **the version moves in the same
@@ -14,6 +14,11 @@ of its life claiming to be a version it is not.
 `npm run check:version` enforces this and CI runs it as a step in the `Checks`
 job. It compares this branch against `main` and fails when the shipped payload
 changed and the version did not move forward.
+
+That is the whole publishing mechanism. `claude plugin update` compares this
+number and acts on nothing else, so **the merge is the release** — there is no
+later step that makes it real. Tagging is a separate decision, below, and it is
+not one of these.
 
 **The payload is:**
 
@@ -43,9 +48,40 @@ noise, and noise gets switched off.
 Pre-1.0 does not mean the rules are suspended. `0.x` here means the shape is
 still moving, not that the number is decorative.
 
-## After the merge: cut the tag
+## Which commit was 0.5.0
 
-The CLI does this and validates the manifests agree while it does:
+Git already knows, for every version this repository has ever shipped, tagged or
+not. The version lives in a tracked file and every change to it is a commit on
+`main`, so one command replays the whole history:
+
+```bash
+git log origin/main -L '/"version":/,+1:.claude-plugin/plugin.json' \
+  --format='%h %ad %s' --date=format:'%Y-%m-%d %H:%M'
+```
+
+Reach for that before reaching for the tag list. **The tag list is not a release
+history** — see below.
+
+`node scripts/merge-pr.mjs <n>` also prints the version that just became
+installable, whenever a merge moves it. That is the release announcing itself at
+the moment it happens.
+
+## Tags mark a version somebody may need to name
+
+A tag is **not** the last step of a merge, and no merge owes one. Cutting one is
+a decision, and there are three occasions for it:
+
+- you are about to point someone at a specific version
+- something is being published outward — which is the owner's call anyway, see
+  `docs/process/orchestrating.md`
+- you are stopping for the day and want a fixed point to come back to
+
+Not "a payload PR merged". Four versions shipped in the hour of 11 August 2026,
+three of them replaced within twenty minutes by a strict superset. Marking those
+would have produced four near-identical names for one afternoon's work and
+taught a later reader nothing. ADR 0017 has the reasoning and the evidence.
+
+The CLI cuts the tag and validates the manifests agree while it does:
 
 ```bash
 git checkout main && git pull
@@ -53,8 +89,18 @@ claude plugin tag . --dry-run     # prints the tag it would create
 claude plugin tag . --push        # creates b-fac--v<version> and pushes it
 ```
 
-Tag from `main` after the squash merge, never from the branch. The tag is what
-makes "which commit was 0.2.0" answerable later; nothing else records it.
+Tag from `main`, never from a branch, and only when `main` is at the version you
+mean to mark. `--push` writes to the remote; that is the point of it, but it is
+the only command in this document that does.
+
+### The gaps in the tag list are deliberate
+
+`b-fac--v0.2.0` and `b-fac--v0.6.0` exist. 0.3.0, 0.4.0 and 0.5.0 shipped and
+were never tagged, and **they are not going to be**. Backfilling them would
+produce a tidy list that hides the fact that the rule requiring them was wrong,
+which is the same argument ADR 0001's appended correction made about a record
+that quietly repairs itself. Read the gaps as what they are: three versions
+nobody needed to name.
 
 ### One warning here is expected. Exactly one
 
