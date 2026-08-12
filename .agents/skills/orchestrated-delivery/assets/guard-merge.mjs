@@ -21,6 +21,29 @@
 // child process rather than a Bash tool call, so the guard does not see it.
 // Making the safe path the only working path beats asking nicely.
 //
+// ASK IT WHETHER IT IS LOADED
+// A hook is written into settings, loaded by a process at startup, and fires on
+// a command. Only the third of those denies anything, and the middle one is
+// invisible from inside: a gate that was never loaded is silent in exactly the
+// way a gate with nothing to deny is silent. The repository that ships this file
+// lost two days to that. Its CLI process started three hours before the hook
+// existed, so the guard was never in that process's snapshot, never fired once,
+// and nothing anywhere said so. The script was correct the whole time.
+//
+// So this file answers the question by refusing it:
+//
+//   node scripts/guard-merge.mjs --probe
+//
+// Being refused is the answer you want. The rule below denies that line by name,
+// so the harness prints this guard's own message and the probe never runs. If
+// you see the probe's output instead, nothing intercepted it and the guard is
+// not in this process. Absence is the signal, and there is no artifact to go
+// stale the way a heartbeat file would.
+//
+// Ask after installing, after any change to hook settings, and when you take
+// over a session. `check-setup.mjs` answers a different question, whether the
+// hook is *configured*, and configured, loaded and firing are three states.
+//
 // WHAT THIS DOES NOT COVER
 // Any session the harness did not load it into at startup, and everything that
 // process spawns for as long as it lives. Any human at a terminal. CI. A net,
@@ -344,6 +367,25 @@ function shellPayload(tokens) {
   return at === -1 ? null : (tokens[at + 1] ?? null)
 }
 
+// The probe is this same file, run with `--probe`, and being refused is the
+// whole of its answer. A gate is the only kind of layer whose silence is
+// ambiguous, so the only way a session can observe this one is to be refused by
+// it.
+//
+// One file rather than two, and that is the part worth keeping. The first
+// version of this idea was a separate script the guard matched by name, which
+// made the answer depend on two files agreeing about a filename: rename either
+// and the probe becomes a permanent, silent "inert". It also does not survive
+// being copied: this file arrives in a repository on its own, and a probe that
+// is a second file is a setup step that gets half done. A file cannot disagree
+// with itself about its own name.
+function isLivenessProbe(tokens) {
+  if (commandName(tokens[0]) !== 'node') return false
+  if (!tokens.includes('--probe')) return false
+  const script = tokens.slice(1).find((token) => !token.startsWith('-'))
+  return script !== undefined && commandName(script) === 'guard-merge.mjs'
+}
+
 const USE_WRAPPER =
   'Push your branch, open the PR, report back, and stop. The orchestrator\n' +
   'reviews and merges with:\n\n' +
@@ -447,6 +489,14 @@ const isDryRun = (args) => args.includes('--dry-run') || args.includes('-n')
 
 function judge(line, depth) {
   for (const tokens of segmentsOf(line)) {
+    if (isLivenessProbe(tokens)) {
+      deny(
+        'The merge guard is loaded in this process. This probe was refused before it\n' +
+          'ran, and being refused is the answer it exists to produce. Nothing is wrong.\n\n' +
+          'A status update can now say the guard is loaded rather than configured.',
+      )
+    }
+
     const gh = ghArguments(tokens)
     if (gh !== null && gh[0] === 'pr' && gh[1] === 'merge') {
       deny(
@@ -478,17 +528,55 @@ function judge(line, depth) {
   }
 }
 
-let payload = ''
-for await (const chunk of process.stdin) payload += chunk
+// ---------------------------------------------------------------------------
+// --probe, and the hook
+// ---------------------------------------------------------------------------
 
-let command = ''
-try {
-  command = JSON.parse(payload)?.tool_input?.command ?? ''
-} catch {
-  process.exit(0) // Unparseable payload is not this guard's problem.
+// Everything below runs only when the rule above did not fire, which is the
+// whole point: reaching this code *is* the finding.
+function probe() {
+  // npm re-invokes a script through a shell of its own, so the hook is shown
+  // `npm run <name>` and the file name it matches on is nowhere in that line.
+  // The probe would then run in a session where the guard is perfectly fine and
+  // report it absent, which is the one wrong answer that looks like a right one.
+  if (process.env.npm_lifecycle_event) {
+    console.error('Run this directly, not through npm:\n')
+    console.error('  node scripts/guard-merge.mjs --probe\n')
+    console.error('npm hides the file name from the hook, so the probe cannot be refused, and')
+    console.error('it would report the guard absent in a session where it is loaded and fine.')
+    process.exit(1)
+  }
+
+  console.error('The merge guard is NOT loaded in this process.')
+  console.error('')
+  console.error('This probe exists in order to be refused. It ran, so nothing intercepted it:')
+  console.error('either no PreToolUse hook in .claude/settings.json runs this file, or this')
+  console.error('process started before the hook that does. Settings are read once, when the')
+  console.error('CLI starts, so a process that began before the hook did never has it, and')
+  console.error('neither does anything it spawns for as long as it lives.')
+  console.error('')
+  console.error('Restart the harness and ask again. Until you have seen a refusal, nothing')
+  console.error('here stops an agent landing its own pull request, and nothing will say that')
+  console.error('one did.')
+  console.error('')
+  console.error('If it still prints after a restart, the hook is not wired at all rather than')
+  console.error('unloaded, which is a different fix: `node <this skill>/assets/check-setup.mjs`')
+  console.error('reports layer 2 and names the half that is missing.')
+  process.exit(1)
 }
-if (!command.trim()) process.exit(0)
 
-judge(command, 2)
+if (process.argv.includes('--probe')) {
+  probe()
+} else {
+  let payload = ''
+  for await (const chunk of process.stdin) payload += chunk
 
-process.exit(0)
+  let command = ''
+  try {
+    command = JSON.parse(payload)?.tool_input?.command ?? ''
+  } catch {
+    process.exit(0) // Unparseable payload is not this guard's problem.
+  }
+  if (command.trim()) judge(command, 2)
+  process.exit(0)
+}
