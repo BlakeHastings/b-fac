@@ -41,14 +41,18 @@ constraint applied at the smallest scale it fits.
 ## The first real decision is what to delete
 
 ADR 0001 is entirely about which of the three enforcement layers this repo does
-**not** need. It is public, so a ruleset is free, so the premise behind the
-substitute layer is gone for two of them and survives for the third only because
-a ruleset cannot stop an agent merging its own pull request.
+**not** need. It is public, so a ruleset is free, and the answer came out one
+deletion rather than two. The provenance audit went, because with no bypass
+actors the commit it detects cannot exist. The guard stayed, because a ruleset
+cannot stop an agent merging its own pull request. The merge wrapper stayed too,
+demoted from a control to a convenience, because its refusal says which check is
+red where a merge button does not.
 
-Do that arithmetic in the first half hour. Installing all three layers into a
-repo that needs one is the shape of setup nobody ever revisits, and every layer
-you keep is one more thing claiming to protect something. `enforcement.md` has
-the revisit trigger and the argument.
+Do that arithmetic in the first half hour, layer by layer rather than as one
+verdict on the set. Installing all three into a repo that needs two is the shape
+of setup nobody ever revisits, and every layer you keep is one more thing
+claiming to protect something. `enforcement.md` has the revisit trigger and the
+argument.
 
 ## The step now listed first did not exist
 

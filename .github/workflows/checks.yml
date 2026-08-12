@@ -62,6 +62,13 @@ jobs:
       - name: ADR collisions
         run: npm run check:collisions
 
+      # README.md and SKILL.md each restate the contents of the references
+      # directory by hand. A step here rather than a job of its own, for the
+      # same reason as the one below: a new job name is a third copy of a
+      # required check context. See docs/architecture/decisions/0009.
+      - name: Reference tables match the directory
+        run: npm run check:references
+
       # A step inside this job rather than a job of its own, deliberately. A new
       # job name becomes a third required check context, which is a third copy
       # of a string already duplicated across this file, merge-pr.mjs's
