@@ -81,6 +81,34 @@ So the row is first in the table because it was learned last. Run it first, and
 keep the failing output: the before and after is the only thing that
 distinguishes an installed layer from a copied one.
 
+## Answer the boundary question here too, not only in somebody else's repo
+
+The first thing that run prints is `Write boundary: NOT RECORDED`, and for a
+long time that was the only thing an owned repo could ever print, because the
+one writer of `.factory/machine.md` was the guest gate's installer and it only
+ever writes `guest`. This repo printed it on every run from the day the report
+learned to read the mode until #100 gave the other answer a writer.
+
+```bash
+node <this skill>/assets/check-setup.mjs --record-owned
+```
+
+That writes the record, appends `/.factory/` to `.git/info/exclude` so it stays
+out of the tree, and does nothing else: owned mode has no gate, so there is
+nothing to install. It refuses if an answer is already there, and it refuses in
+a repo where the guest gate is installed.
+
+**It is worth the ten seconds for the same reason the check itself is.** An
+answer nobody records is indistinguishable from a question nobody asked, and
+those two want opposite things done next. Once every owned repo can record its
+answer, `NOT RECORDED` goes back to meaning the initialisation step was skipped,
+which in a repo that turns out not to be yours is the finding that matters most.
+ADR 0039.
+
+The record is untracked by definition, so it does not travel with a clone and CI
+never has one. Whoever next works this repo on their own machine records it
+again, once.
+
 ## Seed the backlog after your first pull requests, not before
 
 Issues and pull requests share one number sequence. PR #1 and PR #2 took the
@@ -147,7 +175,9 @@ Corrected from the above rather than transcribed from it.
 
 1. Copy every asset in one commit, unedited.
 2. Run `check-setup.mjs`. Everything reports MISSING, and that output is your
-   baseline.
+   baseline. Then answer the boundary question with `--record-owned`, because it
+   decides which checklist the rest of this list is against. In the other mode
+   the same answer is the gate install, below, and it comes before everything.
 3. Decide what this repo does not need. Record it as an ADR, with whatever check
    holds it, in the same commit.
 4. Edit and wire what is left, then run `check-setup.mjs` again and keep both

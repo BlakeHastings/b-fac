@@ -16,7 +16,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,9 +28,9 @@ const GATE = join(ASSETS, 'guard-guest-writes.mjs')
 // The exit code is measured here rather than inferred. This repository has
 // mis-measured one three times by letting a pipe swallow it, so the child's
 // status is read off the process and nothing else.
-function check(root) {
+function run(script, args, root) {
   try {
-    const stdout = execFileSync('node', [CHECK], {
+    const stdout = execFileSync('node', [script, ...args], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -40,6 +40,9 @@ function check(root) {
     return { code: error.status, out: `${error.stdout}${error.stderr}` }
   }
 }
+
+const check = (root) => run(CHECK, [], root)
+const recordOwned = (root, script = CHECK) => run(script, ['--record-owned'], root)
 
 const write = (root, rel, text) => {
   mkdirSync(dirname(join(root, rel)), { recursive: true })
@@ -291,10 +294,13 @@ test('an unrecorded repo says so, is reported as owned, and the finding is not a
     installOwnedLayers(root)
     const { code, out } = check(root)
 
-    // The point of the whole state. ADR 0021 keeps machine facts out of the
-    // tree, so an owned repo has no committable place to record the boundary
-    // and can never be anything but unrecorded. Failing on that would put a
-    // second permanently red line in a check that already spends its one.
+    // The point of the whole state, and #100 changed the reason without
+    // changing the answer. It used to be that an owned repo could never be
+    // anything but unrecorded; `--record-owned` ends that. What survives is
+    // that the record is untracked by definition, so any checkout that is not
+    // the operator's own has none and can never have one: a fresh CI clone
+    // most of all. Failing on it would be red by construction there, which is
+    // the second permanently red line ADR 0030 refuses. ADR 0039.
     assert.equal(code, 0, 'an unrecorded boundary was treated as a failure')
     assert.match(out, /Write boundary: NOT RECORDED/)
     assert.match(out, /machine\.md does not exist/)
@@ -338,6 +344,145 @@ test('a boundary that is neither owned nor guest is unrecorded, and is quoted ba
     assert.match(out, /Write boundary: NOT RECORDED/)
     assert.match(out, /which is neither owned nor guest/)
     assert.match(out, /"Write boundary: readonly"/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// --record-owned, the writer for the answer that had none
+//
+// Every case here asserts the state the writer did NOT reach as well as the one
+// it did, because a writer has the same way of scanning nothing that a check
+// has: write a record the reader cannot parse, write it and leave it visible to
+// the host repo, write it over an answer somebody else gave, or not write at
+// all and exit 0 anyway.
+// ---------------------------------------------------------------------------
+
+const porcelain = (root) =>
+  execFileSync('git', ['status', '--porcelain', '-uall'], { cwd: root, encoding: 'utf8' })
+
+const excludeText = (root) => readFileSync(join(root, '.git/info/exclude'), 'utf8')
+
+test('the owned answer can be recorded, and the reader accepts what the writer wrote', () => {
+  withRepo((root) => {
+    const written = recordOwned(root)
+    assert.equal(written.code, 0, `recording the owned answer failed:\n${written.out}`)
+
+    // The half that matters. The writer and the reader are in one file so they
+    // cannot disagree about the shape of the line, and this is what says so.
+    const { out } = check(root)
+    assert.match(out, /Write boundary: owned, recorded in \.factory\/machine\.md/)
+    assert.doesNotMatch(out, /NOT RECORDED/, 'the record was written in a shape the reader ignores')
+    assert.equal(statusOf(out, 'G'), 'n/a')
+    assert.match(row(out, 'G'), /records this repository as owned/)
+  })
+})
+
+test('recording the owned answer adds nothing the host repo can see', () => {
+  withRepo((root) => {
+    const before = porcelain(root)
+    assert.equal(recordOwned(root).code, 0)
+
+    assert.equal(porcelain(root), before, 'the record is visible in git status')
+    assert.match(excludeText(root), /^\/\.factory\/$/m, '.git/info/exclude never got the path')
+    assert.match(readFileSync(join(root, '.factory/machine.md'), 'utf8'), /^Write boundary: owned$/m)
+  })
+})
+
+test('recording the owned answer installs nothing, because owned mode has no gate', () => {
+  withRepo((root) => {
+    assert.equal(recordOwned(root).code, 0)
+
+    assert.equal(existsSync(join(root, '.claude/settings.local.json')), false, 'it wired a hook')
+    assert.equal(existsSync(join(root, '.factory/guard-guest-writes.mjs')), false, 'it copied a gate')
+
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+    assert.equal(code, 0, `a recorded owned repo with every layer installed must exit 0:\n${out}`)
+    assert.equal(statusOf(out, 'G'), 'n/a', 'the gate became a layer in a repository that is ours')
+  })
+})
+
+test('it refuses to overwrite an answer somebody already gave', () => {
+  withRepo((root) => {
+    write(root, '.factory/machine.md', 'Write boundary: guest\n\nBacklog: beads\n')
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 1, 'an existing answer was overwritten')
+    assert.match(out, /already exists/)
+    assert.match(out, /It says: Write boundary: guest/)
+    assert.match(readFileSync(join(root, '.factory/machine.md'), 'utf8'), /^Write boundary: guest$/m)
+  })
+})
+
+test('it refuses to record owned where the guest gate is installed', () => {
+  withRepo((root) => {
+    install(root)
+    // The one state where writing `owned` would be wrong rather than merely
+    // premature: a gate somebody installed, with its record deleted.
+    rmSync(join(root, '.factory/machine.md'))
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 1, 'a repository with the guest gate installed was recorded as owned')
+    assert.match(out, /installing that gate is the guest/)
+    assert.equal(existsSync(join(root, '.factory/machine.md')), false, 'it wrote the record anyway')
+  })
+})
+
+test('it refuses rather than writing a record it cannot keep out of the tree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'check-setup-'))
+  try {
+    // A `.git` that stops the root search without being a repository git can
+    // answer for. Writing the record here would leave it in `git status` as the
+    // operator's changes, which is the failure ADR 0021 keeps it out of.
+    mkdirSync(join(root, '.git'))
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 1)
+    assert.match(out, /`git` did not answer/)
+    assert.equal(existsSync(join(root, '.factory')), false, 'it wrote a record it could not exclude')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the exclude line is not written twice when it is already there', () => {
+  withRepo((root) => {
+    const path = join(root, '.git/info/exclude')
+    writeFileSync(path, `${readFileSync(path, 'utf8')}/.factory/\n`)
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 0)
+    assert.match(out, /already in \.git\/info\/exclude/)
+    const lines = excludeText(root).split(/\r?\n/).filter((line) => line.trim() === '/.factory/')
+    assert.equal(lines.length, 1, 'the exclude file collected a duplicate on every run')
+  })
+})
+
+// The finding this whole issue was about. An unrecorded repository is told to
+// record the boundary, and until #100 the only command it could name wrote
+// `guest`. A remedy that cannot be run is what ADR 0029 says gets a layer
+// switched off.
+test('the unrecorded report names a command that writes each of the two answers', () => {
+  withRepo((root) => {
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, 'an unrecorded boundary was treated as a failure')
+    assert.match(out, /guard-guest-writes\.mjs --install/, 'the guest answer has no named writer')
+    assert.match(out, /check-setup\.mjs --record-owned/, 'the owned answer has no named writer')
+  })
+})
+
+test('a copied-in check-setup names itself by the path you would type', () => {
+  withRepo((root) => {
+    // The remedy has to be copy-pasteable from where it is printed, and the
+    // installed case is `scripts/`, not the skill's asset directory.
+    mkdirSync(join(root, 'scripts'), { recursive: true })
+    const copied = join(root, 'scripts/check-setup.mjs')
+    copyFileSync(CHECK, copied)
+
+    assert.match(run(copied, [], root).out, /node scripts\/check-setup\.mjs --record-owned/)
+    assert.match(recordOwned(root, copied).out, /node scripts\/check-setup\.mjs/)
   })
 })
 
