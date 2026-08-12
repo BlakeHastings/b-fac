@@ -107,3 +107,32 @@ an instruction shaped like a control.
 **Two questions now sit ahead of the loop where there were none.** That is a cost
 paid at initialisation only, and it is paid in the direction the failure is
 cheap.
+
+## Correction, recorded rather than edited away
+
+**"Nothing enforces this yet" was true for as long as it took somebody to read
+it, and is no longer.** ADR 0029 and issue #76 gave the boundary a gate:
+`assets/guard-guest-writes.mjs`, a `PreToolUse` hook that refuses a push, a
+non-read `gh` verb, a `gh api` write, a `git config --global`, and the two beads
+commands that write tracked files into a host repo. The sentence above stands as
+written because it was the accurate description of a decision that deliberately
+stopped at the model, and because it is the sentence that got the gap closed.
+
+Two things in this document were more wrong than that one, and both are the
+useful part.
+
+**The mechanism this ADR specified had no writer.** Machine facts were to be
+"kept out of the tree with `.git/info/exclude`", and nothing in the repository
+ever wrote such a file — not the skill, not an asset, not a documented command.
+A control reading the mode would have read an absent file and, depending on
+which way it failed, either refused everything or nothing. `--install` writes
+`.factory/machine.md` now. Specifying where a fact lives is not the same as
+producing it, which is the same class of error as ADR 0001's correction above:
+an invariant written ahead of the code that holds it.
+
+**The gate does not read the mode after all**, so the dependency this ADR's
+model implied turned out not to exist. A `PreToolUse` hook runs before its
+command, and `references/enforcement.md` already calls filesystem-dependent
+rules in a hook unsound. The mode is declared by installing the gate; the
+machine record is what the loop reads, not what the gate reads. ADR 0029 has the
+argument.

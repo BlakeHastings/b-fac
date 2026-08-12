@@ -189,7 +189,7 @@ asked once, because the guess is invisible afterwards.
 | Branch naming | Theirs, copied from real branch names | `<area>/<number>-<slug>` |
 | Commit style | Theirs, copied from real subject lines | Why, not what |
 | Check entry point | Whatever their CI invokes, run the same way locally | One command, and CI is a thin wrapper on it |
-| Enforcement layer | None of it. A ruleset, a required check and a merge wrapper are changes to their repository | ADR 0001's arithmetic, layer by layer |
+| Enforcement layer | None of the owned four: a ruleset, a required check and a merge wrapper are all changes to their repository. The guest gate below is the exception, because it changes nothing tracked | ADR 0001's arithmetic, layer by layer |
 | Backlog | Their tracker, read-only until publish. The factory's working issues stay in its local store | Seed it |
 
 **Branch naming and commit style are the two that actually bite.** They are
@@ -204,6 +204,40 @@ review discipline, the three lenses still apply to what the factory produces.
 What moves is where the record lives, not whether one exists. Dropping a process
 because the host lacks it is how a guest becomes a worse factory rather than a
 politer one.
+
+### Install the boundary before you install anything else
+
+The one step guest mode adds rather than removes. It is first because it is the
+only one that protects the host repository from the rest of the sequence:
+
+```bash
+node <this skill>/assets/guard-guest-writes.mjs --install
+```
+
+It copies the gate to `.factory/`, writes `.factory/machine.md` with the write
+boundary and the backlog tool in it, wires `.claude/settings.local.json`, and
+appends both paths to `.git/info/exclude`. Nothing tracked changes and nothing
+outside the repository is touched. Check that rather than believing it:
+
+```bash
+git status --porcelain -uall
+```
+
+Then **restart the harness**, because settings are read once at process start
+and the session that installs a hook runs unguarded to the end. Then ask the
+gate whether it is actually loaded, which a gate cannot tell you any other way:
+
+```bash
+node .factory/guard-guest-writes.mjs --probe
+```
+
+Being refused is the answer you want. Put both outputs in your first status
+update, the same way the owned sequence keeps `check-setup.mjs`'s before and
+after: the difference between a copied control and an installed one is the only
+thing either pair of outputs is for.
+
+`references/enforcement.md` says what the gate covers, what it does not, and why
+it is not installed into your home directory.
 
 ### What guest mode gives up
 
@@ -231,3 +265,7 @@ branch pushed, no issue opened, no comment posted, nothing outside this machine
 touched. If you cannot say that sentence, say precisely what you did instead.
 That is the whole reason guest is defined as a boundary rather than as a list of
 features left switched off.
+
+**Say it even with the gate installed.** A gate refuses; it does not audit, and
+it covers the agent session rather than the machine. The sentence is still
+yours to make true and still yours to write.
