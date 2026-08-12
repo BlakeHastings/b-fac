@@ -64,6 +64,17 @@ const DENIED = [
   // An unterminated quote is text, not an argument that swallows the rest of
   // the line. Read the other way, an apostrophe hides everything after it.
   "echo don't && gh pr merge 5",
+  // #97. An assignment prefix binds a variable for the command that follows, so
+  // the command is what follows it. Every line here merged before the fix, and
+  // `GH_TOKEN=$SOMETHING gh pr merge` is an agent working around an auth
+  // problem rather than an agent hiding, which is the case this guard is for.
+  'GH_TOKEN=x gh pr merge 42 --squash',
+  'FOO=1 BAR=2 gh pr merge 42',
+  'FOO="a b" gh pr merge 42',
+  'FOO=a\\ b gh pr merge 42',
+  'if true; then GH_TOKEN=x gh pr merge; fi',
+  'time GH_TOKEN=x gh pr merge 42',
+  'GH_TOKEN=x gh api --method PUT repos/o/r/pulls/42/merge',
   // Each shell tool the hook is wired to can invoke the other one.
   'bash -c "gh pr merge 42"',
   'pwsh -Command "gh pr merge 42"',
@@ -73,6 +84,11 @@ const DENIED = [
   'node scripts/check-guard-live.mjs',
   'node ./scripts/check-guard-live.mjs',
   'node C:\\Users\\o\\repo\\scripts\\check-guard-live.mjs',
+  // The line #97 turns on. A probe walked past reports the guard inert in a
+  // session where it is live, and a false "inert" is worse than silence: it
+  // arrives with the authority of a measurement, and it invites the reader to
+  // go looking for another route.
+  'GH_TOKEN=x node scripts/check-guard-live.mjs',
 ]
 
 const ALLOWED = [
@@ -141,6 +157,23 @@ const ALLOWED = [
   // Stripping a leading word can leave a segment with no tokens at all, and
   // every rule reads the first one. Without the filter this throws.
   'time',
+
+  // #97's other direction, and the one that decides it. An `=` in an argument
+  // is not an assignment prefix, and a rule that strips too eagerly turns an
+  // argument into a command.
+  'git commit -m "FOO=1"',
+  'gh issue comment 5 --body "GIT_TRACE=1 git push"',
+  'gh api repos/o/r/issues -f body="a=b"',
+  'gh pr create --field key=value',
+  'cd C:\\build\\out=release',
+  // The name has to be a valid shell identifier. A shell reads `=x` as a
+  // command name and fails to find it, so stripping it would invent a command
+  // that never ran.
+  '=x gh pr merge 42',
+  // An assignment with no command after it runs nothing, and leaves the empty
+  // segment #90's filter already handles.
+  'FOO=1',
+  'FOO=1 BAR=2',
 
   // The probe rule is held to the same standard as the merge rules: reading
   // the command, not the line. Talking about the probe is not running it.

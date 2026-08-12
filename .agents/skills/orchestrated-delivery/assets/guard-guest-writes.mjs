@@ -44,21 +44,19 @@
 // that *is* handled, and closing it would mean keeping a table of someone
 // else's flags.
 //
-// Two more, measured the same way and open for their own reasons:
+// One more, measured the same way and open for its own reason:
 //
-//   GIT_TRACE=1 git push origin HEAD                      ALLOWED
 //   bash -c "bash -c \"bash -c 'git push origin HEAD'\""  ALLOWED
 //
-// The first is the one that does not fit the paragraph above: an assignment
-// prefix is shell *syntax*, a closed form the way `then` and `do` are, and
-// `GIT_TRACE=1 git push` is an agent debugging rather than an agent hiding. It
-// is left open here only because the merge guard has the identical hole and
-// this file exists to stop the two readers drifting apart; issue #97 closes
-// both at once. The second is the two-shell recursion limit in `judge`.
+// That is the two-shell recursion limit in `judge`, not a reading failure.
 //
-// Shell syntax an ordinary command *can* contain is otherwise covered, and
-// covering it is what issue #96 did here after #90 did it for the merge guard.
-// See LEADING_WORDS.
+// Shell syntax an ordinary command *can* contain is otherwise covered: the
+// reserved words and grouping that introduce a command, and the `VAR=value`
+// prefix that binds a variable for one. See LEADING_WORDS and ASSIGNMENT.
+// `env git push origin HEAD` staying open above while `GIT_TRACE=1 git push`
+// is now denied is the same line drawn twice rather than an inconsistency:
+// `env` is a program that runs another program, and the set of those has no
+// edge, while an assignment prefix is a shell form with a grammar.
 //
 // Where this gate is stronger than the merge guard, measured rather than
 // assumed: `\git push`, `/usr/bin/gh pr create` and `git.exe push` are all
@@ -135,6 +133,14 @@ function deny(reason) {
 // copied into a host repo on its own, and a two-file asset is a setup step that
 // gets half done, which is the failure `check-setup.mjs` exists to catch.
 // ---------------------------------------------------------------------------
+
+// BEGIN command reader
+//
+// Everything between this marker and END is the reader `scripts/guard-merge.mjs`
+// also carries, and the two have to answer the same question the same way. ADR
+// 0029 refuses a shared module and #93 holds the duplication;
+// `scripts/command-reader.test.mjs` runs both copies over one corpus so a drift
+// is a red test rather than a lucky reading.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` is handled separately, since it only ends a command
@@ -312,9 +318,30 @@ function endOfHeredoc(line, from, delimiter) {
 // abandoned.
 const LEADING_WORDS = new Set(['{', '!', 'then', 'else', 'elif', 'do', 'time'])
 
+// A variable binding stands in front of a command the same way, and it is the
+// same kind of thing: shell syntax with a grammar, not a program that launches
+// another program. Until #97 the segment presented a command named `GIT_TRACE=1`
+// and every rule looked straight past it, this gate's own probe included. So
+// `GH_TOKEN=x node .factory/guard-guest-writes.mjs --probe` ran, reported the
+// gate inert, and did it in a session where the gate was live. A false "inert"
+// is worse than silence, because it arrives with the authority of a measurement.
+//
+// The name must be a valid shell identifier, which is what tells an assignment
+// from an argument that merely contains `=`. `--field key=value` and a Windows
+// path are not assignments; neither is `=x`, which a shell reads as a command
+// name and fails to find, so stripping it would invent a command that never
+// ran. Only a leading token is examined, so `git commit -m "FOO=1"` is untouched.
+//
+// Stripping cuts both ways here too. `GIT_TRACE=1 gh issue view 42` now reaches
+// the `gh` rules and has to be allowed by GH_READS on its merits, where before
+// it was allowed because the segment began with a token that was not `gh`.
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+
 function withoutLeadingWords(tokens) {
   let at = 0
-  while (at < tokens.length && LEADING_WORDS.has(tokens[at])) at += 1
+  while (at < tokens.length && (LEADING_WORDS.has(tokens[at]) || ASSIGNMENT.test(tokens[at]))) {
+    at += 1
+  }
   return tokens.slice(at)
 }
 
@@ -324,10 +351,12 @@ function segmentsOf(line) {
   // operator after it would read as that argument's contents — including a real
   // chained push. A quote with no partner is text, so read it that way.
   const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
-  // Stripping can empty a segment, since `time` on its own is a whole command,
-  // and every rule below reads the first token.
+  // Stripping can empty a segment, since `time` on its own is a whole command
+  // and so is `FOO=1`, and every rule below reads the first token.
   return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
 }
+
+// END command reader
 
 const commandName = (token) =>
   token
