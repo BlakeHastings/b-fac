@@ -7,7 +7,7 @@ have to survive the tool changing underneath them. Read that first if your
 backlog is not GitHub's. Read this if it is.
 
 It also says what a portable backlog does *not* buy you, which is the part
-easiest to overclaim: the merge gate, the checks and the ruleset stay GitHub.
+easiest to overclaim: the merge wrapper, the checks and the ruleset stay GitHub.
 
 Everything below is GitHub mechanics. The port's `create`, `read`, `list`,
 `comment`, `close`, `link` and `label` are what each section is an instance of.

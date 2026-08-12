@@ -96,14 +96,20 @@ anybody designs a seam from scratch.
 **A pluggable backlog frees one of the four things this workflow uses GitHub
 for, not all four.** ADR 0021 has the table. The other three:
 
-- **The merge gate** reads a pull request's check rollup. In owned mode that is
-  GitHub. In guest mode there is no remote rollup to read, and the substitute is
-  the host's own check command run locally before work lands on your integration
-  branch, not a local re-implementation of the gate.
+- **The merge wrapper** reads a pull request's check rollup, so it needs GitHub
+  both to produce the checks and to report them in one place. In guest mode
+  there is no rollup to read, and the substitute is the host's own check command
+  run locally before work lands on your integration branch. That leaves you with
+  checks and nothing that refuses, which is the correct weight there rather than
+  a gap: landing means landing on your own branch, and the company's reviewers
+  are what stands in the way afterwards.
 - **The checks** run in Actions in owned mode. In guest mode they run on the
   company's CI, on the pull request, after publish, unchanged.
-- **The ruleset** is GitHub in owned mode and is *never* installed in guest mode,
-  because a ruleset is a change to somebody else's repository.
+- **The ruleset** is GitHub's driver for a gate, and it is *never* installed in
+  guest mode, because a ruleset is a change to somebody else's repository.
+
+Those three nouns are `references/enforcement.md`'s, used the way it uses them:
+a check reports and a gate refuses.
 
 So the loop's memory is portable and the loop is not. A reader who takes "the
 backlog is a port" as "the whole thing runs anywhere" has read a quarter of the

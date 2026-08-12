@@ -42,6 +42,15 @@ have. Closing an epic when its children are done, adopting an orphan and
 batching by collision surface all read that tree, and git-bug was disqualified
 partly for having no parent concept at all.
 
+**The ceiling borrows ADR 0025's vocabulary where it is load-bearing and
+nowhere else.** The port's ceiling bullets originally called `merge-pr.mjs` "the
+merge gate". Under the check/gate split that is wrong rather than merely
+old-fashioned: the wrapper is a tool with a gate's shape, and the thing guest
+mode actually loses is not a gate at all, because there was never one on that
+path. So those three bullets now say merge wrapper, checks, and "the ruleset is
+GitHub's driver for a gate". Nothing else was renamed. ADR 0025 refuses a mass
+retrofit and this is a correction, not a retrofit.
+
 **The ceiling is stated wherever the port is.** ADR 0021's table already says a
 pluggable backlog frees one of four GitHub dependencies. The port document, the
 GitHub document and `SKILL.md`'s new paragraph each repeat it, because the
