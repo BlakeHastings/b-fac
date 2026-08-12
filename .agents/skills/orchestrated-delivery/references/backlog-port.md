@@ -29,11 +29,61 @@ the table can be re-derived instead of remembered.
 | `comment` | The review record, posted before merging, in the three headings plus a verdict | `reviewing.md`, `assets/review.md` |
 | `close` | With a pointer to whatever supersedes it. Deduplicating keeps the better framing and closes the other *into* it, which is a state change and a cross-reference in one move | `github-backlog.md` housekeeping, `briefing.md` |
 | `link` | A real parent/child edge, so the graph is something you can read. Not a label convention | `github-backlog.md` |
-| `label` | One per area, plus epic, unblocks-other-work, and waiting-on-the-owner. The last is the escalation channel, and it only works if a filtered list makes it visible at a glance | `SKILL.md` escalation, `github-backlog.md` |
+| `label` | One per area, plus epic, unblocks-other-work, and **why an item cannot be started yet**, of which waiting-on-the-owner is one reason. The loop's two report lines are both this verb filtering the list: escalation is what a filtered list shows at a glance, and dispatch is the same list read negatively | `SKILL.md` escalation and its `Next:` line, `github-backlog.md`, below |
 
 Exactly one mutation of an existing body appears anywhere: adopting an orphan
 adds a `Parent: #N` line beside the real edge. It rides with `link` rather than
 earning an `edit` verb of its own.
+
+## "Cannot be started yet" has to be in the list, not only in the body
+
+Area, epic and unblocks-other-work all answer *what kind of work is this*. None
+of them answers **can this be dispatched right now**, and that is the question
+the loop asks the list every time it picks work.
+
+This was found by triaging a backlog for dispatch rather than by reading the
+skill. Two open items each ended with an explicit "do not build this yet" and
+carried nothing that said so outside the body. From a listing they read as
+ready, and briefing an agent on either would have been the orchestrator's
+mistake rather than the writer's.
+
+So the port asks the list for one thing more: when an item cannot be started,
+**the reason, not just the fact**. The reason is load-bearing because each one
+routes somewhere different, and two of the three are the orchestrator's own work
+rather than an agent's:
+
+- **waiting on the owner** is escalated, which is the channel above
+- **behind another item** is ordered, and is the only one nobody can act on now
+- **no spec yet** is scheduled into a refinement pass, which is a conversation
+  with the owner rather than a dispatch
+
+Collapse those into one "blocked" and the loop loses the two it could have moved
+this turn. That is the argument for separating them, and it is an argument about
+what happens next rather than about vocabulary: the names still matter less than
+the distinction being visible without opening the item.
+
+**One of the three decays, and it is the one nobody watches.** The owner is
+waiting on their own escalations, and a missing spec is still missing tomorrow.
+A blocker is cleared by a merge, and nothing about a merge re-reads a mark on
+another item. Two consequences, and an implementation that skips either is
+keeping a lie in its backlog and parking real work behind it:
+
+1. **The blocker is named by id**, in a comment or a real edge. An item that
+   cannot say what it is behind is not blocked, it is unrefined, and the mark is
+   hiding that.
+2. **Clearing it belongs to the merge that unblocks it**, not to a sweep
+   somebody remembers to run.
+
+A store that computes this from its dependency graph gets both for free, and
+`beads-backlog.md` is one. A store where it is a label gets neither, and
+`github-backlog.md` pays for them by hand and says so.
+
+**Whether the edge itself becomes an eighth verb is open.** GitHub now holds
+dependency edges natively and beads always has, so this is a live question in
+both implementations at once rather than a GitHub detail, and it is the same
+question the `list-ready` row below answers with "no computed ready state". The
+port still says `label` because a label convention needs no particular client
+and no particular tracker. A decision to revisit, not an oversight.
 
 ## What the port deliberately does not need
 
@@ -86,10 +136,12 @@ have had to live in a metadata bag. Ask a candidate for the edge before you ask
 it for anything else.
 
 **The provider pattern already exists, so do not invent one.** beads models gates
-on an item with types `human`, `timer`, `bead`, `gh:run` and `gh:pr`, enforced at
-close preflight. That is "this item cannot close until a check passes", with
-GitHub as one driver behind the concept, in a shipped tool. Worth knowing before
-anybody designs a seam from scratch.
+on an item with types `human`, `timer`, `bead`, `gh:run` and `gh:pr`. A gate is a
+dependency on a synthetic item, so it holds its target out of the ready list and
+refuses its close, which makes it the previous section's mark and this one's
+preflight in a single mechanism. That is "this item is not startable until a
+condition is met", with GitHub as one driver behind the concept, in a shipped
+tool. Worth knowing before anybody designs a seam from scratch.
 
 ## The ceiling, in the same breath
 
