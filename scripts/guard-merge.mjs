@@ -335,6 +335,11 @@ function shellPayload(tokens) {
   return at === -1 ? null : (tokens[at + 1] ?? null)
 }
 
+// How many shells deep the walk follows a payload. Two readers of the command
+// line now start from the top, and they have to agree on where the bottom is or
+// the probe's wording answers about a different line than the verdict did.
+const SHELL_DEPTH = 2
+
 // `scripts/check-guard-live.mjs` exists in order to be refused here. Refusing
 // it is the only way a session can observe that this guard is loaded: the
 // guard is a gate, and a gate that was never loaded is silent in exactly the
@@ -349,6 +354,73 @@ function isLivenessProbe(tokens) {
   if (commandName(tokens[0]) !== 'node') return false
   const script = tokens.slice(1).find((token) => !token.startsWith('-'))
   return script !== undefined && commandName(script) === 'check-guard-live.mjs'
+}
+
+// WHY THE PROBE'S REFUSAL COMES IN TWO WORDINGS
+//
+// This is the one denial in the file that reads as success, because being
+// refused is the answer the probe exists to produce. On a line that is only the
+// probe, that is exactly right. On a line with anything else on it, it is a
+// trap: `PreToolUse` refuses the whole tool call before any of it runs, so
+// `git pull --ff-only && node scripts/check-guard-live.mjs` pulls nothing and
+// then prints the answer you were hoping for. #82 recorded an orchestrator
+// losing a `gh issue comment` that way, and its own comment records the next
+// orchestrator losing a `git pull` the same way *after reading the warning*,
+// believing for several minutes that they were on a commit they were not.
+//
+// #82 offered narrowing the rule so it fires only when the probe is the sole
+// command in the line. Narrowing the *verdict* that way is unsound. It would
+// make `node scripts/check-guard-live.mjs && true` run the probe in a session
+// where this guard is loaded, and the probe would print "inert". That is the
+// same false measurement `GH_TOKEN=x node ...` produced before #97 and
+// `npm run` produced before #110, arriving a third time by a third route. A false
+// "inert" is worse than silence: it has the authority of a measurement and
+// invites the reader to go looking for another way to merge. The probe must
+// never run in a process that would have refused it, whatever else is on the
+// line, so the verdict is unconditional.
+//
+// What was actually wrong was the message, which ended "Nothing is wrong" and
+// so told the reader to move on at the exact moment something was. The
+// narrowing is therefore on the wording: alone, it still says nothing is wrong,
+// because nothing is; in company, it says what was lost. That leaves an error to
+// notice, which is the thing docs alone could not supply. The warning existed,
+// it was read, and it did not work.
+const PROBE_ALONE =
+  'The guard is loaded in this process. This probe was refused before it ran,\n' +
+  'and being refused is the answer it exists to produce. Nothing is wrong.\n\n' +
+  'A status update can now say the guard is loaded rather than configured.\n' +
+  'See docs/process/orchestrating.md.'
+
+const PROBE_IN_COMPANY =
+  'The guard is loaded in this process, and nothing else on that line ran.\n\n' +
+  'A PreToolUse hook refuses the whole tool call before any of it executes, so\n' +
+  'every command chained to this probe was thrown away with it. The refusal is\n' +
+  'also the answer the probe exists to produce, which is how this denial reads\n' +
+  'as success while being half a failure. Do not record the other commands as\n' +
+  'having happened; nothing has changed on disk.\n\n' +
+  'Run them on their own, then ask the guard on its own:\n\n' +
+  '  node scripts/check-guard-live.mjs'
+
+// Whether refusing the probe costs the caller anything else. The question is
+// about the whole tool call rather than the segment the probe sits in, because
+// the harness refuses tool calls and not segments.
+//
+// `}` is passed over because it is a compound command's closing syntax and
+// never a command. The reader strips the words that *open* one, so that a rule
+// can see the command behind them, and leaves the ones that close it, since no
+// rule reads those; counting what a line would lose is the first thing here
+// that does. `{ node scripts/check-guard-live.mjs; }` is a real form, and how
+// #82's comment was measured, and it loses nothing. `fi` and `done` need
+// no such allowance: they only ever appear on a line that already carries the
+// condition or the list, which is a lost command in its own right.
+function probeIsTheWholeCall(line, depth) {
+  for (const tokens of segmentsOf(line)) {
+    if (isLivenessProbe(tokens) || tokens[0] === '}') continue
+    const nested = depth > 0 ? shellPayload(tokens) : null
+    if (nested !== null && probeIsTheWholeCall(nested, depth - 1)) continue
+    return false
+  }
+  return true
 }
 
 const USE_WRAPPER =
@@ -378,7 +450,11 @@ function apiEndpoint(args) {
 // does not trip it.
 const isMergeEndpoint = (endpoint) => /\/(merge|merges)(\/|$)/.test(endpoint)
 
-function judge(line, depth) {
+// `whole` is the command line the harness was handed, which is the same as
+// `line` until the walk steps into a shell payload. The probe's wording is the
+// one verdict here that depends on what else the tool call would have run, and
+// a nested payload only knows about its own half of it.
+function judge(line, depth, whole) {
   for (const tokens of segmentsOf(line)) {
     const gh = ghArguments(tokens)
     if (gh !== null && gh[0] === 'pr' && gh[1] === 'merge') {
@@ -389,16 +465,11 @@ function judge(line, depth) {
     }
 
     if (isLivenessProbe(tokens)) {
-      deny(
-        'The guard is loaded in this process. This probe was refused before it ran,\n' +
-          'and being refused is the answer it exists to produce. Nothing is wrong.\n\n' +
-          'A status update can now say the guard is loaded rather than configured.\n' +
-          'See docs/process/orchestrating.md.',
-      )
+      deny(probeIsTheWholeCall(whole, SHELL_DEPTH) ? PROBE_ALONE : PROBE_IN_COMPANY)
     }
 
     const nested = depth > 0 ? shellPayload(tokens) : null
-    if (nested !== null) judge(nested, depth - 1)
+    if (nested !== null) judge(nested, depth - 1, whole)
   }
 }
 
@@ -413,6 +484,6 @@ try {
 }
 if (!command.trim()) process.exit(0)
 
-judge(command, 2)
+judge(command, SHELL_DEPTH, command)
 
 process.exit(0)
