@@ -59,9 +59,9 @@ the check itself. What it does not cover:
   that middle state so easy to lose.
 - **Anything at GitHub's end.** Rulesets, required contexts, bypass actors, who
   can push at all: invisible to a check that reads the working tree. That cuts
-  both ways. On a repo that already has protected branches, most of these layers
-  should be deleted rather than reported absent, which is the revisit trigger at
-  the end of this chapter.
+  both ways. On a repo that already has protected branches, some of these layers
+  should be deleted rather than reported absent, and which ones is the revisit
+  trigger at the end of this chapter.
 - **Whether the guard's rules are right.** It checks that the matcher names
   every shell tool and that `DEFAULT_BRANCH` matches this repo's actual default.
   It does not read the patterns. Whether the guard denies what it should and
@@ -225,10 +225,28 @@ server-only strings catches an import the type system was happy with.
 
 ## Revisit trigger
 
-If the repo moves into an organization or onto a plan with protected branches,
-protect the branch and **delete most of this**. The wrapper is worth a second
-look rather than automatic deletion, since squash-always in one command is still
-convenient, but it stops being load-bearing.
+If the repo goes public, moves into an organization, or lands on a plan with
+protected branches, protect the branch and **re-derive the layers one at a
+time**. Rulesets are free on a public repo, so this trigger fires on day one
+there rather than later, and the answer is not the same for all three.
 
-Delete rather than keep out of sentiment. The entire justification is the
-absence of the thing that would then exist.
+**Layer 3 goes.** With no bypass actors a commit cannot reach the default branch
+outside a pull request, so the audit that detects one can only ever pass.
+
+**Layer 2 stays, narrowed** to the merge rules. A ruleset refuses a direct push,
+so the guard's push-to-default-branch cases become redundant and come out. It
+does not refuse an agent merging its own pull request: "nothing lands
+unreviewed" and "agents do not land code" are two constraints that only looked
+like one while a single layer happened to cover both.
+
+**Layer 1 stays, demoted.** A convenience rather than a control: squash-always
+in one command, and a refusal that names *which* check is red where a merge
+button does not. Keeping layer 2 also requires keeping it, since the guard
+denies `gh pr merge` by name and the wrapper is the sanctioned path it leaves
+open. Say in the ADR that it is a tool, so nothing later cites it as the thing
+keeping red code out.
+
+Delete rather than keep out of sentiment. The justification for a layer is the
+absence of the thing that would otherwise do its job, and that absence goes away
+layer by layer rather than all at once, which is why "the branch is protected
+now" is the start of the arithmetic and not the end of it.

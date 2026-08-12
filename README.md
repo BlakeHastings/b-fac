@@ -80,7 +80,7 @@ sourced at the repository root: about 64 files and 360 KB. Only
 `.agents/skills/` is loaded; the rest sits in the plugin cache doing nothing.
 ADR 0014 has the measurement and the reason it is left that way.
 
-The skill itself is five reference documents behind one `SKILL.md`, loaded on
+The skill itself is one `SKILL.md` with reference documents behind it, loaded on
 demand rather than all at once:
 
 | Read it when |
@@ -90,6 +90,11 @@ demand rather than all at once:
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |
 | `references/github-backlog.md` — seeding or maintaining the issue graph |
+| `references/first-run.md` — setting this up in a repo that has none of it yet |
+
+That table and the one in `SKILL.md` are both written by hand, so
+`npm run check:references` holds them to the directory: a reference document
+with no row fails, and so does a row naming a file that is no longer there.
 
 ## Developing
 
