@@ -55,12 +55,16 @@ required check is green, always squash merges.
 *Does not cover:* anyone who does not type it. A tool, not a gate: it has a
 gate's shape, and a refusal you can decline to ask for is advice.
 
-**2. The PreToolUse guard.** The only gate in the list. Denies `gh pr merge`,
-merges through `gh api`, pushes to the default branch, and bare
-`git push`/`git merge` while standing on it, before the command runs.
+**2. The PreToolUse guard.** The only gate in the list. Denies `gh pr merge`, a
+merge through `gh api`, and a `git push` whose own arguments name the default
+branch as the destination, before the command runs.
 *Does not cover:* any process the harness did not load it into at startup, and
 everything that process spawns for as long as it lives; any human at a terminal;
-and CI. A net, not a guarantee, and one whose absence is silent.
+and CI. A net, not a guarantee, and one whose absence is silent. Nor a
+destination the command line does not spell out: a bare `git push` inherits the
+branch you are standing on, `git push --all` writes every branch, and a refspec
+in a variable says nothing. **Layer 3 is what covers those**, which is the
+clearest example this list has of why detection is not optional.
 
 **3. The provenance audit.** A check, in the strict sense: it reports, and
 nothing about it refuses. On every push to the default branch, asks the API
@@ -236,19 +240,33 @@ check reading the working directory is reading somewhere else. That is a
 property of the mechanism, not a bug, so branch-dependent rules in a hook are
 unsound and the durable guards read only command text.
 
-**The shipped guard breaks that rule itself, and it has been caught.** For a
-bare `git push` or `git merge` it shells out to
-`git rev-parse --abbrev-ref HEAD` and denies only when the answer is the default
-branch. Run from inside a worktree, where HEAD is a feature branch, that copy
-answered `allow` on a command the main checkout denied. Same script, opposite verdict, decided by
-which copy ran. Treat the branch-dependent clause as the weakest thing in the
-file: the `gh pr merge` rules beside it read only command text, and they do not
-have this problem. Whether to drop the clause or keep it as a net for the common
-case is a decision to make deliberately, not one to inherit.
+**The shipped guard broke that rule itself, and it was caught.** For a bare
+`git push` or `git merge` it shelled out to `git rev-parse --abbrev-ref HEAD`
+and denied only when the answer was the default branch. Run from inside a
+worktree, where HEAD is a feature branch, that copy answered `allow` on a
+command the main checkout denied. Same script, opposite verdict, decided by
+which copy ran. **The clause is gone**, and what replaced it reads the
+destination out of the push's own arguments, so it answers the same everywhere.
+The cost is stated in layer 2's *does not cover* above rather than papered over:
+a rule that is right or wrong depending on something it cannot see is worse than
+an absent one, because it is trusted.
 
-Match on the command's **own arguments**, stopping at the next link in a chain,
-rather than scanning the whole line. That single mistake is what read a commit
-message mentioning `main` as a push to `main`.
+**Ask what each command in the line invokes, never what the line's text
+contains.** Scanning the text is the mistake that read a commit message
+mentioning `main` as a push to `main`, and then read `gh issue comment 45 --body
+"gh pr merge was denied"` as a merge. Matching the command's own arguments and
+stopping at the next link in a chain is closer but still not it: a quoted
+argument can contain an operator, a heredoc body is data, a reserved word or a
+`VAR=value` prefix stands in front of the real command, and a global flag can
+sit between a program and its subcommand. `gh --repo o/r pr merge 42` is a
+working merge that every version of that shortcut allowed.
+
+So the shipped guard tokenises the line into the commands it will actually run,
+and every rule reads the head of one of them. That parser is the same in
+`guard-merge.mjs` and `guard-guest-writes.mjs`, marked in both with
+`// BEGIN command reader`. **If you edit it in one, edit it in both**; the two
+copies have drifted twice, and both times the bug reached only the file nobody
+was looking at.
 
 ## The other gate: guest mode's write boundary
 
