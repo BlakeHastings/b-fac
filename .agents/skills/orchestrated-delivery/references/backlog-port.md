@@ -56,7 +56,8 @@ rather than an agent's:
 - **waiting on the owner** is escalated, which is the channel above
 - **behind another item** is ordered, and is the only one nobody can act on now
 - **no spec yet** is scheduled into a refinement pass, which is a conversation
-  with the owner rather than a dispatch
+  with the owner rather than a dispatch. The spec that pass produces is an
+  epic, so it costs the port no ninth verb: `references/refinement.md`
 
 Collapse those into one "blocked" and the loop loses the two it could have moved
 this turn. That is the argument for separating them, and it is an argument about

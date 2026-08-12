@@ -240,6 +240,50 @@ moving. Two instructions recur and both mean more than they say:
 Raw feedback, often dictated, becomes issues without losing the owner's phrasing.
 Quote rather than paraphrase: the wording carries what actually annoys.
 
+## Refinement, which fills the queue that section drains
+
+**Refinement converts owner-time into a queue of agent-time work.** A spec is
+the handoff between a synchronous activity that needs the owner and an
+asynchronous one that must not, so this section and the one above it are two
+halves of one rhythm. `references/refinement.md`.
+
+One rule decides everything that goes in a spec:
+
+> **Can an agent derive this from the repository and its history? If yes, leave
+> it out. If no, it has to be in the spec or it is lost.**
+
+Collision surface, module boundaries and test commands are derivable, so they
+are the agent's job. Why this is being built, what was rejected and why, whether
+it is a good idea at all, which existing tool to use given constraints the agent
+cannot see, and what would count as done are not. **This is the escalation rule
+above, applied in bulk and in advance**, which is why it fits a day of specs
+followed by a night of work.
+
+**The threshold is not a size.** A ninety-file mechanical rename is derivable in
+full and needs no spec; a one-line change turning on an unwritten municipal
+ordinance needs one, and that spec is four sentences. What decides it is the
+count of things an agent cannot derive, never a diff statistic.
+
+**The gate is a label, and the artefact is an epic.** `needs-refinement` on an
+item means it is not dispatchable, which the dispatch query already reads
+negatively. A spec decomposes into units rather than being one, and an epic
+already carries prose context and a real child edge, so it is the spec and
+nothing new gets built. The label comes off in the same motion that files the
+children.
+
+**Do not write a template.** A form with headings invites completion instead of
+thought. A spec is worth writing when something was rejected with the reason
+recorded, and when the decomposition changed because of it. If the same children
+would have been filed anyway, that was ceremony.
+
+**Open a refinement session by dispatching a wave, then start the
+conversation.** A session is the one stretch during which you are not watching
+the queue, and a spec conversation is the most absorbing thing you do, so
+absorption reads as the loop being busy. Measured here: one epic's premise sat
+unsettled for 2h13m with nothing dispatched and two issues open and ready, while
+the *later* refinement of that same epic overlapped twelve merged pull requests
+because the queue was full when it started.
+
 ## Before you stop
 
 **Every status update ends with both of these lines, in this form, as the last
@@ -367,6 +411,7 @@ in the order its commits show rather than the order listed here.
 | File | Read it when |
 | --- | --- |
 | `references/briefing.md` | Writing a brief or an issue |
+| `references/refinement.md` | Work is too underdetermined to brief, or the owner wants a spec |
 | `references/reviewing.md` | A PR is waiting |
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
