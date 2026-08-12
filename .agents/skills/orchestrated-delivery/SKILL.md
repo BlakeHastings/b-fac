@@ -319,6 +319,14 @@ and put both outputs in your first status update. It needs Node and `git`, no
 network and no `gh`, and if Node is absent that is its first finding, because
 layers 1 to 3 are Node scripts. Its `LAYERS` table is the same checklist by eye.
 
+**It reports the layers that apply to the write boundary**, which it reads from
+the machine record. That is the one place a report may read it, since unlike a
+hook it runs where you are standing (ADR 0030). In guest mode the four owned layers read
+`n/a` with the mode as the reason and the gate is the only one judged, so a
+guest repo with the gate installed exits 0. Where nobody recorded a boundary it
+says so and reports the owned set, which is a finding rather than a failure and
+a prompt to answer the question ADR 0021 asks at initialisation.
+
 **Copying is not installing**, which is the half it exists to catch: a guard
 script no `settings.json` invokes, a `REQUIRED` list still holding its
 placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch

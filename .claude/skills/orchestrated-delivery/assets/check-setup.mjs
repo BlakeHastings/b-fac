@@ -11,17 +11,37 @@
 // The setup section had been read at turn one. Reading it is not doing it.
 //
 // So setup ends with printed output instead of with a table having been read.
-// Run this before installing anything and every layer reports MISSING; install,
-// run it again, and paste both. It exits non-zero until each layer is present
-// AND wired, because wiring is the half that gets skipped. Re-run it after any
-// change to the hook settings or to CI job names, where the same layers go
-// quiet without going away.
+// Run this before installing anything and every layer that applies reports
+// MISSING; install, run it again, and paste both. It exits non-zero until each
+// of those is present AND wired, because wiring is the half that gets skipped.
+// Re-run it after any change to the hook settings or to CI job names, where the
+// same layers go quiet without going away.
+//
+// WHICH LAYERS APPLY IS A QUESTION ABOUT THE WRITE BOUNDARY
+// ADR 0021 splits the factory in two by what it may write to, and the layers
+// are not the same set on both sides. The four numbered below are owned mode's,
+// and every one of them is a change to a repository you are allowed to change.
+// Guest mode has one control instead, `guard-guest-writes.mjs`, installed into
+// untracked local files, and installing any of the other four into somebody
+// else's repository is the thing guest mode exists in order not to do.
+//
+// So this reports the layers that apply to the mode it is in, and explains an
+// absent layer by the mode rather than listing it as a failure. A permanently
+// red line is the same failure as a guard that cries wolf: both get switched
+// off, and this repository already spends its one tolerable permanently-red
+// line on layer 3 under ADR 0001.
+//
+// There are three states rather than two: owned, guest, and nobody having said.
+// The third is a finding rather than an error. ADR 0021 has the question asked
+// out loud at initialisation, so a repository where nobody wrote the answer down
+// skipped the step. That is worth printing, and it is not a reason to fail a
+// setup that is otherwise complete.
 //
 //   node <skill>/assets/check-setup.mjs   # from the repo root, before anything
 //   node scripts/check-setup.mjs          # after, once it has been copied in
 //   node scripts/check-setup.mjs --root=/path/to/repo
 //
-// Requires Node 18 or later, and `git` for one comparison it skips without.
+// Requires Node 18 or later, and `git` for two comparisons it skips without.
 // No network, no `gh`, no Python. If `node` itself is missing, that is this
 // check's first finding without it having to run, because layers 1 to 3 ship as
 // Node scripts. The LAYERS table below is the same checklist by eye, for a repo
@@ -57,6 +77,72 @@ const read = (rel) => {
     return null
   }
 }
+
+// ---------------------------------------------------------------------------
+// The write boundary
+//
+// `guard-guest-writes.mjs`, the asset sitting next to this one, refuses to read
+// the mode off disk at all. These two files are not disagreeing, and the next
+// person to notice should not have to decide which of them is the mistake.
+//
+// **A report is not a hook.** That gate is a `PreToolUse` hook: it runs *before*
+// the command it is judging, so a `cd` in that command has not happened yet and
+// anything it reads from the filesystem may describe a repository the command
+// will never touch. ADR 0029 has the measurement: the merge guard's
+// branch-dependent clause answered `allow` inside a worktree on a command the
+// main checkout denied. That is a property of the mechanism rather than a
+// shortcoming of that gate.
+//
+// This script has no command in front of it to be wrong about. It runs where
+// you are standing, against the root it printed, and it names the file every
+// fact came from. Reading the machine record here is sound in the way it is not
+// there.
+//
+// What stays true in both files: the mode is never inferred from the repository
+// and specifically never from a git remote. A work repository is on GitHub too,
+// and a remote says the factory *can* write outward, which was never the
+// question. Absent is reported as absent.
+// ---------------------------------------------------------------------------
+const OWNED = 'owned'
+const GUEST = 'guest'
+const UNRECORDED = 'unrecorded'
+
+// The paths `guard-guest-writes.mjs --install` writes. Spelled out again here
+// rather than shared, for the reason ADR 0029 gives for its command reader
+// existing twice: an asset is copied into a host repo on its own, and a
+// two-file asset is a setup step that gets half done.
+const MACHINE_RECORD = '.factory/machine.md'
+const GUEST_GATE = '.factory/guard-guest-writes.mjs'
+const LOCAL_SETTINGS = '.claude/settings.local.json'
+const REPO_SETTINGS = '.claude/settings.json'
+
+function writeBoundary() {
+  const record = read(MACHINE_RECORD)
+  if (record === null) return { mode: UNRECORDED, why: `${MACHINE_RECORD} does not exist` }
+
+  const declared = /^Write boundary:\s*(\S+)/m.exec(record)?.[1].toLowerCase()
+  if (declared === OWNED || declared === GUEST) {
+    return { mode: declared, record }
+  }
+  // A record that exists and does not answer is the same state as no record,
+  // reported differently, because the two want different fixes.
+  return {
+    mode: UNRECORDED,
+    record,
+    why:
+      declared === undefined
+        ? `${MACHINE_RECORD} exists and has no "Write boundary:" line`
+        : `${MACHINE_RECORD} says "Write boundary: ${declared}", which is neither owned nor guest`,
+  }
+}
+
+const BOUNDARY = writeBoundary()
+
+// Unrecorded is reported against the owned checklist. That is a choice and it
+// is made out loud rather than quietly: it is what this script has always
+// checked, and the summary tells anyone in a repository that is not theirs to
+// install the guest gate instead of the four layers it just listed.
+const CHECKLIST = BOUNDARY.mode === GUEST ? GUEST : OWNED
 
 // Every workflow file as one string. Substring questions only: "does any
 // workflow mention this name" is answerable without a YAML parser, and this
@@ -101,6 +187,28 @@ function defaultBranch() {
   return candidates.length === 1 ? { name: candidates[0], inferred: true } : null
 }
 
+// The guest gate's own promise is that `git status --porcelain -uall` in the
+// host repo is byte-for-byte what it was before it was installed. That is
+// checkable from here, and it is the half a directory listing cannot see: a
+// gate installed by committing it, or wired by editing somebody's tracked
+// settings file, works exactly as well as one that was not and has already
+// broken the boundary it is there to hold.
+function visibleToTheHostRepo(paths) {
+  try {
+    return {
+      tracked: git(['ls-files', '--', ...paths]).split('\n').filter(Boolean),
+      // `??` is git's mark for an untracked file it can see, which is precisely
+      // what `.git/info/exclude` was supposed to stop it seeing.
+      unignored: git(['status', '--porcelain', '-uall', '--', ...paths])
+        .split('\n')
+        .filter((line) => line.startsWith('??'))
+        .map((line) => line.slice(3)),
+    }
+  } catch {
+    return null
+  }
+}
+
 // A copied-but-unedited placeholder, in the two forms the assets ship: the
 // SETUP constants in the scripts, and bracketed phrases in the process docs.
 // The bracket pattern skips markdown links, which are the false positive that
@@ -112,18 +220,77 @@ function leftovers(text, pattern) {
   return [...new Set((text ?? '').match(pattern) ?? [])]
 }
 
-const BRANCH = defaultBranch()
+// Every PreToolUse entry whose command names `needle`, and the settings file it
+// was found in. Both gates ask this same question of the same two files, and
+// the answer to "is it wired" is where each of them separates a copied control
+// from an installed one.
+function preToolUseHooks(needle) {
+  const wired = []
+  for (const file of [REPO_SETTINGS, LOCAL_SETTINGS]) {
+    const text = read(file)
+    if (text === null) continue
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return { wired, unparseable: file }
+    }
+    for (const entry of parsed?.hooks?.PreToolUse ?? []) {
+      if ((entry.hooks ?? []).some((h) => (h.command ?? '').includes(needle))) wired.push({ file, entry })
+    }
+  }
+  return { wired }
+}
+
+// A matcher selects on tool NAME. A harness offering a second shell tool walks
+// straight past a matcher naming one, which a real session proved by pushing to
+// the default branch through one. An `if` clause uses permission-rule syntax,
+// which also names a single tool, so it reopens the hole the matcher closed.
+function wiringProblems({ file, entry }) {
+  const problems = []
+  const matcher = entry.matcher ?? ''
+  if (!matcher.includes('|')) {
+    problems.push(
+      `${file} matches "${matcher}", which names one tool. A second shell tool` +
+        ' in the same harness is not guarded. Name them all, separated by |',
+    )
+  }
+  if ('if' in entry) {
+    problems.push(
+      `${file} narrows the matcher with an "if" clause, which uses permission-rule` +
+        ' syntax naming a single tool and reopens the hole the matcher just closed',
+    )
+  }
+  return problems
+}
+
+// Skipped in guest mode, where nothing compares a DEFAULT_BRANCH constant
+// because none of the layers holding one may be installed.
+const BRANCH = CHECKLIST === OWNED ? defaultBranch() : null
 const DEFAULT = BRANCH?.name ?? null
 const WORKFLOWS = workflows()
 const mentions = (needle) => WORKFLOWS.filter((w) => w.text.includes(needle))
 
 // Layer numbers match references/enforcement.md, weakest first, so this output
-// reads as that chapter rendered against the repo in front of you.
+// reads as that chapter rendered against the repo in front of you. The guest
+// gate keeps that chapter's separate numbering rather than becoming a fifth
+// layer here: ADR 0029 makes it a different stack, for a different mode,
+// protecting a different thing.
+//
+// `modes` is which write boundary a layer belongs to, and `skipped` is what the
+// output says where it does not. An absent layer explained by the mode is not a
+// finding, so it is not counted and it does not move the exit code.
 const LAYERS = [
   {
     n: 0,
     name: 'The instruction',
+    modes: [OWNED],
     covers: 'nothing on its own. Here so its absence is visible too',
+    skipped: () => [
+      "not reported: in a repository that is not yours the host's own contribution",
+      'docs are the contract, and the review record lives in the local store until',
+      'publish. references/first-run.md',
+    ],
     fix: 'Copy review.md and working-an-issue.md to docs/process/ and pull_request_template.md to .github/, then edit the bracketed commands.',
     run() {
       // SETUP: adjust these paths if this repo keeps its process docs elsewhere.
@@ -148,7 +315,13 @@ const LAYERS = [
   {
     n: 1,
     name: 'The merge wrapper',
+    modes: [OWNED],
     covers: 'a merge taken with checks red. Does not cover anyone who does not type it',
+    skipped: () => [
+      'not reported: there is no remote check rollup to read, and landing means landing',
+      "on your own integration branch. The gate is the host's own check command, run",
+      'locally. ADR 0021',
+    ],
     fix: 'Copy merge-pr.mjs to scripts/ and set REQUIRED to the check names a real run reports.',
     run() {
       const source = read('scripts/merge-pr.mjs')
@@ -182,7 +355,13 @@ const LAYERS = [
   {
     n: 2,
     name: 'The guard hook',
+    modes: [OWNED],
     covers: 'an agent merging its own PR. Does not cover a session that never loaded it, or a human at a terminal',
+    skipped: () => [
+      'not reported: merging is not yours to do in a repository you are a guest in, and',
+      'gate G below refuses `gh pr merge` along with every other outward write, by its',
+      'general rule rather than as a special case',
+    ],
     fix: 'Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup.',
     run() {
       const source = read('scripts/guard-merge.mjs')
@@ -191,22 +370,11 @@ const LAYERS = [
       // Present but unwired is the failure this whole script exists for, so it
       // reports as MISSING rather than PARTIAL. A script nothing invokes is not
       // a weaker layer than an absent one; it is the same layer, plus a file.
-      let wired = null
-      for (const file of ['.claude/settings.json', '.claude/settings.local.json']) {
-        const text = read(file)
-        if (text === null) continue
-        let parsed
-        try {
-          parsed = JSON.parse(text)
-        } catch {
-          return { status: MISSING, findings: [`${file} is not valid JSON, so no hook loads`] }
-        }
-        for (const entry of parsed?.hooks?.PreToolUse ?? []) {
-          const runs = (entry.hooks ?? []).some((h) => (h.command ?? '').includes('guard-merge'))
-          if (runs) wired = { file, entry }
-        }
+      const { wired, unparseable } = preToolUseHooks('guard-merge')
+      if (unparseable) {
+        return { status: MISSING, findings: [`${unparseable} is not valid JSON, so no hook loads`] }
       }
-      if (wired === null) {
+      if (wired.length === 0) {
         return {
           status: MISSING,
           findings: [
@@ -216,23 +384,7 @@ const LAYERS = [
         }
       }
 
-      const findings = []
-      const matcher = wired.entry.matcher ?? ''
-      // A PreToolUse matcher selects on tool NAME. A harness offering a second
-      // shell tool walks straight past a matcher naming one, which a real
-      // session proved by pushing to the default branch through one.
-      if (!matcher.includes('|')) {
-        findings.push(
-          `${wired.file} matches "${matcher}", which names one tool. A second shell tool` +
-            ' in the same harness is not guarded. Name them all, separated by |',
-        )
-      }
-      if ('if' in wired.entry) {
-        findings.push(
-          `${wired.file} narrows the matcher with an "if" clause, which uses permission-rule` +
-            ' syntax naming a single tool and reopens the hole the matcher just closed',
-        )
-      }
+      const findings = wiringProblems(wired[wired.length - 1])
       const guards = source.match(/^const DEFAULT_BRANCH = ['"]([^'"]+)['"]/m)?.[1]
       if (DEFAULT && guards && guards !== DEFAULT) {
         findings.push(
@@ -246,7 +398,12 @@ const LAYERS = [
   {
     n: 3,
     name: 'The provenance audit',
+    modes: [OWNED],
     covers: 'a commit that reached the default branch outside a PR. Does not cover prevention: it runs after the fact',
+    skipped: () => [
+      "not reported: a workflow is a change to somebody else's repository, and their CI",
+      'runs on the pull request after publish, unchanged. ADR 0021',
+    ],
     fix: 'Copy check-main-provenance.mjs to scripts/, set BASELINE to the commit that adds these scripts, and run it from a workflow on push to the default branch.',
     run() {
       const source = read('scripts/check-main-provenance.mjs')
@@ -289,37 +446,210 @@ const LAYERS = [
       return { status: findings.length > 0 ? PARTIAL : OK, findings }
     },
   },
+  {
+    // Lettered, not numbered 4. ADR 0029 makes this a different stack rather
+    // than one more rung of the one above: a different mode, and a repository
+    // that is not yours rather than a trunk that is.
+    n: 'G',
+    name: 'The write-boundary gate',
+    modes: [GUEST],
+    covers:
+      'an outward write from a repo that is not yours. Does not cover a process that never loaded it, a human at a terminal, or a write that arrives by some route other than git, gh or bd',
+    skipped: (mode) => {
+      const copied = read(GUEST_GATE) !== null
+      if (mode === OWNED) {
+        return [
+          `not reported: ${MACHINE_RECORD} records this repository as owned, so the factory`,
+          'may write outward and there is no boundary for a gate to hold. Every command it',
+          'refuses is the workflow here. ADR 0029',
+          ...(copied
+            ? [`but ${GUEST_GATE} exists anyway, in a repository recorded as owned. One of`,
+               'those two facts is wrong and the file is the likelier one']
+            : []),
+        ]
+      }
+      return [
+        'not reported: nobody has recorded a write boundary, so the layers above were',
+        'reported instead. If this repository is not yours, do not install those: record',
+        'the boundary and install this gate, and the four above stay off for good.',
+        ...(copied
+          ? [`Note that ${GUEST_GATE} is already here, which is what guest mode looks like`,
+             `with its record deleted. --install rewrites ${MACHINE_RECORD} without touching`,
+             'anything else']
+          : []),
+      ]
+    },
+    fix: 'Run `node <this skill>/assets/guard-guest-writes.mjs --install` from the repo root, then restart the harness: settings are read at startup.',
+    run() {
+      if (read(GUEST_GATE) === null) {
+        return {
+          status: MISSING,
+          findings: [
+            `${MACHINE_RECORD} records this repository as guest and ${GUEST_GATE} is absent,`,
+            "so nothing refuses a push, a pull request, or a comment on the host's tracker.",
+            'This is the state where the boundary is a paragraph and not a control',
+          ],
+        }
+      }
+
+      // Copied and unwired is MISSING here for the same reason it is on layer 2:
+      // a control nothing invokes is an instruction plus a file.
+      const { wired, unparseable } = preToolUseHooks('guard-guest-writes')
+      if (unparseable) {
+        return { status: MISSING, findings: [`${unparseable} is not valid JSON, so no hook loads`] }
+      }
+      if (wired.length === 0) {
+        return {
+          status: MISSING,
+          findings: [
+            `${GUEST_GATE} is here and no PreToolUse hook runs it, so nothing loads it.`,
+            '--install copies and wires in one step, so this is a half-done install or a',
+            'settings file that was edited afterwards',
+          ],
+        }
+      }
+
+      const findings = wiringProblems(wired[wired.length - 1])
+
+      // The boundary enforcing itself by breaking itself. Both halves of the
+      // gate's promise are checkable and neither is visible in a file listing.
+      const seen = visibleToTheHostRepo(['.factory', LOCAL_SETTINGS, REPO_SETTINGS])
+      if (seen === null) {
+        findings.push('note: `git` did not answer, so the "nothing tracked changed" half is unchecked')
+      } else {
+        const committed = seen.tracked.filter((p) => p.startsWith('.factory/') || p === LOCAL_SETTINGS)
+        if (committed.length > 0) {
+          findings.push(
+            `${committed.join(', ')} is tracked in this repository, so installing the gate` +
+              ' changed a repo you are a guest in. ADR 0021 keeps machine facts out of the tree',
+          )
+        }
+        if (seen.unignored.length > 0) {
+          findings.push(
+            `git status here shows ${seen.unignored.join(', ')}, so .git/info/exclude did not` +
+              " get the paths and the owner sees the factory's scratch state as their changes",
+          )
+        }
+        for (const { file } of wired) {
+          if (seen.tracked.includes(file)) {
+            findings.push(
+              `the gate is wired in ${file}, which is tracked here. --install writes` +
+                ` ${LOCAL_SETTINGS} precisely so that wiring it is not a change to somebody's repo`,
+            )
+          }
+        }
+      }
+
+      // Advisory, deliberately: the gate is correctly installed either way, and
+      // --install writes this placeholder itself, so counting it would make a
+      // clean install exit non-zero on its first run.
+      if (/^Backlog:\s*\(/m.test(BOUNDARY.record ?? '')) {
+        findings.push(
+          `note: the Backlog line in ${MACHINE_RECORD} is still the template's instruction` +
+            ' rather than a tool name, so nothing says where the factory\'s own issues live',
+        )
+      }
+
+      return { status: findings.some((f) => !f.startsWith('note:')) ? PARTIAL : OK, findings }
+    },
+  },
 ]
 
 console.log(`Enforcement layers in ${ROOT}`)
-console.log(
-  DEFAULT
-    ? `Default branch: ${DEFAULT}${BRANCH.inferred ? ' (inferred; `git remote set-head origin -a` settles it)' : ''}\n`
-    : 'Default branch: unknown, so the DEFAULT_BRANCH constants were not compared\n',
-)
+if (BOUNDARY.mode === UNRECORDED) {
+  console.log('Write boundary: NOT RECORDED')
+  console.log(`             ${BOUNDARY.why}, so nobody has said whether this factory may`)
+  console.log('             write outward. ADR 0021 has that asked out loud at initialisation, so')
+  console.log('             this repository skipped the question rather than answered it. That is a')
+  console.log('             finding and not an error: the layers below are reported as if owned.')
+} else {
+  console.log(`Write boundary: ${BOUNDARY.mode}, recorded in ${MACHINE_RECORD}`)
+}
+if (CHECKLIST === OWNED) {
+  console.log(
+    DEFAULT
+      ? `Default branch: ${DEFAULT}${BRANCH.inferred ? ' (inferred; `git remote set-head origin -a` settles it)' : ''}`
+      : 'Default branch: unknown, so the DEFAULT_BRANCH constants were not compared',
+  )
+}
+console.log('')
 
 let unmet = 0
+let reported = 0
 for (const layer of LAYERS) {
-  const { status, findings } = layer.run()
-  if (status !== OK) unmet += 1
+  const applies = layer.modes.includes(CHECKLIST)
+  const { status, findings } = applies ? layer.run() : { status: 'n/a', findings: layer.skipped(BOUNDARY.mode) }
+  if (applies) {
+    reported += 1
+    if (status !== OK) unmet += 1
+  }
   console.log(`[ ${status.padEnd(7)} ] ${layer.n}. ${layer.name}`)
   console.log(`             covers ${layer.covers}`)
   for (const finding of findings) console.log(`             ${finding}`)
   // Only an absent layer needs the install line. A PARTIAL one is already
   // installed and its findings say what is left, so repeating "copy the file"
-  // there would be the loudest and least useful thing on the screen.
+  // there would be the loudest and least useful thing on the screen. A layer
+  // the mode excludes needs it least of all: installing it is the mistake.
   if (status === MISSING) console.log(`             FIX: ${layer.fix}`)
   console.log('')
 }
 
+// The probe is the only way a session can tell a loaded gate from an inert one,
+// and this script cannot tell them apart either. Say so wherever it reports a
+// gate as installed, or "ok" gets read as "protected".
+const PROBE = [
+  'Wired is not loaded. Settings are read once at process start, so ask the gate',
+  'itself and put its answer beside this output:',
+  '',
+  `    node ${GUEST_GATE} --probe`,
+  '',
+  'Being refused is the answer you want.',
+]
+
+// A machine fact whichever way it comes out: ADR 0021 defines it as whether
+// *this* operator on *this* checkout may publish outward, which is not true of
+// anyone else who clones. So it never goes in a committed file, and the
+// AGENTS.md line the skill asks for names the backlog tool rather than this.
+const UNRECORDED_REMINDER = [
+  'Nobody has recorded the write boundary here. Record it before the loop starts.',
+  'It is a machine fact either way, about this operator on this checkout, so it is',
+  `never committed: one line in ${MACHINE_RECORD}, kept out of the tree through`,
+  '.git/info/exclude. `guard-guest-writes.mjs --install` writes it for guest mode.',
+]
+
 if (unmet === 0) {
-  console.log(`All ${LAYERS.length} layers are present and wired. Any note above is advisory.`)
+  console.log(
+    `Every layer that applies here is present and wired: ${reported} reported, ` +
+      `${LAYERS.length - reported} not applicable to this write boundary. Any note above is advisory.`,
+  )
+  if (CHECKLIST === GUEST) for (const line of ['', ...PROBE]) console.log(line)
+  if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.log(line)
   process.exit(0)
 }
 
-console.error(`${unmet} of ${LAYERS.length} layers are absent, unwired, or still unedited.`)
-console.error('Until they are, nothing here mechanically stops an agent landing code, and')
-console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
-console.error('assets/ directory, then run this again and paste both outputs into your first')
-console.error('status update, so the difference is on the record rather than assumed.')
+const subject =
+  reported === 1
+    ? 'The one layer that applies here is'
+    : unmet === 1
+      ? `One of the ${reported} layers that apply here is`
+      : `${unmet} of the ${reported} layers that apply here are`
+const until = unmet === 1 ? 'Until it is,' : 'Until they are,'
+
+console.error(`${subject} absent, unwired, or still unedited.`)
+if (CHECKLIST === GUEST) {
+  console.error(`${until} nothing refuses an outward write into a repository that is not`)
+  console.error('yours: a push, a pull request, a comment on their tracker, a `bd init` that')
+  console.error('commits nineteen files. Install the gate, restart the harness, then run the')
+  console.error('probe and paste both outputs into your first status update.')
+  // Only when there is something to probe. A remedy that cannot run is the
+  // thing ADR 0029 says gets a gate switched off, and `node` on an absent file
+  // fails in a way that reads as the gate being broken.
+  if (read(GUEST_GATE) !== null) for (const line of ['', ...PROBE]) console.error(line)
+} else {
+  console.error(`${until} nothing here mechanically stops an agent landing code, and`)
+  console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
+  console.error('assets/ directory, then run this again and paste both outputs into your first')
+  console.error('status update, so the difference is on the record rather than assumed.')
+  if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.error(line)
+}
 process.exit(1)
