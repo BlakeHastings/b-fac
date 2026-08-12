@@ -535,15 +535,26 @@ function judge(line, depth) {
 // Everything below runs only when the rule above did not fire, which is the
 // whole point: reaching this code *is* the finding.
 function probe() {
-  // npm re-invokes a script through a shell of its own, so the hook is shown
-  // `npm run <name>` and the file name it matches on is nowhere in that line.
-  // The probe would then run in a session where the guard is perfectly fine and
-  // report it absent, which is the one wrong answer that looks like a right one.
+  // A script runner re-invokes its script through a shell of its own, so the
+  // hook is shown `npm run <name>` and the file name it matches on is nowhere
+  // in that line. The probe would then run in a session where the guard is
+  // perfectly fine and report it absent, which is the one wrong answer that
+  // looks like a right one.
+  //
+  // One variable covers every runner, and that was measured rather than
+  // assumed: npm 11.12.1, pnpm 10.34.5, yarn 1.22.22 and yarn 4.18.0 all set
+  // `npm_lifecycle_event` on a `run`. Whatever else they set is set alongside
+  // it and never instead of it, so a second test buys nothing. #110, which also
+  // corrected this message for saying npm when it meant any of the four: the
+  // remedy still worked, but a reader on pnpm was being told the wrong thing
+  // about why they had been refused, and a guard's message is the whole of its
+  // interface at the moment someone is deciding whether to trust it.
   if (process.env.npm_lifecycle_event) {
-    console.error('Run this directly, not through npm:\n')
+    console.error('Run this directly, not through a package script:\n')
     console.error('  node scripts/guard-merge.mjs --probe\n')
-    console.error('npm hides the file name from the hook, so the probe cannot be refused, and')
-    console.error('it would report the guard absent in a session where it is loaded and fine.')
+    console.error('npm, pnpm and yarn all hide the file name from the hook, so the probe cannot')
+    console.error('be refused, and it would report the guard absent in a session where it is')
+    console.error('loaded and fine.')
     process.exit(1)
   }
 

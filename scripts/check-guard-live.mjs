@@ -41,15 +41,22 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
-// npm re-invokes this through a shell of its own, so the command the guard is
-// shown is `npm run ...` and the script name it matches on is nowhere in it.
-// The probe would then always run and always report inert, which is the one
-// wrong answer that looks like a correct one.
+// A script runner re-invokes this through a shell of its own, so the command
+// the guard is shown is `npm run ...` and the script name it matches on is
+// nowhere in it. The probe would then always run and always report inert, which
+// is the one wrong answer that looks like a correct one.
+//
+// npm is not the only one, which is why the message no longer says so. #110
+// measured npm 11.12.1, pnpm 10.34.5, yarn 1.22.22 and yarn 4.18.0 all setting
+// `npm_lifecycle_event` on a `run`, so the one variable covers all four and a
+// message naming only npm sends three of those readers looking in the wrong
+// place.
 if (process.env.npm_lifecycle_event) {
-  console.error('Run this directly, not through npm:\n')
+  console.error('Run this directly, not through a package script:\n')
   console.error('  node scripts/check-guard-live.mjs\n')
-  console.error('npm hides the script name from the hook, so the probe cannot be refused')
-  console.error('and would report "inert" in a session where the guard is perfectly fine.')
+  console.error('npm, pnpm and yarn all hide the script name from the hook, so the probe')
+  console.error('cannot be refused and would report "inert" in a session where the guard is')
+  console.error('perfectly fine.')
   process.exit(1)
 }
 
