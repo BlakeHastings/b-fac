@@ -118,12 +118,28 @@ const DENIED = [
   'time git config --global user.email agent@example.com',
   '! gh api graphql -f query=x',
   'for r in a b; do bd setup claude; done',
+  // #97. An assignment prefix binds a variable for the command that follows, so
+  // the command is what follows it. `GIT_TRACE=1 git push` is an agent
+  // debugging a push, which is the honest-but-mistaken case this gate exists
+  // for, and every line here was an outward write that walked straight through.
+  'GIT_TRACE=1 git push origin HEAD',
+  'GIT_TRACE=1 GIT_CURL_VERBOSE=1 git push',
+  'GIT_SSH_COMMAND="ssh -v" git push origin HEAD',
+  'GIT_SSH_COMMAND=ssh\\ -v git push origin HEAD',
+  'GH_TOKEN=x gh pr create --fill',
+  'EDITOR=vim git config --global user.email agent@example.com',
+  'FOO=1 bd setup claude',
+  'if true; then GIT_TRACE=1 git push origin HEAD; fi',
   // Each shell tool the hook is wired to can invoke the other one.
   'bash -c "git push origin HEAD"',
   'pwsh -Command "gh issue create --title x"',
   // The probe is refused on purpose: being refused is its answer.
   'node .factory/guard-guest-writes.mjs --probe',
   'node C:\\work\\repo\\.factory\\guard-guest-writes.mjs --probe',
+  // #97 again, and the reason it is filed as a defect in a control rather than
+  // a gap. A probe walked past reports the gate inert in a session where it is
+  // live, and a false "inert" arrives with the authority of a measurement.
+  'GH_TOKEN=x node .factory/guard-guest-writes.mjs --probe',
 ]
 
 const ALLOWED = [
@@ -226,10 +242,32 @@ const ALLOWED = [
   // word is not one of them.
   'mkdir -p docs/{process,architecture}',
   'echo "{ git push origin HEAD; }"',
+  // #97's other direction, and the expensive one here. Stripping an assignment
+  // puts a read in front of GH_READS, where it now has to be allowed on its
+  // merits rather than because the segment did not begin with `gh`.
+  'GIT_TRACE=1 gh issue view 42',
+  'GIT_TRACE=1 gh pr checks 42',
+  'GIT_PAGER=cat git status',
+  'GIT_TRACE=1 git push --dry-run origin HEAD',
+  'GIT_TRACE=1 git config --global --get user.email',
+  'FOO=1 bd init --stealth',
+  // An `=` in an argument is not an assignment prefix, and a rule that strips
+  // too eagerly turns an argument into a command.
+  'git commit -m "FOO=1"',
+  'bd comment 1 --body "GIT_TRACE=1 git push was denied"',
+  'cd C:\\build\\out=release',
+  // The name has to be a valid shell identifier. A shell reads `=x` as a
+  // command name and fails to find it, so stripping it would invent a command
+  // that never ran.
+  '=x git push origin HEAD',
   // Stripping a leading word can leave a segment with no tokens at all, and
   // every rule reads the first one. Without the filter this throws.
   'time',
   'time; git status',
+  // An assignment with no command after it runs nothing, and empties the
+  // segment the same way.
+  'GIT_TRACE=1',
+  'FOO=1 BAR=2',
 ]
 
 for (const command of DENIED) {
@@ -294,6 +332,11 @@ const OWNED_MODE_UNAFFECTED = [
   '{ git push origin HEAD; }',
   'if true; then gh pr create --fill; fi',
   'for b in a b; do git push origin $b; done',
+  // And #97's, for the same reason. Debugging a push with GIT_TRACE is ordinary
+  // work in a repository you own, and the gate that refuses it is not installed
+  // there.
+  'GIT_TRACE=1 git push origin HEAD',
+  'GH_TOKEN=x gh pr create --fill',
 ]
 
 for (const command of OWNED_MODE_UNAFFECTED) {

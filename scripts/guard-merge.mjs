@@ -31,10 +31,17 @@
 // section's accuracy, which is the part of the file worth the most.
 //
 // Shell *syntax* an ordinary command can contain is a different matter: it is
-// a closed set, and covering it is what issue #90 did. See LEADING_WORDS. The
-// `time -p` line above is the seam between the two, one flag past the reserved
-// word that is handled, and skipping it would mean keeping a table of someone
-// else's flags.
+// a closed set, and covering it is what issues #90 and #97 did: the reserved
+// words and grouping that introduce a command, and the `VAR=value` prefix that
+// binds a variable for one. See LEADING_WORDS and ASSIGNMENT. The `time -p`
+// line above is the seam between the two, one flag past the reserved word that
+// is handled, and skipping it would mean keeping a table of someone else's
+// flags.
+//
+// `env gh pr merge` staying open while `GH_TOKEN=x gh pr merge` closes is that
+// same line drawn once more, not an inconsistency: `env` is a program that runs
+// another program and the set of those has no edge, while an assignment prefix
+// is a shell form with a grammar.
 //
 // The permitted route is `node scripts/merge-pr.mjs <n>`. It does not match
 // anything below, and the `gh api` call it makes internally is a child process
@@ -69,6 +76,14 @@ function deny(reason) {
   )
   process.exit(0)
 }
+
+// BEGIN command reader
+//
+// Everything between this marker and END is the reader the guest gate in
+// `assets/guard-guest-writes.mjs` also carries, and the two have to answer the
+// same question the same way. ADR 0029 refuses a shared module and #93 holds
+// the duplication; `scripts/command-reader.test.mjs` runs both copies over one
+// corpus so a drift is a red test rather than a lucky reading.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` is handled separately, because ending the command is
@@ -248,9 +263,26 @@ function endOfHeredoc(line, from, delimiter) {
 // brace too.
 const LEADING_WORDS = new Set(['{', '!', 'then', 'else', 'elif', 'do', 'time'])
 
+// A variable binding stands in front of a command the same way, and it is the
+// same kind of thing: shell syntax with a grammar, not a program that launches
+// another program. Until #97 the segment presented a command named `GH_TOKEN=x`
+// and every rule looked straight past it, the liveness probe's included. So
+// `GH_TOKEN=x node scripts/check-guard-live.mjs` ran, reported the guard inert,
+// and did it in a session where the guard was live. A false "inert" is worse
+// than silence, because it arrives with the authority of a measurement.
+//
+// The name must be a valid shell identifier, which is what tells an assignment
+// from an argument that merely contains `=`. `--field key=value` and a Windows
+// path are not assignments; neither is `=x`, which a shell reads as a command
+// name and fails to find, so stripping it would invent a command that never
+// ran. Only a leading token is examined, so `git commit -m "FOO=1"` is untouched.
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+
 function withoutLeadingWords(tokens) {
   let at = 0
-  while (at < tokens.length && LEADING_WORDS.has(tokens[at])) at += 1
+  while (at < tokens.length && (LEADING_WORDS.has(tokens[at]) || ASSIGNMENT.test(tokens[at]))) {
+    at += 1
+  }
   return tokens.slice(at)
 }
 
@@ -260,10 +292,12 @@ function segmentsOf(line) {
   // operator after it would read as that argument's contents — including a
   // real chained merge. A quote with no partner is text, so read it that way.
   const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
-  // Stripping can empty a segment, since `time` on its own is a whole
-  // command, and every rule below reads the first token.
+  // Stripping can empty a segment, since `time` on its own is a whole command
+  // and so is `FOO=1`, and every rule below reads the first token.
   return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
 }
+
+// END command reader
 
 // `gh` takes its global flags before the subcommand and no positional argument
 // there, so skipping the flags lands on the subcommand path. Returns null when
