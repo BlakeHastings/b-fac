@@ -43,6 +43,22 @@ const DENIED = [
   'git push origin feature\ngh pr merge 7',
   'yes | gh pr merge 42',
   '(cd repo && gh pr merge 42)',
+  // #90. The line above passes without the fix, because the bracket lands on
+  // `42` rather than on the token a rule reads, which is exactly why nothing
+  // caught this. A `)` has to end a command with no `$(` open, as `(` does.
+  '(cd repo && gh pr merge)',
+  '(gh pr merge)',
+  'bash -c "(cd repo && gh pr merge)"',
+  // Grouping and the reserved words that introduce a command inside a compound
+  // one. Every one of these is shell syntax an agent writes while doing
+  // ordinary work, and every one of them merges the current branch's PR.
+  '{ gh pr merge; }',
+  'if true; then gh pr merge; fi',
+  'if gh pr checks 42; then gh pr merge 42; fi',
+  'if false; then echo no; else gh pr merge; fi',
+  'for pr in 1 2; do gh pr merge $pr; done',
+  '! gh pr merge 42',
+  'time gh pr merge',
   'echo "$(gh pr merge 42)"',
   'echo `gh pr merge 42`',
   // An unterminated quote is text, not an argument that swallows the rest of
@@ -99,6 +115,32 @@ const ALLOWED = [
   // scan it, or the nested case reintroduces exactly the bug above.
   'bash -c "echo gh pr merge 42"',
   'pwsh -Command "gh issue comment 58 --body \'gh pr merge is denied\'"',
+
+  // #90's other direction, and the expensive one. An unquoted `)` now ends a
+  // command, so every bracket that is ordinary text has to stay text.
+  'git commit -m "fix (again)"',
+  'git add "docs/notes (draft).md"',
+  'gh pr create --body "Denied: (cd repo && gh pr merge)"',
+  'gh issue comment 90 --body "| `(cd repo && gh pr merge)` | allowed |"',
+  // Windows paths carry brackets, and this hook runs on Windows. Unquoted, the
+  // line below is shell-invalid and the parse of it is nonsense either way,
+  // since `(` has split it since #58. The verdict is what has to stay allow.
+  'cd C:\\Program Files (x86)\\repo',
+  'pwsh -Command "ls \'C:\\Program Files (x86)\\Git\'"',
+  // A leading reserved word is matched as a whole token, so a brace inside a
+  // word is not one. The `gh api repos/{owner}/...` deny case above proves the
+  // same thing from the other side.
+  'mkdir -p docs/{process,architecture}',
+  'echo "{ gh pr merge; }"',
+  // The compound forms, with nothing in them to deny. The sanctioned path
+  // inside an `if` is the shape this change most needs not to break.
+  'if gh pr checks 42; then node scripts/merge-pr.mjs 42; fi',
+  'for f in docs/*.md; do git add "$f"; done',
+  '{ npm run check; }',
+  'time npm run check',
+  // Stripping a leading word can leave a segment with no tokens at all, and
+  // every rule reads the first one. Without the filter this throws.
+  'time',
 
   // The probe rule is held to the same standard as the merge rules: reading
   // the command, not the line. Talking about the probe is not running it.
