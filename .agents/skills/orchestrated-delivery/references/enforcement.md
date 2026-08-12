@@ -121,7 +121,8 @@ the check itself. What it does not cover:
   anything. **The middle state is invisible from inside**, so do not write a
   status update that treats it as observed: a live guard and an inert one read
   the same to you, to the agent, and to this check. Only a denial somebody
-  watched happen distinguishes them. The startup snapshot below is what makes
+  watched happen distinguishes them, which is a denial you can ask for: see
+  below. The startup snapshot below is what makes
   that middle state so easy to lose. It is not a coincidence that this bullet
   is about the guard: layer 2 is the only gate, and a gate is the only kind of
   layer whose silence is ambiguous. A check that never ran leaves a missing
@@ -139,6 +140,39 @@ the check itself. What it does not cover:
 
 Green here means the layers are present and wired. It does not mean anything was
 prevented.
+
+### Ask the guard whether it is loaded
+
+The middle state is invisible from inside, so stop inferring it and make the
+guard produce a denial you asked for:
+
+```bash
+node scripts/guard-merge.mjs --probe
+```
+
+**Being refused is the answer you want.** The guard denies that line by name, so
+the harness prints the guard's own message and the probe never runs. If the
+probe's output appears instead, nothing intercepted it: either no hook runs this
+file, or this process started before the one that does. The fix for the second
+is a restart, not another install, and the probe says so.
+
+Absence is the signal, and there is no artifact to misread. A heartbeat written
+by a `SessionStart` hook has the same bootstrapping property (no hooks, no
+heartbeat) but it leaves a file behind, and a file can be stale: read one from a
+previous process and a session with no hooks at all reports healthy.
+
+The probe and the rule are the same file, so no rename can leave a probe nothing
+refuses, and nothing has to be copied beside the guard for the answer to exist.
+`check-setup.mjs` prints this line under its report for the same reason it
+prints the guest gate's, because a green layer 2 and a refusal are two different
+claims and you want both. Ask after installing, after any change to hook
+settings, and when you take over a session.
+
+*Not through `npm run`.* npm re-invokes the script through a shell of its own,
+so the hook is shown `npm run <name>` and the file name it matches on is nowhere
+in that line. The probe would then run in a session where the guard is loaded
+and report it absent, which is the one wrong answer that looks like a right one.
+The guard's probe refuses to report at all when it sees npm around it.
 
 ## Wiring
 
@@ -192,7 +226,9 @@ guard that was never loaded produces exactly the same output as a guard with
 nothing to deny.
 
 So restart after any hook change before relying on it, and never read a
-non-denial as evidence about the guard. It says nothing either way.
+non-denial as evidence about the guard. It says nothing either way. The one
+exception is the probe, whose whole line was written to be denied, which is what
+makes its silence mean something.
 
 **That run also priced layer 0, by accident.** With the only preventive layer
 inert for two days and roughly fifteen agents dispatched, exactly one merged
@@ -320,14 +356,16 @@ publish-time statement below is what you have.
 
 ### Ask it whether it is loaded
 
-Same problem as layer 2, same answer, one file instead of two:
+Same problem as layer 2, and the same answer, in the gate for this mode:
 
 ```bash
 node .factory/guard-guest-writes.mjs --probe
 ```
 
 Being refused is the answer you want. If it prints, the gate is not in this
-process and the fix is a restart.
+process and the fix is a restart. This gate had the one-file probe first; layer
+2's guard has it now too, and until it did, a repository installing this skill
+had no way to ask its only preventive layer anything at all.
 
 `check-setup.mjs` reports this gate as **G** rather than as a fifth layer, for
 the same reason it has its own section here. It answers the two questions a

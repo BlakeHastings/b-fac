@@ -116,6 +116,12 @@ const GUEST_GATE = '.factory/guard-guest-writes.mjs'
 const LOCAL_SETTINGS = '.claude/settings.local.json'
 const REPO_SETTINGS = '.claude/settings.json'
 
+// SETUP: where layer 2's guard was copied to, if not `scripts/`. Both gates
+// answer `--probe`, so this is also the file the report tells you to ask, and
+// `guard-merge-asset.test.mjs` pins that: it reads this constant, builds the
+// line printed below, and asserts the shipped guard refuses it.
+const MERGE_GUARD = 'scripts/guard-merge.mjs'
+
 function writeBoundary() {
   const record = read(MACHINE_RECORD)
   if (record === null) return { mode: UNRECORDED, why: `${MACHINE_RECORD} does not exist` }
@@ -362,10 +368,10 @@ const LAYERS = [
       'gate G below refuses `gh pr merge` along with every other outward write, by its',
       'general rule rather than as a special case',
     ],
-    fix: 'Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup.',
+    fix: `Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup. Then \`node ${MERGE_GUARD} --probe\`, which the guard refuses when it is loaded.`,
     run() {
-      const source = read('scripts/guard-merge.mjs')
-      if (source === null) return { status: MISSING, findings: ['scripts/guard-merge.mjs is absent'] }
+      const source = read(MERGE_GUARD)
+      if (source === null) return { status: MISSING, findings: [`${MERGE_GUARD} is absent`] }
 
       // Present but unwired is the failure this whole script exists for, so it
       // reports as MISSING rather than PARTIAL. A script nothing invokes is not
@@ -597,11 +603,19 @@ for (const layer of LAYERS) {
 // The probe is the only way a session can tell a loaded gate from an inert one,
 // and this script cannot tell them apart either. Say so wherever it reports a
 // gate as installed, or "ok" gets read as "protected".
+//
+// Both modes have a gate and both gates now answer `--probe` as a mode of
+// themselves, so the only thing the boundary decides is which file to ask. This
+// block was guest-only for as long as it was true that the shipped merge guard
+// had no probe, which meant the owned stack could report every layer `ok` with
+// no way to ask the one that matters whether it had loaded. That was the exact
+// state the two lost days above were spent in.
+const PROBE_TARGET = CHECKLIST === GUEST ? GUEST_GATE : MERGE_GUARD
 const PROBE = [
   'Wired is not loaded. Settings are read once at process start, so ask the gate',
   'itself and put its answer beside this output:',
   '',
-  `    node ${GUEST_GATE} --probe`,
+  `    node ${PROBE_TARGET} --probe`,
   '',
   'Being refused is the answer you want.',
 ]
@@ -622,7 +636,7 @@ if (unmet === 0) {
     `Every layer that applies here is present and wired: ${reported} reported, ` +
       `${LAYERS.length - reported} not applicable to this write boundary. Any note above is advisory.`,
   )
-  if (CHECKLIST === GUEST) for (const line of ['', ...PROBE]) console.log(line)
+  for (const line of ['', ...PROBE]) console.log(line)
   if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.log(line)
   process.exit(0)
 }
@@ -641,15 +655,15 @@ if (CHECKLIST === GUEST) {
   console.error('yours: a push, a pull request, a comment on their tracker, a `bd init` that')
   console.error('commits nineteen files. Install the gate, restart the harness, then run the')
   console.error('probe and paste both outputs into your first status update.')
-  // Only when there is something to probe. A remedy that cannot run is the
-  // thing ADR 0029 says gets a gate switched off, and `node` on an absent file
-  // fails in a way that reads as the gate being broken.
-  if (read(GUEST_GATE) !== null) for (const line of ['', ...PROBE]) console.error(line)
 } else {
   console.error(`${until} nothing here mechanically stops an agent landing code, and`)
   console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
   console.error('assets/ directory, then run this again and paste both outputs into your first')
   console.error('status update, so the difference is on the record rather than assumed.')
-  if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.error(line)
 }
+// Only when there is something to probe. A remedy that cannot run is the thing
+// ADR 0029 says gets a gate switched off, and `node` on an absent file fails in
+// a way that reads as the gate being broken rather than absent.
+if (read(PROBE_TARGET) !== null) for (const line of ['', ...PROBE]) console.error(line)
+if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.error(line)
 process.exit(1)

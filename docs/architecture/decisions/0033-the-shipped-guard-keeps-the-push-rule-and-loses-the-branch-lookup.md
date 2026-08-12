@@ -1,6 +1,7 @@
 # 0033. The shipped guard keeps the push rule and loses the branch lookup
 
-Status: accepted
+Status: accepted, and amended by issue #104 in the last consequence, which is
+where this ADR said the probe was still missing.
 
 Issue #102, split out of #93. ADR 0001 is the decision this one is measured
 against, ADR 0029 the one it declines to reopen, ADR 0031 the mechanism that
@@ -127,12 +128,53 @@ are in it, on the side they belong.
 The third copy makes the duplication more expensive to argue for, and that
 argument belongs on #93.
 
-**The shipped guard still has no probe**, so an installing repository cannot
-observe whether it loaded — the exact state ADR 0027 was written about, and the
-one that cost this repository two days. `assets/` does not ship
-`check-guard-live.mjs` either, so there is not even the two-file version of the
-answer. Measured: running this repository's own guard corpus against the shipped
-asset, **no** allow case is denied and the only lines it lets through that
-`scripts/guard-merge.mjs` refuses are the four probe invocations. Filed as #104
-rather than fixed here, because a probe is a second decision about the asset's
-interface and this change already carries one.
+**The shipped guard had no probe when this was written**, so an installing
+repository could not observe whether it loaded. That is the exact state ADR 0027
+was written about, and the one that cost this repository two days. `assets/` does
+not ship `check-guard-live.mjs` either, so there was not even the two-file
+version of the answer. Measured: running this repository's own guard corpus
+against the shipped asset, **no** allow case was denied and the only lines it
+let through that `scripts/guard-merge.mjs` refuses were the four probe
+invocations. Filed as #104 rather than fixed here, because a probe is a second
+decision about the asset's interface and this change already carried one.
+
+**Amendment, #104: it has one, and it is ADR 0029's shape rather than ADR
+0027's.** `node scripts/guard-merge.mjs --probe` is refused by the guard itself,
+one file, so the probe and the rule cannot disagree about a filename. Copying
+`check-guard-live.mjs` into `assets/` was the other option and is refused for
+the reason ADR 0029 refuses a shared module: what a repository is handed has to
+be one file, because a two-file asset is a setup step that gets half done, and
+here the half that gets skipped turns the answer into a permanent, silent
+"inert".
+
+So the four lines measured above **stay allowed**, and that is the decision
+rather than a leftover. They name `check-guard-live.mjs`, which lives in this
+repository and does not ship; a rule matching a file name that never arrives in
+an installing repository would refuse a command nobody there can run while
+answering nothing about the guard. They are pinned as allow cases with that
+reasoning, so a later reading of this ADR's own measurement cannot turn them
+into a rule by mistake.
+
+**`check-setup.mjs` now depends on the asset in a second way**, and is pinned
+the same way. Layer 2 already grepped the guard for `const DEFAULT_BRANCH`; it
+now also tells the reader to run the probe, which is a path and a flag only that
+file answers to. `guard-merge-asset.test.mjs` reads both out of
+`check-setup.mjs`'s source, rebuilds the line it prints, and asserts the guard
+refuses it. Two files agreeing on a form with nothing holding them together is
+what #102 found and pinned once; doing it again unpinned would have been the
+same defect with a different constant.
+
+**The probe refuses to report when npm is in the way, and the guest gate's does
+not.** ADR 0027 recorded the trap: npm re-invokes a script through a shell of
+its own, so the hook is shown `npm run <name>`, the rule never sees the file
+name, and the probe runs and reports the guard absent in a session where it is
+loaded. An installing repository is the likeliest place for someone to wrap the
+line in a package script, so the guard this one ships carries the check.
+`guard-guest-writes.mjs` was left alone here rather than edited in passing, so
+the two now differ in a fourth way. It is a stated one, and it is a defect in
+the gate that lacks the check rather than in the one that has it.
+
+That block was guest-only before this, which meant the owned stack could report
+every layer `ok` and offer no way to ask the one gate in it whether it had
+loaded. It prints in both modes now, naming whichever gate the write boundary
+makes applicable.

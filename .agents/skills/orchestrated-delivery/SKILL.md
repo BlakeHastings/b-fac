@@ -339,6 +339,13 @@ placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch
 this repo does not have. Where only the instruction stood, one project skipped
 setup outright and 20 merges went through raw `gh pr merge`.
 
+**And wired is not loaded**, which no report can see. Hooks are read once at
+process start, so ask the guard itself after the restart:
+`node scripts/guard-merge.mjs --probe`. Being refused is the answer you want; if
+it prints, nothing intercepted it and the guard is not in this process. A gate
+that was never loaded is silent in exactly the way a gate with nothing to deny
+is silent, and one repository spent two days that way.
+
 | Asset | Goes to | Edit first |
 | --- | --- | --- |
 | `check-setup.mjs` | `scripts/`, and run it first | `LAYERS` paths, if they differ |
@@ -347,7 +354,7 @@ setup outright and 20 merges went through raw `gh pr merge`.
 | `pull_request_template.md` | `.github/` | Nothing |
 | `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
-| `guard-merge.mjs` | `scripts/` | `DEFAULT_BRANCH` if not `main` |
+| `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `.factory/` | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `.factory/` | Nothing |
