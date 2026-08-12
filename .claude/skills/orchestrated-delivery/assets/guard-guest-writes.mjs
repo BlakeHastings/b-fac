@@ -784,6 +784,37 @@ this process and the fix is another restart, not another install.`)
 }
 
 function probe() {
+  // A script runner re-invokes its script through a shell of its own, so the
+  // hook is shown `npm run <name>` and the file name `isLivenessProbe` matches
+  // on is nowhere in that line. The probe is therefore never refused, it runs in
+  // a session where the gate is loaded and holding, and it calls the write
+  // boundary unenforced. ADR 0027 built this probe because a gate's silence is
+  // ambiguous; a confident false "inert" is worse than the ambiguity, because
+  // the remedy it offers cannot fix a state that is not wrong, and in somebody
+  // else's repository the next move after "nothing is enforcing it" is to go
+  // looking for another route.
+  //
+  // One variable, and it is one because it was measured rather than listed. npm
+  // 11.12.1, pnpm 10.34.5, yarn 1.22.22 and yarn 4.18.0 all set
+  // `npm_lifecycle_event` on a `run`, so the four runners cost nothing extra.
+  // The markers they set beside it (`npm_execpath`, `npm_config_user_agent`,
+  // `npm_command`, `npm_node_execpath`) add nothing, and one of them subtracts:
+  // `pnpm exec node <this file> --probe` sets `npm_config_user_agent` and no
+  // `npm_lifecycle_event`, so matching that would refuse to report for the whole
+  // life of any pnpm-launched session while closing none of `sudo`, `env`,
+  // `nohup` or `npx`, which hide the file name the same way and leave no marker
+  // at all. Those stay where the rest of the programs that run programs are,
+  // under WHAT THIS DOES NOT COVER.
+  if (process.env.npm_lifecycle_event) {
+    console.error('Run this directly, not through a package script:\n')
+    console.error(`  node ${GUARD} --probe\n`)
+    console.error('npm, pnpm and yarn all hide the file name from the hook, so the gate cannot')
+    console.error('refuse this, and it would then call the write boundary unenforced in a session')
+    console.error('where it is holding. In a repository that is not yours, that is the answer')
+    console.error('that sends an agent looking for another way out.')
+    process.exit(1)
+  }
+
   console.error('The guest-mode gate is NOT loaded in this process.')
   console.error('')
   console.error('This probe exists in order to be refused. It ran, so nothing intercepted it:')

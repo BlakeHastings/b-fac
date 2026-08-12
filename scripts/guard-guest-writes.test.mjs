@@ -359,16 +359,49 @@ test('the gate refuses the probe form of its own path', () => {
   assert.equal(run(GATE, `node ${GATE} --probe`).denied, true, 'the gate does not refuse its probe')
 })
 
-test('the probe reports inert, loudly, when nothing intercepts it', () => {
-  let failed = null
+// `npm test` puts `npm_lifecycle_event` in this process's environment and every
+// child inherits it, so a probe run from here looks to itself exactly like one
+// an installer wrapped in a package script. That is the state the second test
+// below is about, and the first one has to be run outside it or it quietly
+// asserts nothing: #104 found the identical test in the merge guard's file
+// passing under `node --test` and failing under `npm test`.
+const withoutNpm = () => {
+  const env = { ...process.env }
+  for (const name of Object.keys(env)) if (name.startsWith('npm_')) delete env[name]
+  return env
+}
+
+const probe = (env) => {
   try {
-    execFileSync('node', [GATE, '--probe'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    execFileSync('node', [GATE, '--probe'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env })
+    return null
   } catch (error) {
-    failed = error
+    return error
   }
+}
+
+test('the probe reports inert, loudly, when nothing intercepts it', () => {
+  const failed = probe(withoutNpm())
   assert.notEqual(failed, null, 'the probe exited 0, so a session cannot tell inert from loaded')
   assert.equal(failed.status, 1)
   assert.match(failed.stderr, /NOT loaded/)
+})
+
+// The other direction, and the one #110 is about. A script runner re-invokes
+// through a shell of its own, so the hook is shown `npm run <name>`, the file
+// name is nowhere in it, and the probe runs where it should have been refused.
+// Reporting "not loaded" there is a confident wrong answer about a boundary in
+// somebody else's repository, so the probe says nothing about loaded or inert
+// and names the direct command instead. ADR 0027, and ADR 0033's amendment.
+test('the probe refuses to report at all when a package script is in the way', () => {
+  const failed = probe({ ...withoutNpm(), npm_lifecycle_event: 'probe' })
+  assert.notEqual(failed, null, 'a probe that cannot be refused must not report')
+  assert.equal(failed.status, 1)
+  assert.doesNotMatch(failed.stderr, /NOT loaded/, 'it answered a question it could not observe')
+  assert.match(failed.stderr, /not through a package script/)
+  // The remedy has to be the command that works, not a restart. A restart
+  // cannot fix a state that is not wrong.
+  assert.match(failed.stderr, /node .*guard-guest-writes\.mjs --probe/)
 })
 
 // --install is the half that decides whether any of the above is reachable, and
