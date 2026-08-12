@@ -132,7 +132,8 @@ demand rather than all at once:
 | `references/reviewing.md` — a PR is waiting |
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |
-| `references/github-backlog.md` — seeding or maintaining the issue graph |
+| `references/backlog-port.md` — the backlog is not GitHub's, or you are judging a tool that could be it |
+| `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
 | `references/first-run.md` — setting this up in a repo that has none of it yet |
 
 That table and the one in `SKILL.md` are both written by hand, so
