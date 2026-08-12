@@ -129,6 +129,7 @@ demand rather than all at once:
 | Read it when |
 | --- |
 | `references/briefing.md` — writing a brief or an issue |
+| `references/refinement.md` — work is too underdetermined to brief, or the owner wants a spec |
 | `references/reviewing.md` — a PR is waiting |
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |

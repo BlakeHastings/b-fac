@@ -16,7 +16,9 @@ instance of.
 ## Shape
 
 **Epics** carry prose context only: no scope bullets, no definition of done.
-They exist to group and to explain why a body of work exists.
+They exist to group and to explain why a body of work exists. **That makes an
+epic the place a spec goes**, with each turn of the argument appended as a
+comment rather than edited into the body: `references/refinement.md`.
 
 **Leaf issues** carry the full anatomy and are what agents get briefed from.
 Prose context, scope, a "watch out for" section, what is deliberately out of
