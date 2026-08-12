@@ -53,6 +53,52 @@ because the next person builds against it.
 
 Everything else in this skill is calibration.
 
+## Two questions before the loop
+
+Two independent axes, settled at initialisation. They correlate; they are not
+the same question, and all four combinations occur.
+
+**Write boundary: owned or guest.** May the factory write outward? *Owned* may
+create the repository, open issues, push, merge, configure CI, apply a ruleset.
+*Guest* may write the working tree and its own local store, and nothing else.
+Reading external systems is normal — pulling a ticket in is the usual case — and
+every outward write waits for **one explicit publish step** the owner asks for.
+Guest is a boundary rather than a temperament, which is the point: "no external
+writes happened" is a claim something can check afterwards, and "the agent was
+careful" never was.
+
+**Convention authority: ours or theirs.** Whose patterns govern? **Conform where
+the host repo has a convention, fall back to ours where it does not.** Absence
+is not refusal: a repo with no decision-record directory has not decided against
+writing decisions down. Adopting their conventions changes **where the record
+lives, never whether there is one** — the three lenses still apply to work the
+factory does in a repo with no review discipline of its own.
+
+What proves the axes separate is **an existing side project you fully control:
+owned, and mostly theirs**, because it already has habits worth keeping. A
+one-axis model gets that case wrong.
+
+**Ask both questions out loud at initialisation, and confirm even when you think
+you know.** The asymmetry is the reason: a wrong guess toward guest costs a
+question, and a wrong guess toward owned opens issues on someone's real tracker.
+**Never infer the write boundary from a git remote.** A work repo is on GitHub
+too. A remote tells you the factory *can* write there, which was never the
+question; whether it *may* is a fact about the developer's authority, and no
+amount of repository inspection contains it. That is an Escalation question, not
+a derivation.
+
+Record both answers so neither is re-asked nor silently assumed, split by who
+they are about. **Repo facts** — where the backlog lives, which conventions won,
+the command that runs the checks — are true for everyone who clones it, so they
+are committable in owned mode. **Machine facts** — whether *this* operator, on
+*this* checkout, may publish outward — are never committed, and stay out of the
+tree through `.git/info/exclude` rather than `.gitignore`: editing a tracked
+ignore file to hide your own scratch state is itself a change to a repo you are
+a guest in.
+
+`references/first-run.md` walks the owned-and-ours corner and says what moves in
+the other three.
+
 ## The loop
 
 1. Pick work that unblocks the most. Prefer finishing a journey to starting a
@@ -242,6 +288,10 @@ incrementally.
 
 ## Setting this up in a new repo
 
+Everything below is the owned-and-ours corner: a repo you may write to that has
+no conventions to defer to. In any other corner, install what the host repo
+lacks and adopt what it has, and put nothing outward until the publish step.
+
 Discovery first, if anything is derived from something outside the repo: measure
 it, commit the measurement, then derive from it. Never let an agent eyeball a
 source. Doing this yourself is one of the few times you should touch the code.
@@ -286,7 +336,7 @@ in the order its commits show rather than the order listed here.
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph |
-| `references/first-run.md` | Setting this up in a repo that has none of it yet |
+| `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 
 ## What the loop is worth
 

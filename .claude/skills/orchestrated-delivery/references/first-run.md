@@ -9,6 +9,12 @@ Read it for the ordering and for what went wrong. How to work an issue once the
 loop is running is in `assets/working-an-issue.md`, and what each enforcement
 layer is worth is in `references/enforcement.md`. Neither is repeated here.
 
+**This is the owned-and-ours corner of the two axes in `SKILL.md`**, and it was
+that corner by construction: the repo was minutes old, so the factory could
+write anywhere and there was nothing to defer to. "When the repo is not yours"
+at the end says what moves in the other three, and it is a set of substitutions
+into this sequence rather than a second sequence.
+
 ## What it took
 
 Empty repo at 10:35, seeded backlog at 11:09, first agent pull request three
@@ -153,3 +159,75 @@ Corrected from the above rather than transcribed from it.
 
 Step 2 is the one to insist on, because it is the one this repo skipped and paid
 for twice.
+
+## When the repo is not yours
+
+Two things above were free and usually are not: the factory could write outward,
+and it had nobody's habits to respect. Change either and the sequence still
+holds, with substitutions.
+
+### Read the conventions. Do not detect them.
+
+This is a reading task an agent does once, at initialisation, and reports. The
+inputs are the last fifty commit subjects, the last twenty remote branch names,
+the most recently merged pull request, `CONTRIBUTING.md`, and whatever the CI
+workflow actually invokes. Read the artifacts, not the documents describing
+them, because the documents are the half that goes stale.
+
+**Where the signal is ambiguous, ask instead of guessing.** `docs/adr/`,
+`docs/decisions/` and `doc/arch/` are one convention wearing three names, and
+finding none of them is not evidence the project rejects the idea — the default
+inclination to write decisions down survives, and only its shape and location
+are up for negotiation. A detector that guesses wrong is worse than a question
+asked once, because the guess is invisible afterwards.
+
+| What setup installs | If the repo already has one | If it has none |
+| --- | --- | --- |
+| Decision records | Theirs: their directory, their numbering, their template, even where you would have chosen otherwise | `docs/architecture/decisions/`, ours |
+| The two process docs | Do not install over a contribution guide. Theirs is the contract | Install from `assets/` |
+| PR template | Fill theirs in. Never replace it | Install `pull_request_template.md` |
+| Branch naming | Theirs, copied from real branch names | `<area>/<number>-<slug>` |
+| Commit style | Theirs, copied from real subject lines | Why, not what |
+| Check entry point | Whatever their CI invokes, run the same way locally | One command, and CI is a thin wrapper on it |
+| Enforcement layer | None of it. A ruleset, a required check and a merge wrapper are changes to their repository | ADR 0001's arithmetic, layer by layer |
+| Backlog | Their tracker, read-only until publish. The factory's working issues stay in its local store | Seed it |
+
+**Branch naming and commit style are the two that actually bite.** They are
+visible in every pull request the owner has to show a colleague, and getting
+them wrong is the whole difference between a change that looks native and one
+that looks like it came out of a machine. Everything else in that table is
+recoverable in review; these two are read at a glance by people who were not
+asked.
+
+**Adopting their conventions never deletes a process.** If the repo has no
+review discipline, the three lenses still apply to what the factory produces.
+What moves is where the record lives, not whether one exists. Dropping a process
+because the host lacks it is how a guest becomes a worse factory rather than a
+politer one.
+
+### What guest mode gives up
+
+Until the publish step there is no pull request, so there is nothing
+forge-shaped to hang a review on, and the setup sequence above loses its last
+three steps entirely — no backlog seeded outward, no ruleset, no CI.
+
+- **The review record goes to the local store**, one per unit of work, in the
+  three-lens shape, and is transcribed into the pull request body at publish.
+  Written at the time, not reconstructed at the end.
+- **The gate is the host's own check entry point, run locally**, before work
+  lands on your integration branch. That reproduces their steps by construction
+  and never their environment, which is a real limit and worth saying out loud
+  rather than discovering on the pull request.
+- **"Landing" means landing on your own integration branch.** The gate is
+  protecting your review time rather than a trunk other people depend on, so a
+  lighter gate here is the correct weight and not a compromise. The
+  un-bypassable merge gate argument belongs to owned mode.
+- **Reads are free and writes wait.** Pulling a ticket in is the normal case.
+  The comment you want to leave on it is an outward write, and it waits with
+  everything else for the one step the owner asks for.
+
+The boundary is worth stating in the boring, checkable form at publish time: no
+branch pushed, no issue opened, no comment posted, nothing outside this machine
+touched. If you cannot say that sentence, say precisely what you did instead.
+That is the whole reason guest is defined as a boundary rather than as a list of
+features left switched off.
