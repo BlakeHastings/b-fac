@@ -36,6 +36,12 @@ pull request.** `scripts/check-version-bump.mjs` fails when a branch changes
 forward. `docs/process/releasing.md` is the human half: which digit, and how to
 cut the tag afterwards with `claude plugin tag`.
 
+*Half of that last sentence no longer holds. The bump rule above is unchanged
+and has never once failed. The tag-per-merge rule it pointed at did fail, three
+times in one hour, and **ADR 0017 replaced it**: a tag now marks a version
+somebody may need to name, not every merge. Read 0017 before following the tag
+half of `releasing.md` from here.*
+
 **The comparison is against the default branch, not against `HEAD~1`.** Which
 files the branch touched is `git diff --name-only <merge-base>...HEAD`; what
 version is already published is `git show origin/main:plugin.json`. Those are

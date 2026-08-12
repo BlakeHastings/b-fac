@@ -26,6 +26,12 @@
 // branch". So it reads mergeStateStatus alongside the rollup, and a stale
 // branch now gets a refusal that names the fix instead of a raw 405.
 //
+// IT ALSO SAYS WHAT SHIPPED
+// A merge that moves plugin.json's version has published a new plugin to
+// everyone who runs `claude plugin update`, and until now nothing said so at
+// the moment it happened. See WHAT JUST SHIPPED below and ADR 0017. It creates
+// no tag and writes no ref; it reads the base branch and prints one line.
+//
 //   node scripts/merge-pr.mjs 42
 import { execFileSync } from 'node:child_process'
 
@@ -229,6 +235,40 @@ if (pr.mergeStateStatus === 'UNKNOWN') {
   console.warn('Proceeding on the check rollup alone.')
 }
 
+// WHAT JUST SHIPPED
+// Three payload versions reached `main` and nothing said so at the time (#52).
+// The version in plugin.json is the entire publishing mechanism here — `claude
+// plugin update` compares it and does nothing when it has not moved — so a
+// merge that moves it has released something, and this is the only moment
+// anyone is watching. ADR 0017 removed the per-merge tag that used to carry
+// that announcement; this replaces the announcement rather than the tag.
+//
+// Read-only. No ref is created and nothing is pushed. It reads the base branch
+// twice, once here and once after the merge, because the difference between
+// those two answers is exactly "did this merge release anything".
+const MANIFEST = '.claude-plugin/plugin.json'
+
+function shippedVersion(ref) {
+  try {
+    // Raw media type rather than the default base64 envelope: the answer is a
+    // small JSON file and decoding it twice buys nothing.
+    return JSON.parse(
+      gh([
+        'api',
+        '-H',
+        'Accept: application/vnd.github.raw',
+        `repos/{owner}/{repo}/contents/${MANIFEST}?ref=${ref}`,
+      ]),
+    ).version
+  } catch {
+    // A merge that succeeded must never be reported as failed because this
+    // could not be assembled. The caller says what it does not know instead.
+    return null
+  }
+}
+
+const versionBefore = shippedVersion(pr.baseRefName)
+
 console.log(`All ${REQUIRED.length} required check(s) green. Squash merging...`)
 
 try {
@@ -263,4 +303,15 @@ try {
   console.log(`Merged into ${pr.baseRefName} and deleted branch ${pr.headRefName}.`)
 } catch {
   console.log(`Merged. Branch ${pr.headRefName} was already gone or could not be deleted.`)
+}
+
+const versionAfter = shippedVersion(pr.baseRefName)
+
+if (versionBefore === null || versionAfter === null) {
+  console.log(`\nCould not read ${MANIFEST} on ${pr.baseRefName}, so this cannot say whether the`)
+  console.log('merge moved the shipped version. The merge itself succeeded.')
+} else if (versionAfter !== versionBefore) {
+  console.log(`\nReleased: ${pr.baseRefName} now ships ${versionAfter}, was ${versionBefore}.`)
+  console.log('Installers get it on their next `claude plugin update`. That is the release,')
+  console.log('and no tag is owed for it — docs/process/releasing.md says when one is.')
 }
