@@ -228,6 +228,75 @@ Match on the command's **own arguments**, stopping at the next link in a chain,
 rather than scanning the whole line. That single mistake is what read a commit
 message mentioning `main` as a push to `main`.
 
+## The other gate: guest mode's write boundary
+
+Everything above is owned mode, where the thing being protected is a trunk other
+work depends on. Guest mode protects something else — a repository that is not
+yours — and it gets its own gate, on its own numbering, because it is a
+different stack rather than a fifth layer of this one.
+
+`assets/guard-guest-writes.mjs` denies, before the command runs: a push to a
+remote, every `gh` verb that is not a read, a `gh api` call carrying a write
+method or a payload, a `git config --global` or `--system`, and the two beads
+commands that write tracked files into a host repo. Reads are unrestricted,
+because pulling the host's ticket in is the normal case.
+
+```bash
+node <this skill>/assets/guard-guest-writes.mjs --install
+```
+
+*Does not cover:* any process the harness did not load it into, a human at a
+terminal, and any outward write that does not arrive through `git`, `gh` or
+`bd` — `curl`, `glab`, `npm publish`, an editor's own forge integration.
+
+**The gap and the design are the same sentence here.** The one thing this gate
+refuses is the one step guest mode reserves for the owner, and no hook of ours
+runs at the owner's terminal. Publish is deliberate, human, and outside the
+agent session, so there is nothing for the gate to add to it.
+
+### Where it lives, which is the harder half
+
+The wiring block above says `.claude/settings.json`, and in a repository you are
+a guest in that file is somebody else's. So the gate installs into
+**`.claude/settings.local.json`**, which is untracked by convention, and copies
+itself to **`.factory/`** beside the machine record, with both paths appended to
+`.git/info/exclude` rather than to `.gitignore`. Afterwards
+`git status --porcelain -uall` is exactly what it was before. Run that yourself
+rather than believing it.
+
+**Not the operator's home directory.** A user-level hook would follow them into
+every other repository on the machine, including owned ones, where everything it
+refuses is a false positive by construction. Installing something under somebody
+else's `~` is also theirs to do, not the factory's.
+
+That constraint is what actually limits portability, rather than hooks being
+rare. Checked in August 2026: Claude Code, Copilot CLI, Codex CLI, Gemini CLI
+and opencode **all** have a pre-execution surface that can refuse a command.
+Only Claude Code and Copilot CLI document an untracked repository-level file to
+put one in, and Copilot documents reading Claude Code's. On the other three,
+wiring the gate means editing a tracked file, which is the boundary breaking
+itself to enforce itself — so there the boundary stays a declaration, and the
+publish-time statement below is what you have.
+
+### Ask it whether it is loaded
+
+Same problem as layer 2, same answer, one file instead of two:
+
+```bash
+node .factory/guard-guest-writes.mjs --probe
+```
+
+Being refused is the answer you want. If it prints, the gate is not in this
+process and the fix is a restart.
+
+### And say the boring sentence at publish
+
+The gate makes the boundary refusable inside an agent session. It does not make
+it *audited*, and the two are different claims. At publish, state it plainly:
+no branch pushed, no item opened on the host's tracker, no comment posted,
+nothing outside this machine touched. If you cannot say that sentence, say
+precisely what you did instead.
+
 ## The provenance baseline
 
 Pin a baseline commit: the one that first made the PR-only rule a control rather

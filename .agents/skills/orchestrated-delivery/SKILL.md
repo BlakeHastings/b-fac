@@ -65,7 +65,11 @@ Reading external systems is normal — pulling a ticket in is the usual case —
 every outward write waits for **one explicit publish step** the owner asks for.
 Guest is a boundary rather than a temperament, which is the point: "no external
 writes happened" is a claim something can check afterwards, and "the agent was
-careful" never was.
+careful" never was. **Install the thing that checks it before you do anything
+else** — `assets/guard-guest-writes.mjs --install` refuses a push, a non-read
+`gh` verb, a `gh api` write and the beads commands that write tracked files,
+and it installs into untracked local files so that saying it changed nothing is
+true. `references/enforcement.md`, and `references/first-run.md` for the order.
 
 **Convention authority: ours or theirs.** Whose patterns govern? **Conform where
 the host repo has a convention, fall back to ours where it does not.** Absence
@@ -331,6 +335,7 @@ setup outright and 20 merges went through raw `gh pr merge`.
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
 | `guard-merge.mjs` | `scripts/` | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
+| `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `.factory/` | Nothing |
 
 `references/first-run.md` walks this whole sequence as one repo actually ran it,
 in the order its commits show rather than the order listed here.
