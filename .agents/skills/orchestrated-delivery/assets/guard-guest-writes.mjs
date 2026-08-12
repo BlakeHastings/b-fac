@@ -136,10 +136,11 @@ function deny(reason) {
 
 // BEGIN command reader
 //
-// Everything between this marker and END is the reader `scripts/guard-merge.mjs`
-// also carries, and the two have to answer the same question the same way. ADR
-// 0029 refuses a shared module and #93 holds the duplication;
-// `scripts/command-reader.test.mjs` runs both copies over one corpus so a drift
+// Everything between this marker and END is one reader carried in three files:
+// this one, `assets/guard-merge.mjs` beside it, and the skill repository's own
+// `scripts/guard-merge.mjs`. All three have to answer the same question the same
+// way. ADR 0029 refuses a shared module and #93 holds the duplication;
+// `scripts/command-reader.test.mjs` runs every copy over one corpus so a drift
 // is a red test rather than a lucky reading.
 
 // Characters that end one command and begin another when they are not inside
