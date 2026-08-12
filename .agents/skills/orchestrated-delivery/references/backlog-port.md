@@ -25,11 +25,12 @@ the table can be re-derived instead of remembered.
 | --- | --- | --- |
 | `create` | Epics carrying prose context, leaf items carrying the full anatomy, and everything filed mid-flight by you or by an agent. Must hand back a stable id immediately, because seeding creates every parent before the children that name it | `github-backlog.md` (shape, seeding), `briefing.md`, the loop's step 8 |
 | `read` | One item in full, by id. This is the first line of every brief's reading order, so it is the verb an implementation agent uses most | `briefing.md`'s annotated brief |
-| `list` | Open items, filtered by label, and **not truncated**. `Next: nothing` is paid for by listing every open item and saying what each waits on, and a list that silently stops at thirty makes that claim false while looking complete | `SKILL.md` "Before you stop", `github-backlog.md` housekeeping |
+| `list` | Open items, filtered by label, and **not truncated**. `Next: nothing` is paid for by listing every open item and saying what each waits on, and a list that silently stops at thirty makes that claim false while looking complete. When the question is what to dispatch, the list is `block`'s and not this one | `SKILL.md` "Before you stop", `github-backlog.md` housekeeping |
 | `comment` | The review record, posted before merging, in the three headings plus a verdict | `reviewing.md`, `assets/review.md` |
 | `close` | With a pointer to whatever supersedes it. Deduplicating keeps the better framing and closes the other *into* it, which is a state change and a cross-reference in one move | `github-backlog.md` housekeeping, `briefing.md` |
 | `link` | A real parent/child edge, so the graph is something you can read. Not a label convention | `github-backlog.md` |
-| `label` | One per area, plus epic, unblocks-other-work, and **why an item cannot be started yet**, of which waiting-on-the-owner is one reason. The loop's two report lines are both this verb filtering the list: escalation is what a filtered list shows at a glance, and dispatch is the same list read negatively | `SKILL.md` escalation and its `Next:` line, `github-backlog.md`, below |
+| `block` | A real dependency edge, **and the list that computes readiness from it**. "Behind another item" is the one undispatchable reason that decays, and the edge is what stops it decaying. Read backwards, the same edge is what an item unblocks | `github-backlog.md`, `beads-backlog.md`, below |
+| `label` | One per area, plus epic, plus the two undispatchable reasons no edge covers: waiting-on-the-owner and no-spec-yet. Escalation is what this verb shows at a glance, filtering the list for the first of those. Dispatch is that list read negatively **and** `block`'s ready list, because two of the three reasons live here and one does not | `SKILL.md` escalation and its `Next:` line, `github-backlog.md`, below |
 
 Exactly one mutation of an existing body appears anywhere: adopting an orphan
 adds a `Parent: #N` line beside the real edge. It rides with `link` rather than
@@ -37,9 +38,9 @@ earning an `edit` verb of its own.
 
 ## "Cannot be started yet" has to be in the list, not only in the body
 
-Area, epic and unblocks-other-work all answer *what kind of work is this*. None
-of them answers **can this be dispatched right now**, and that is the question
-the loop asks the list every time it picks work.
+Area and epic answer *what kind of work is this*. Neither answers **can this be
+dispatched right now**, and that is the question the loop asks the list every
+time it picks work.
 
 This was found by triaging a backlog for dispatch rather than by reading the
 skill. Two open items each ended with an explicit "do not build this yet" and
@@ -68,22 +69,76 @@ A blocker is cleared by a merge, and nothing about a merge re-reads a mark on
 another item. Two consequences, and an implementation that skips either is
 keeping a lie in its backlog and parking real work behind it:
 
-1. **The blocker is named by id**, in a comment or a real edge. An item that
-   cannot say what it is behind is not blocked, it is unrefined, and the mark is
-   hiding that.
+1. **The blocker is named by id.** An item that cannot say what it is behind is
+   not blocked, it is unrefined, and the mark is hiding that.
 2. **Clearing it belongs to the merge that unblocks it**, not to a sweep
    somebody remembers to run.
 
-A store that computes this from its dependency graph gets both for free, and
-`beads-backlog.md` is one. A store where it is a label gets neither, and
-`github-backlog.md` pays for them by hand and says so.
+**So that one reason is an edge, and `block` is the eighth verb.** A dependency
+edge gets both consequences structurally rather than by habit: an edge cannot be
+nameless, so (1) is not a rule anybody can break, and closing the blocker clears
+it with nothing done to either item, so (2) has nobody to remember it. Both
+implementations already hold the edge (beads always has, GitHub does from `gh`
+2.94.0), so a port that said `label` here was a port disagreeing with both of
+its own instances, which is the drift this document exists to prevent.
 
-**Whether the edge itself becomes an eighth verb is open.** GitHub now holds
-dependency edges natively and beads always has, so this is a live question in
-both implementations at once rather than a GitHub detail, and it is the same
-question the `list-ready` row below answers with "no computed ready state". The
-port still says `label` because a label convention needs no particular client
-and no particular tracker. A decision to revisit, not an oversight.
+**The counter-argument is real, and what beats it is narrower than it looks.** A
+label convention needs no particular client and no particular tracker, so an
+eighth verb raises the bar a candidate has to clear. What answers it is that the
+bar was already higher: "The requirement that disqualifies candidates" below
+turns a tool away for having no parent/child edge, and git-bug was turned away
+on exactly that. A store with a real parent edge and no dependency edge is a
+narrow class, and neither implementation here is in it. `block` spends almost
+nothing in candidate-space that `link` had not already spent.
+
+**What it does cost, unminimised.** The port is eight verbs, so every document
+that said seven says eight. Writing the edge on GitHub needs a client new enough
+to have the flag, where a label needed nothing. And the port now asks for the
+computed ready state the `list-ready` row below explicitly declined, which is
+this document conceding a point it had argued.
+
+## Name the command the loop runs, not the field the store holds
+
+This is the half that goes wrong, and it goes wrong the same way in both
+implementations. Blockedness is computed *beside* the stored state rather than
+being part of it, so the default list shows a blocked item as ordinary open work
+and the raw field answers a different question than the one the loop asked:
+
+- `bd list` prints a blocked item as `○ open`, identical to ready work, and
+  `bd list --status blocked` returns nothing. `bd ready`'s own legend prints
+  `● blocked` as a status, which is what makes that the natural wrong guess.
+- `gh issue list` shows a blocked issue with no marker of any kind. `blockedBy`
+  in `--json` and the `blocked-by:` line in `gh issue view` both list blockers
+  that are **already closed**, and the view line prints no state at all.
+
+So the port asks for a **ready list**, meaning a command that omits items with an
+*open* blocker. `bd ready` and `gh issue list --search "is:open -is:blocked"`
+are that command. `bd list` and `gh issue list` are not, and neither is reading
+the edge field yourself unless you filter it on each blocker's state. A store
+that holds edges and cannot list by them has handed the loop the data instead of
+the answer, and that is worth knowing before you call it an implementation.
+
+## Epic is whatever the store already spells it as
+
+GitHub gained first-class issue types in the same release as the edges, and the
+port does not adopt them. **A type is organisation-level configuration and a
+label is not**, so adopting one makes seeding depend on a setting outside the
+repository, which in guest mode the operator certainly does not control. That
+alone is a cost against a benefit. What settles it is the shape of the two
+failures, measured on a user-owned repository with no types configured: `gh
+issue edit <n> --type Epic` fails with `available types:` and nothing after it,
+while `gh issue list --type Epic` returns an empty list and **exit 0**. Seeding
+breaks loudly on absent configuration and reading breaks silently, and reading
+is what the loop does every turn. A filter that confidently returns nothing is
+the same defect as the list that silently stops at thirty, wearing a flag
+instead of a default.
+
+beads, meanwhile, already carries epic as a type (`bd create -t epic`), because
+it is free there. So the port asks only that **"this is an epic" be visible in
+the list without opening the item**, and lets each store use whatever it gives
+away. That is ADR 0022's adopt-rather-than-impose applied inside the port, and
+it is why the two implementations can spell one concept differently without
+either of them drifting.
 
 ## What the port deliberately does not need
 
@@ -105,12 +160,12 @@ disagreements are the interesting part.
 
 | Theirs | Here |
 | --- | --- |
-| `list-ready` | `list` plus `link`, read by eye. This loop has no computed ready state: "pick work that unblocks the most" is the orchestrator's judgment over the graph, and "unblocks other work" is a label. A tool that computes readiness would give the loop something it currently does by hand |
+| `list-ready` | **`block`'s read half**, and the row the decision above overturned. This used to say the loop had no computed ready state and read the graph by eye; both implementations turned out to have one, so the loop reads it. What is still judgment is "pick work that unblocks the most", because neither store ranks its ready list by how much each item unblocks |
 | `claim` | **Not used.** Work is assigned by dispatching an agent with a brief, and the exclusion that matters is the worktree, not a field on the item. Claiming starts to matter with two orchestrators against one backlog, which is not a shape this skill describes |
 | `comment` | The same verb |
 | `close` | The same verb, plus the pointer that makes a duplicate close *into* its survivor |
 | `link-pr` | Above the ceiling (below). GitHub does it from `Closes #N` in a pull request body, and in guest mode there is no pull request at all until publish |
-| `dep-add` | `link`, and the load-bearing one |
+| `dep-add` | `block`, and the load-bearing one. Here it is two verbs rather than one, because `link` is a second edge answering a different question: the tree is read for epics, orphans and collision batching, the dependency for dispatch |
 | *(absent there)* | **`create`**, the largest verb here and in none of the six. The six describe maintaining a backlog that already exists. This loop seeds one in a single generated pass and then files against it all day |
 
 **How much to trust that.** Convergence across five tools is suggestive and not
@@ -124,7 +179,7 @@ better bet than one that matched exactly by luck.
 
 ## The requirement that disqualifies candidates
 
-**A real dependency edge.** A label convention does not give you a tree you can
+**A real parent edge.** A label convention does not give you a tree you can
 read, and closing an epic when its children are done, adopting an orphan, and
 batching by collision surface all read that tree.
 
@@ -134,6 +189,14 @@ worktree of a clone with no commit and no merge. It was disqualified partly
 because its operation types have no notion of a parent at all, so the graph would
 have had to live in a metadata bag. Ask a candidate for the edge before you ask
 it for anything else.
+
+**A real dependency edge, and a list computed from it.** Since `block` joined
+the verbs this disqualifies too, and it is the cheaper half of the same
+question: a store that already models a parent edge almost always models this
+one. What is worth asking separately is the second clause. Holding the edge is
+not enough, because the loop's question is which items have no *open* blocker,
+and a store that can only hand back the edges leaves the loop computing that
+itself every turn, which is the failure the section above is about.
 
 **The provider pattern already exists, so do not invent one.** beads models gates
 on an item with types `human`, `timer`, `bead`, `gh:run` and `gh:pr`. A gate is a

@@ -2,7 +2,7 @@
 
 **The other implementation of the backlog port, and the one guest mode uses.**
 `references/backlog-port.md` says what the loop needs from any task store;
-`references/github-backlog.md` is the same seven verbs in GitHub's nouns. Read
+`references/github-backlog.md` is the same eight verbs in GitHub's nouns. Read
 this when the factory is running on a repo that is not yours, where the host's
 tracker is read-only and the loop's own items have to live somewhere on your
 machine.
@@ -55,16 +55,17 @@ generates a mirror from that directory. `--skip-agents` skips all of it;
 `bd metrics off` turns off the anonymous command telemetry that is on by
 default. In a guest repo that is a courtesy to whoever owns it.
 
-## The seven verbs
+## The eight verbs
 
 | Verb | beads | Notes |
 | --- | --- | --- |
-| `create` | `bd create "Title" -t epic\|task\|bug -p 1 -l area:intake -d "..."` | `--silent` prints the id and nothing else, which is what a script wants. `--parent <id>` makes the child in the same call |
+| `create` | `bd create "Title" -t epic\|task\|bug -p 1 -l area:intake -d "..."` | `--silent` prints the id and nothing else, which is what a script wants. `--parent <id>` makes the child in the same call. **Epic is a type here and a label on GitHub**; the port asks only that it show in the list, and takes whichever the store gives away |
 | `read` | `bd show <id>` | Renders description, labels, close reason, and a `CHILDREN` block with an *n*/*m* complete count |
 | `list` | `bd list --limit 0`, `bd list --label needs-refinement` | Default limit is 50, and see below. When the question is what to dispatch it is `bd ready`, not `bd list`, for a reason worth reading before you pick one |
 | `comment` | `bd comment <id> --file review.md`, read back with `bd comments <id>` | `--file` matters: the review record is four headings and a verdict, not a shell argument |
 | `close` | `bd close <id> --reason "Duplicate of <id>, which has the better framing."` | The reason is stored and shown on the item |
-| `link` | `bd dep add <child> <parent> --type parent-child` | Also `duplicates`, `blocks`, `related`. `--file deps.jsonl` for bulk |
+| `link` | `bd dep add <child> <parent> --type parent-child` | Also `duplicates` and `related`. `--file deps.jsonl` for bulk |
+| `block` | `bd dep add <blocked> <blocker> --type blocks`, read with `bd ready` and `bd blocked` | The same command as `link` with a different type, and a different question: this one decides dispatch. Below, including the trap |
 | `label` | `bd label add <id> area:zoning` | Labels are also settable at create with `-l` and inherited by children unless `--no-inherit-labels`. Only one of the port's undispatchable reasons stays a label here; the other two are edges |
 
 Two of those are better than the port asked for.
@@ -183,9 +184,10 @@ bd blocked    # what could not, and what each one is behind
 
 Two of the port's three reasons have a mechanism, and neither is a label.
 
-**Behind another item is the edge `link` already uses.** `bd dep add <blocked>
-<blocker> --type blocks` prints back as "depends on", the blocked item leaves
-`bd ready`, and `bd blocked` names the blocker:
+**Behind another item is the port's `block` verb**, and beads is where that verb
+came from: GitHub now has the same edge, so the port stopped calling this one a
+label. `bd dep add <blocked> <blocker> --type blocks` prints back as "depends
+on", the blocked item leaves `bd ready`, and `bd blocked` names the blocker:
 
 ```
 🚫 Blocked issues (1):
@@ -219,17 +221,29 @@ undispatchable or merely unprioritised.
 
 **The trap is `bd list`.** A blocked item prints there as `○ open`, identical to
 ready work, and `bd list --status blocked` returns nothing, because the stored
-status stays `open` while blockedness is a computed flag beside it. So the
-port's `list` verb is `bd ready` or `bd list --ready` whenever the question is
-what to dispatch. Reach for `bd list` and you reproduce the exact failure this
-requirement exists to prevent, on the tool that had already solved it.
+status stays `open` while blockedness is a computed flag beside it. `bd ready`'s
+own legend prints `● blocked` as a status, which is what makes `--status
+blocked` such a natural wrong guess. So the port's `list` verb is `bd ready` or
+`bd list --ready` whenever the question is what to dispatch. Reach for `bd list`
+and you reproduce the exact failure this requirement exists to prevent, on the
+tool that had already solved it.
+
+GitHub has the identical trap in a different costume, which is why the port
+states it as a rule rather than leaving it in either implementation: there,
+`gh issue list` shows a blocked issue with no marker at all and the `blockedBy`
+field lists blockers that are already closed. Name the command, not the field.
+
+**What an item unblocks is the same edge read backwards**, and it is on the
+item rather than in a list: `bd show <blocker>` renders a `BLOCKS` section
+naming each dependent. Neither store ranks its ready list by how much each
+entry unblocks, so the loop's "pick work that unblocks the most" stays judgment
+sitting on top of the edge.
 
 ## What beads adds that the port does not ask for
 
-- **`bd ready`** annotates each item it lists with its epic. The port says this
-  loop has no computed ready state and reads the graph by eye instead; it now
-  has one, used above, and "pick work that unblocks the most" is still judgment
-  sitting on top of it.
+- **`bd ready` annotates each item it lists with its epic.** The ready list
+  itself is no longer an extra: the port asks for one now, and this is where the
+  asking came from. The annotation is the part still being given away.
 - **Closing an epic with open children is refused**, not merely discouraged:
   `cannot close permit-scratch-8ms: 2 open child issue(s); close children first
   or use --force to override`. One line of housekeeping that decays fast is now

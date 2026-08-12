@@ -10,7 +10,8 @@ It also says what a portable backlog does *not* buy you, which is the part
 easiest to overclaim: the merge wrapper, the checks and the ruleset stay GitHub.
 
 Everything below is GitHub mechanics. The port's `create`, `read`, `list`,
-`comment`, `close`, `link` and `label` are what each section is an instance of.
+`comment`, `close`, `link`, `block` and `label` are what each section is an
+instance of.
 
 ## Shape
 
@@ -25,13 +26,19 @@ Appending the definition of done beats linking to it. An agent that has to
 follow a link to learn what done means will sometimes not follow it. The text is
 in `assets/seed-issues.py`.
 
-**Labels** worth having: one per area of the system, plus `epic`, something for
-work that unblocks other work, and one per reason an issue cannot be started
-yet: waiting on the owner, behind another issue, no spec written. The specific
-names matter less than that each is visible at a glance in the list. Take
-`needs-owner`, `blocked` and `needs-refinement` if you have no better ones.
-`references/backlog-port.md` says why the three reasons stay apart instead of
-collapsing into one.
+**Labels** worth having: one per area of the system, plus `epic`, plus the two
+reasons an issue cannot be started that no edge covers: waiting on the owner
+and no spec written. Take `needs-owner` and `needs-refinement` if you have no
+better ones. The third reason, behind another issue, is a dependency edge here
+and not a label; `references/backlog-port.md` says why the three stay apart
+instead of collapsing into one, and why only that one gets a mechanism.
+
+**`epic` is a label and not an issue type**, even though `gh issue create
+--type` exists from 2.94.0. Issue types are organisation-level configuration, so
+a repository cannot carry its own, and on a user-owned one there are none at
+all: `gh issue edit <n> --type Epic` fails with `available types:` and nothing
+after it. Worse for a loop, `gh issue list --type Epic` then returns an empty
+list and exit 0. `references/backlog-port.md` has the argument.
 
 ## Dispatchable is the list read negatively
 
@@ -41,45 +48,62 @@ agent could be briefed on right now:
 
 ```bash
 gh issue list --limit 200 \
-  --search "is:open -label:needs-owner -label:blocked -label:needs-refinement"
-gh issue list --limit 200 --search "is:open label:needs-owner,blocked,needs-refinement"
+  --search "is:open -is:blocked -label:needs-owner -label:needs-refinement"
+gh issue list --limit 200 --search "is:open is:blocked"
+gh issue list --limit 200 --search "is:open label:needs-owner,needs-refinement"
 ```
 
-The first query is what `Next:` gets chosen from. The second is most of the
-accounting `Next: nothing` has to pay for, already grouped by what each item is
-waiting on. Everything the first returns is dispatchable, so an issue that
-cannot start and is not labelled is not a tidiness problem, it is a brief
+The first query is what `Next:` gets chosen from. The other two are the
+accounting `Next: nothing` has to pay for, split by what each item is waiting
+on. Everything the first returns is dispatchable, so an issue that cannot start
+and carries neither a label nor an edge is not a tidiness problem, it is a brief
 waiting to be written against work whose own body says no. That is how this
 requirement was found: two issues each ended with "do not build this yet" and
 neither said so anywhere the list could show it.
 
-**`blocked` names its blocker in a comment, and the merge clears it.**
+## Behind another issue is an edge, and the edge is state-aware
+
+This is the port's `block` verb. From **`gh` 2.94.0** the write is a flag:
 
 ```bash
-gh issue edit 78 --add-label blocked
-gh issue comment 78 --body "Blocked by #61: the parcel import has to land first."
+gh issue edit 78 --add-blocked-by 61   # 78 is behind 61
+gh issue view 78                       # prints a blocked-by: line naming #61
 ```
 
-Then, in the same breath as merging #61, not in a sweep afterwards:
+**Merging #61 and closing it is the whole of clearing it.** Verified against
+`gh` 2.97.0 in August 2026: with an open blocker, `--search "is:open is:blocked"`
+returned the issue and `-is:blocked` omitted it; with the blocker *closed* and
+the edge left in place, the two swapped, with nothing done to either issue.
+Nothing has to be removed, so nothing can be forgotten. `is:blocking` is the
+same edge read backwards and is state-aware in the same way, which is why
+"unblocks other work" is a query here rather than a label.
 
-```bash
-gh issue edit 78 --remove-label blocked
-```
+**If you cannot name the blocker as an issue number, the issue is not blocked,
+it is unrefined.** That used to be a rule; with an edge it is structural,
+because there is no way to write a nameless one.
 
-Nothing on GitHub connects that label to that merge, so it is worth exactly the
-habit behind it. A `blocked` issue whose blocker closed last week looks
-identical to a real one and parks the work for as long as nobody checks, which
-is worse than never having labelled it: the first list above now confidently
-omits work that is ready. **If you cannot name the blocker as an issue number,
-the issue is not blocked, it is unrefined**, and labelling it `blocked` hides
-that behind a wait that will never end.
+**Three ways to read this wrong, all of them measured.**
 
-Put the rule in the label itself, so it outlives whoever set the convention up:
+- **`gh issue list` shows a blocked issue exactly like a ready one.** No column,
+  no marker, nothing. Only `--search` knows, so the bare list is never the
+  answer to what to dispatch.
+- **`blockedBy` in `--json` and the `blocked-by:` line in `gh issue view`
+  both include blockers that are already closed.** The view line prints no state
+  at all; the JSON carries `state` on each node under `blockedBy.nodes` and you
+  have to filter on it yourself. **The field is the edges; `is:blocked` is the
+  answer.** Reaching for the field reproduces the stale-label bug in a new
+  costume.
+- **`--json blockedBy` needs 2.94.0 and `is:blocked` needs nothing.** The
+  qualifier is server-side, so it runs on a client nine releases old; verified on
+  2.88.1. Only *writing* the edge needs the new client, and the fallback there is
+  `gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by`, which also
+  reads the edges on an old client.
 
-```bash
-gh label create blocked \
-  --description "Behind another issue, named in a comment. Cleared by that merge."
-```
+**Migrating a repo that already ran the label.** Two things to undo and the
+second is the one that gets missed: convert each labelled issue to an edge, then
+delete the label, because a `blocked` label whose description still says the
+blocker is named in a comment is a second convention living beside the first and
+nobody can tell which one a given issue is following.
 
 ## Real sub-issue links, not just labels
 
@@ -113,13 +137,9 @@ An out-of-date `gh` is the ordinary case, not the exotic one. The machine this
 was written on ran 2.88.1, nine releases behind, which is exactly why the
 fallback sat here for months looking like the way to do it.
 
-The same release added `--blocked-by`, `--blocking` and `--type`, with matching
-`blockedBy`, `blocking` and `issueType` JSON fields. This loop uses none of
-them: it has no computed ready state, and "epic" is a label here rather than an
-issue type. That is a decision to revisit, not an oversight, and the `blocked`
-label above is what is being weighed against `--blocked-by` when it is
-revisited. An edge would replace the comment and the remembering both, at the
-cost of a client new enough to write it.
+The same release added `--blocked-by`, `--blocking` and `--type`. The first two
+are adopted and are the section above. `--type` is not, for the reason under
+Shape: a type is organisation configuration and a label is not.
 
 Keep a plain `Parent: #N` line in the body as well. From 2.94.0 `gh issue view`
 prints `parent:` and `sub-issues:` lines of its own, so the duplicate is
@@ -138,6 +158,11 @@ at the end.
 Make it resumable. Record created numbers to a state file and short-circuit
 anything already created, so a rerun after a failure does not duplicate half the
 backlog. `assets/seed-issues.py` is a working starting point.
+
+Dependencies between seeded issues need a third phase whatever your client
+version, because `--blocked-by` takes numbers and half of them do not exist yet
+when the first child is created. Sweep `gh issue edit <n> --add-blocked-by <m>`
+over the state file at the end.
 
 Keep the generator in the repo afterwards. It documents the original shape of
 the work and is the fastest way to seed the next project.
@@ -176,8 +201,5 @@ Small, and it decays fast if skipped.
 - Link orphan issues to their epic. A `gh issue create` without `--parent`
   leaves one, so anything filed mid-flight in a hurry is an orphan until you say
   otherwise.
-- Clear `blocked` in the merge that unblocks it, not in a sweep afterwards. It
-  is the one item here that goes wrong silently, because a stale `blocked` reads
-  as work correctly parked. Above.
 - `gh issue list` and `gh pr list` default to 30. Any count taken without
   `--limit` is wrong the moment the project passes thirty of anything.
