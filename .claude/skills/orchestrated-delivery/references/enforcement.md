@@ -7,6 +7,44 @@ Its design principle is that **every layer states what it does not cover**,
 because a layer whose limits are undocumented gets trusted for more than it
 does.
 
+## The words: a check reports, a gate refuses
+
+These two nouns are not ours to invent, and the layers below are much easier to
+tell apart with them.
+[Zuul's concepts page](https://zuul-ci.org/docs/zuul/latest/concepts.html) draws
+the line: a *check* pipeline "might describe the actions which should cause
+newly proposed changes to projects to be tested", while a *gate* pipeline "might
+implement Project Gating to automate merging changes". Its
+[gating page](https://zuul-ci.org/docs/zuul/latest/gating.html) says what that
+second word buys: "The process of gating attempts to prevent changes that
+introduce regressions from being merged." GitHub agrees structurally, in that a
+*check run* reports and it takes the modifier **required**, plus a ruleset, to
+make it refuse. Gerrit splits the same two slots as a `Verified` label and a
+submit requirement.
+
+The surrounding vocabulary comes from the same place. An **event** fires a
+**trigger**, which runs a **pipeline** of **jobs** and **steps** on a
+**runner**, producing **checks**, enforced by a **gate**. The pluggable
+implementation behind any of those is a **driver**: GitHub Actions is one
+driver, not the concept. That is what makes the revisit trigger at the end of
+this chapter arithmetic rather than a rewrite.
+
+**Casual usage conflates the two, and this chapter will not.** People say "the
+checks are blocking the merge". GitHub's own need for the word *required* is the
+argument that the bare noun is ambiguous: a check nothing requires blocks
+nothing. Expect the split to read as pedantic, and keep it, because the layers
+below differ from each other mostly on which side of it they sit.
+
+**Whether a layer refuses is a separate question from whether it is alive.**
+Check versus gate is what a layer does when it sees a violation. Written, loaded
+and firing, the three states in the next section, is whether it does anything at
+all. The two axes are independent, and the pairing that hurts is a gate in the
+first state being read as a gate in the third.
+
+*Where this chapter says "workflow" it means a GitHub Actions workflow file,
+which is that product's noun for one of its objects. The generic word is
+pipeline; GitHub is close to alone in saying workflow.*
+
 ## The layers, weakest first
 
 **0. The instruction in every brief and process doc.** Listed for completeness.
@@ -14,16 +52,18 @@ An instruction is not a control.
 
 **1. The merge wrapper.** Reads the PR's check rollup, refuses unless every
 required check is green, always squash merges.
-*Does not cover:* anyone who does not type it. A tool, not a gate.
+*Does not cover:* anyone who does not type it. A tool, not a gate: it has a
+gate's shape, and a refusal you can decline to ask for is advice.
 
-**2. The PreToolUse guard.** Denies `gh pr merge`, merges through `gh api`,
-pushes to the default branch, and bare `git push`/`git merge` while standing on
-it, before the command runs.
+**2. The PreToolUse guard.** The only gate in the list. Denies `gh pr merge`,
+merges through `gh api`, pushes to the default branch, and bare
+`git push`/`git merge` while standing on it, before the command runs.
 *Does not cover:* any process the harness did not load it into at startup, and
 everything that process spawns for as long as it lives; any human at a terminal;
 and CI. A net, not a guarantee, and one whose absence is silent.
 
-**3. The provenance audit.** On every push to the default branch, asks the API
+**3. The provenance audit.** A check, in the strict sense: it reports, and
+nothing about it refuses. On every push to the default branch, asks the API
 which pull requests each new commit belongs to and fails when none was merged. A
 squash merge is associated with its PR; a direct push is associated with
 nothing.
@@ -56,7 +96,10 @@ the check itself. What it does not cover:
   status update that treats it as observed: a live guard and an inert one read
   the same to you, to the agent, and to this check. Only a denial somebody
   watched happen distinguishes them. The startup snapshot below is what makes
-  that middle state so easy to lose.
+  that middle state so easy to lose. It is not a coincidence that this bullet
+  is about the guard: layer 2 is the only gate, and a gate is the only kind of
+  layer whose silence is ambiguous. A check that never ran leaves a missing
+  report; a gate that never fired leaves nothing at all.
 - **Anything at GitHub's end.** Rulesets, required contexts, bypass actors, who
   can push at all: invisible to a check that reads the working tree. That cuts
   both ways. On a repo that already has protected branches, some of these layers
@@ -202,8 +245,9 @@ the process, and one false accusation a month is enough for it to stop being
 read, at which point it is worse than nothing because it launders the problem as
 solved.
 
-Keep it in its own workflow, not as a required check. A job that only runs on
-push reads as "never ran" on every pull request and would refuse every merge.
+Keep it in its own workflow, not as a required check, which is to say it stays a
+check and is never promoted into a gate. A job that only runs on push reads as
+"never ran" on every pull request and would refuse every merge.
 
 ## Two CI checks that pay for themselves under parallelism
 
@@ -217,7 +261,9 @@ machines.
 This only means anything **against the merge result**. A branch adding ADR 0009
 is fine in isolation and collides only once the default branch has one too.
 Verify your CI checks out the merge commit, by actually producing a collision
-rather than assuming.
+rather than assuming. Require it, so that it is a gate: an advisory collision
+check reports the clash on a pull request you are then free to merge, which is
+the moment the information stops being worth anything.
 
 **Boundary checks against build output.** Assert the property against what
 actually ships, not against the source. Scanning a built client bundle for
@@ -229,6 +275,10 @@ If the repo goes public, moves into an organization, or lands on a plan with
 protected branches, protect the branch and **re-derive the layers one at a
 time**. Rulesets are free on a public repo, so this trigger fires on day one
 there rather than later, and the answer is not the same for all three.
+
+What has changed is that a new driver has arrived. A ruleset is GitHub's driver
+for a gate, and it covers part of what these layers cover and not the rest,
+which is why the answer has to be taken layer by layer.
 
 **Layer 3 goes.** With no bypass actors a commit cannot reach the default branch
 outside a pull request, so the audit that detects one can only ever pass.
