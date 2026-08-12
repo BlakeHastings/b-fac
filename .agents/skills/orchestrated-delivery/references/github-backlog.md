@@ -26,9 +26,60 @@ follow a link to learn what done means will sometimes not follow it. The text is
 in `assets/seed-issues.py`.
 
 **Labels** worth having: one per area of the system, plus `epic`, something for
-work that unblocks other work, and something for anything waiting on the owner.
-The specific names matter less than that "waiting on a human" is visible at a
-glance in the list.
+work that unblocks other work, and one per reason an issue cannot be started
+yet: waiting on the owner, behind another issue, no spec written. The specific
+names matter less than that each is visible at a glance in the list. Take
+`needs-owner`, `blocked` and `needs-refinement` if you have no better ones.
+`references/backlog-port.md` says why the three reasons stay apart instead of
+collapsing into one.
+
+## Dispatchable is the list read negatively
+
+`gh issue list --label` only includes. Excluding is `--search`, and the
+exclusion is the query that matters, because it is the one that answers what an
+agent could be briefed on right now:
+
+```bash
+gh issue list --limit 200 \
+  --search "is:open -label:needs-owner -label:blocked -label:needs-refinement"
+gh issue list --limit 200 --search "is:open label:needs-owner,blocked,needs-refinement"
+```
+
+The first query is what `Next:` gets chosen from. The second is most of the
+accounting `Next: nothing` has to pay for, already grouped by what each item is
+waiting on. Everything the first returns is dispatchable, so an issue that
+cannot start and is not labelled is not a tidiness problem, it is a brief
+waiting to be written against work whose own body says no. That is how this
+requirement was found: two issues each ended with "do not build this yet" and
+neither said so anywhere the list could show it.
+
+**`blocked` names its blocker in a comment, and the merge clears it.**
+
+```bash
+gh issue edit 78 --add-label blocked
+gh issue comment 78 --body "Blocked by #61: the parcel import has to land first."
+```
+
+Then, in the same breath as merging #61, not in a sweep afterwards:
+
+```bash
+gh issue edit 78 --remove-label blocked
+```
+
+Nothing on GitHub connects that label to that merge, so it is worth exactly the
+habit behind it. A `blocked` issue whose blocker closed last week looks
+identical to a real one and parks the work for as long as nobody checks, which
+is worse than never having labelled it: the first list above now confidently
+omits work that is ready. **If you cannot name the blocker as an issue number,
+the issue is not blocked, it is unrefined**, and labelling it `blocked` hides
+that behind a wait that will never end.
+
+Put the rule in the label itself, so it outlives whoever set the convention up:
+
+```bash
+gh label create blocked \
+  --description "Behind another issue, named in a comment. Cleared by that merge."
+```
 
 ## Real sub-issue links, not just labels
 
@@ -65,7 +116,10 @@ fallback sat here for months looking like the way to do it.
 The same release added `--blocked-by`, `--blocking` and `--type`, with matching
 `blockedBy`, `blocking` and `issueType` JSON fields. This loop uses none of
 them: it has no computed ready state, and "epic" is a label here rather than an
-issue type. That is a decision to revisit, not an oversight.
+issue type. That is a decision to revisit, not an oversight, and the `blocked`
+label above is what is being weighed against `--blocked-by` when it is
+revisited. An edge would replace the comment and the remembering both, at the
+cost of a client new enough to write it.
 
 Keep a plain `Parent: #N` line in the body as well. From 2.94.0 `gh issue view`
 prints `parent:` and `sub-issues:` lines of its own, so the duplicate is
@@ -122,5 +176,8 @@ Small, and it decays fast if skipped.
 - Link orphan issues to their epic. A `gh issue create` without `--parent`
   leaves one, so anything filed mid-flight in a hurry is an orphan until you say
   otherwise.
+- Clear `blocked` in the merge that unblocks it, not in a sweep afterwards. It
+  is the one item here that goes wrong silently, because a stale `blocked` reads
+  as work correctly parked. Above.
 - `gh issue list` and `gh pr list` default to 30. Any count taken without
   `--limit` is wrong the moment the project passes thirty of anything.

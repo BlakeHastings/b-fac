@@ -61,11 +61,11 @@ default. In a guest repo that is a courtesy to whoever owns it.
 | --- | --- | --- |
 | `create` | `bd create "Title" -t epic\|task\|bug -p 1 -l area:intake -d "..."` | `--silent` prints the id and nothing else, which is what a script wants. `--parent <id>` makes the child in the same call |
 | `read` | `bd show <id>` | Renders description, labels, close reason, and a `CHILDREN` block with an *n*/*m* complete count |
-| `list` | `bd list --limit 0`, `bd list --label waiting-on-owner` | Default limit is 50, and see below |
+| `list` | `bd list --limit 0`, `bd list --label needs-refinement` | Default limit is 50, and see below. When the question is what to dispatch it is `bd ready`, not `bd list`, for a reason worth reading before you pick one |
 | `comment` | `bd comment <id> --file review.md`, read back with `bd comments <id>` | `--file` matters: the review record is four headings and a verdict, not a shell argument |
 | `close` | `bd close <id> --reason "Duplicate of <id>, which has the better framing."` | The reason is stored and shown on the item |
 | `link` | `bd dep add <child> <parent> --type parent-child` | Also `duplicates`, `blocks`, `related`. `--file deps.jsonl` for bulk |
-| `label` | `bd label add <id> waiting-on-owner` | Labels are also settable at create with `-l` and inherited by children unless `--no-inherit-labels` |
+| `label` | `bd label add <id> area:zoning` | Labels are also settable at create with `-l` and inherited by children unless `--no-inherit-labels`. Only one of the port's undispatchable reasons stays a label here; the other two are edges |
 
 Two of those are better than the port asked for.
 
@@ -170,20 +170,77 @@ Worktrees need no configuration. `bd` finds the repository's one `.beads` from
 any linked worktree, and issue data lives in Dolt under `refs/dolt/data` rather
 than on the branch, so switching branches does not switch backlogs.
 
+## "Cannot be started yet" is computed here, not labelled
+
+The port asks the backlog to say in the list whether an item can be started, and
+why not when it cannot. On GitHub that is a label somebody has to remember to
+remove. Here it is derived, and the loop's two report lines are two commands:
+
+```bash
+bd ready      # what could be dispatched now
+bd blocked    # what could not, and what each one is behind
+```
+
+Two of the port's three reasons have a mechanism, and neither is a label.
+
+**Behind another item is the edge `link` already uses.** `bd dep add <blocked>
+<blocker> --type blocks` prints back as "depends on", the blocked item leaves
+`bd ready`, and `bd blocked` names the blocker:
+
+```
+🚫 Blocked issues (1):
+
+[P2] permit-scratch-ixt: Publish the parcel viewer
+  Blocked by 1 open dependencies: [permit-scratch-52z]
+```
+
+**Closing the blocker returns it to `bd ready`, with nothing else done to either
+item.** The decay the GitHub side pays for by hand is simply absent: there was
+never a mark to go stale, only an edge that stopped mattering.
+
+**Waiting on the owner is a gate**, and an ad-hoc one needs no formula:
+
+```bash
+bd gate create --type=human --blocks <id> --reason="Warn or block on an expired licence"
+bd gate resolve <gate-id>
+```
+
+The gate is an item that the target depends on, which is why one mechanism
+covers both reasons and why `bd show` renders it under `DEPENDS ON`. Gate items
+are hidden from `bd list`, so an escalation costs the backlog no clutter: it is
+an absence from `bd ready` and a line in `bd blocked`. `bd gate list` names the
+open ones and `bd gate show` prints the reason, which is where the *why* lives,
+one hop from the *that*.
+
+**No spec yet has no mechanism**, so it is a label here as it is on GitHub. A
+`human` gate carrying that reason is the alternative if you would rather it left
+`bd ready` too, and the choice is whether an unspecced item should look
+undispatchable or merely unprioritised.
+
+**The trap is `bd list`.** A blocked item prints there as `○ open`, identical to
+ready work, and `bd list --status blocked` returns nothing, because the stored
+status stays `open` while blockedness is a computed flag beside it. So the
+port's `list` verb is `bd ready` or `bd list --ready` whenever the question is
+what to dispatch. Reach for `bd list` and you reproduce the exact failure this
+requirement exists to prevent, on the tool that had already solved it.
+
 ## What beads adds that the port does not ask for
 
-- **`bd ready`** lists items with no open blockers, annotated with their epic.
-  The port says this loop has no computed ready state and does it by eye over
-  the graph. It now has one, and "pick work that unblocks the most" is still
-  judgment on top of it.
+- **`bd ready`** annotates each item it lists with its epic. The port says this
+  loop has no computed ready state and reads the graph by eye instead; it now
+  has one, used above, and "pick work that unblocks the most" is still judgment
+  sitting on top of it.
 - **Closing an epic with open children is refused**, not merely discouraged:
   `cannot close permit-scratch-8ms: 2 open child issue(s); close children first
   or use --force to override`. One line of housekeeping that decays fast is now
   mechanical.
-- **Gates** — `human`, `timer`, `bead`, `gh:run`, `gh:pr`, evaluated by
-  `bd gate check` at close preflight. This is the provider pattern the port
-  points at. Understand it before designing a seam; do not build a sibling for
-  it on the strength of this document.
+- **Gates** — `human`, `timer`, `bead`, `gh:run`, `gh:pr`. This is the provider
+  pattern the port points at. Understand it before designing a seam; do not
+  build a sibling for it on the strength of this document. Note that a gate
+  gates *starting* and not only closing, which is what the section above turns
+  on: closing behind either an open gate or an open dependency is refused with
+  `cannot close blocked issue: <id> is blocked by [<id>] (use --force to
+  override)`, and the same edge keeps the item out of `bd ready` until then.
 
 ## What it costs
 
