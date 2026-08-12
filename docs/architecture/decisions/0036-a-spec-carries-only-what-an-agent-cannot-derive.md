@@ -101,6 +101,11 @@ instead. Following ADR 0035's precedent, an agent working an issue does not
 re-tool the live backlog ahead of the decision landing, so it is named here and
 in the pull request rather than done.
 
+*Done, 2026-08-12, issue #115.* The label now reads "No spec yet, and the work
+turns on things an agent cannot derive; not dispatchable". Recorded rather than
+edited away, because the paragraph above is the reason the label was left wrong
+for a while and that reason is the reusable part.
+
 **Nothing mechanical holds any of this, and nothing can.** CI does not read the
 backlog, so a check that fails a build because an item lacks a spec is not
 available at any price. The gate is the dispatch query and the detection layer
