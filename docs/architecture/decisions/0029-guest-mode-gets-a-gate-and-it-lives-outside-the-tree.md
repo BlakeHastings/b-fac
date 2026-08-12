@@ -124,12 +124,42 @@ the layer and it is actually the design: publish is a deliberate step taken
 outside the agent session, so the gate has nothing to add to it and nothing to
 get wrong about it.
 
-**`gh` is denied by default and allowed by verb.** A read verb missing from the
-list is a false positive — loud, immediate, and fixed by adding a word. A write
+**`gh` is denied by default and allowed by verb**, with `gh api` judged by its
+method, its payload and its endpoint instead, since `api` is a verb that is
+whatever its arguments say. A read verb missing from the list is a false
+positive — loud, immediate, and fixed by adding a word. A write
 verb missing from a deny list is an outward write that already happened. This
 repository's standing rule is that false positives are the likelier failure and
 the more expensive one, and this is the one place that rule is deliberately not
 followed, because the boundary has to fail toward refusing.
+
+**A refusal owes a remedy that works, and two of them nearly did not.** Review
+of #89 probed the gate for false positives and found two reads refused. Denying
+a read is inside the design; **promising an escape that cannot exist is not**,
+and the difference is what decides whether a gate survives its first week.
+
+- **`gh api graphql` is refused, with no allowance, and the message says why.**
+  A query and a mutation are the same call — a POST carrying `-f query=` — so
+  the command line does not distinguish them, and the query text is not reliably
+  there to parse: `-F query=@file` and a shell variable both hide it, and one
+  document can carry both operations with `operationName` choosing. A rule that
+  guessed would be silently wrong in the outward direction. What was actually
+  broken was the message: it offered the generic "add its verb to `GH_READS`",
+  and no verb exists to add. It now says that in as many words and names the
+  REST reads to reach for instead. **A wall is fine; a wall with a signpost
+  pointing nowhere is how a gate gets switched off.**
+- **`git config --global --get` is allowed, and the read forms with it.** The
+  boundary is about writes and ADR 0021 says reads are unrestricted, so matching
+  the scope flag alone was simply wrong. Unlike a GraphQL call, a config read
+  announces itself: there is no shape in which `--get`, `--get-all`,
+  `--get-regexp`, `--list` or the `git config get` subcommand writes anything.
+  That asymmetry is the whole reason the two cases come out opposite ways.
+  The classic one-argument form, `git config --global user.email`, prints rather
+  than sets and is **still refused**: telling it from a write means counting
+  positionals through flags that take values, and a miscount in the permissive
+  direction is a silent write to somebody's home directory. The message admits
+  the form is a read and names `--get`, which costs one retry and cannot be got
+  wrong.
 
 **Nothing in this repository changed.** This repository is owned, so the gate
 ships and is never installed here; `npm run check` exercises it and no hook of

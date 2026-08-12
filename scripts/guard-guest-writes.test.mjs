@@ -66,10 +66,25 @@ const DENIED = [
   'gh api -X PATCH repos/o/r/issues/3',
   'gh api repos/o/r/issues/3/comments -f body="done"',
   'gh api --method=DELETE repos/o/r/issues/3',
+  // A GraphQL call cannot be classified: query and mutation are the same POST
+  // carrying `-f query=`. Refused whatever the method says, and refused with a
+  // message that does not promise a remedy that cannot work — see below.
+  "gh api graphql -f query='query{viewer{login}}'",
+  'gh api graphql -F query=@issues.graphql',
+  'gh api --method GET graphql -f query=x',
+  'gh --repo o/r api graphql -f query=x',
   // The home directory and the machine, which are outside the repository in
   // the most literal sense the boundary has.
   'git config --global user.email agent@example.com',
   'git config --system core.autocrlf true',
+  'git config --global --unset user.email',
+  'git config --global --add safe.directory /work',
+  'git config set --global user.email agent@example.com',
+  // The classic one-argument form prints rather than sets, and is refused
+  // anyway. Telling it from a write means counting positionals through flags
+  // that take values, and a miscount the other way is a silent write to
+  // somebody's home directory. The message says so and names `--get`.
+  'git config --global user.email',
   // The two beads commands that write tracked files into a host repo. Both are
   // named in references/beads-backlog.md as things to remember not to run,
   // which is layer 0, which is what this file replaces.
@@ -110,6 +125,21 @@ const ALLOWED = [
   'gh auth status',
   'gh api repos/o/r/issues/3',
   'gh api repos/{owner}/{repo}/issues?state=open',
+  // An explicit GET puts the fields in the query string, so it stays a read.
+  // This is the remedy the write-shaped refusal names, so it has to work.
+  'gh api repos/o/r/issues --method GET -f state=open',
+  'gh api --paginate repos/o/r/issues',
+  // Reading the operator's global config is a read, and reads are unrestricted.
+  // Unlike a GraphQL call, these announce themselves: no shape of `--get` or
+  // `--list` writes anything.
+  'git config --global --get user.email',
+  'git config --global --get-all remote.origin.url',
+  'git config --global --get-regexp "^user"',
+  'git config --global --list',
+  'git config --global -l',
+  'git config --system --list --show-origin',
+  'git config get --global user.email',
+  'git config list --global',
   // Contacts the remote and changes nothing, which is how you rehearse the
   // publish step without taking it.
   'git push --dry-run origin HEAD',
@@ -161,6 +191,35 @@ for (const command of ALLOWED) {
     assert.equal(run(GATE, command).denied, false, 'should have been allowed')
   })
 }
+
+// A refusal is only half the layer. The other half is what it tells the person
+// it just stopped, and a remedy that cannot work is worse than none: it costs a
+// retry, proves the gate does not understand itself, and sends them looking for
+// the switch that turns it off. That is the failure references/enforcement.md
+// names, and these are the two places this gate came closest to it.
+test('the GraphQL refusal does not promise the GH_READS escape, which cannot help', () => {
+  const { denied, reason } = run(GATE, "gh api graphql -f query='query{viewer{login}}'")
+  assert.equal(denied, true)
+  assert.match(reason, /cannot be classified/, 'it does not say why it could not decide')
+  assert.match(reason, /There is no verb to add/, 'it does not rule out the remedy that cannot work')
+  // A wall is fine. A wall with no signpost is not.
+  assert.match(reason, /gh api repos\//, 'it names no REST read to reach for instead')
+  assert.match(reason, /waits for publish/, 'it does not say what happens when there is no REST form')
+})
+
+test('the GraphQL refusal is not the generic payload refusal wearing the same words', () => {
+  const graphql = run(GATE, 'gh api graphql -f query=x').reason
+  const payload = run(GATE, 'gh api repos/o/r/issues -f title=x').reason
+  assert.notEqual(graphql, payload, 'one message for two different reasons is one of them wrong')
+  assert.match(payload, /--method GET/, 'the payload refusal names no read form either')
+})
+
+test('the global-config refusal names the read form it is asking for', () => {
+  const { denied, reason } = run(GATE, 'git config --global user.email')
+  assert.equal(denied, true)
+  assert.match(reason, /--get/, 'it refuses a read without saying how to ask for one')
+  assert.match(reason, /prints\nrather than sets/, 'it does not admit this form is a read')
+})
 
 // The allow direction that matters most, and the one the issue asked for by
 // name. In owned mode these are the workflow, not a violation of it, and the

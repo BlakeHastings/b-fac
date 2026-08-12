@@ -335,10 +335,55 @@ const GH_READS = new Set([
   'version',
 ])
 
+// Reading the operator's global config is a read, and ADR 0021 says reads are
+// unrestricted, so the scope flag alone is the wrong thing to match on. Unlike
+// `gh api graphql` above, a git config read *does* announce itself: there is no
+// shape in which `--get` or `--list` writes. That is the whole difference
+// between the two decisions, and it is why they come out opposite ways.
+//
+// The classic one-argument form, `git config --global user.email`, prints
+// rather than sets and is still refused. Telling it from a write means counting
+// positional arguments through flags that take values, and a miscount in the
+// permissive direction is a silent write to somebody's home directory. One
+// retry with `--get` costs a second and cannot be got wrong, so the message
+// below says exactly that instead.
+const GIT_CONFIG_SCOPES = new Set(['--global', '--system'])
+const GIT_CONFIG_READS = new Set([
+  '--get',
+  '--get-all',
+  '--get-regexp',
+  '--get-urlmatch',
+  '--get-color',
+  '--get-colorbool',
+  '--list',
+  '-l',
+])
+
+function gitConfigReads(args) {
+  if (args.some((token) => GIT_CONFIG_READS.has(token))) return true
+  // git 2.46 added `git config get|list|set|unset` as subcommands. The scope
+  // flag can sit on either side of the verb, so find the first non-flag token.
+  const verb = args.slice(1).find((token) => !token.startsWith('-'))
+  return verb === 'get' || verb === 'list'
+}
+
 // `gh api` defaults to GET and turns into a POST the moment it is handed a
 // field, so the method is not always written down. Both forms are the write.
 const GH_API_WRITE_METHODS = new Set(['post', 'patch', 'put', 'delete'])
 const GH_API_PAYLOAD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'])
+
+// The endpoint is the first argument that is not a flag and is not the value of
+// one. Worked out that way rather than from a table of gh's flags, because a
+// table of somebody else's flags rots silently. `--method GET` is skipped by
+// the first test and `GET` by the second.
+function apiEndpoint(args) {
+  for (let at = 0; at < args.length; at += 1) {
+    if (args[at].startsWith('-')) continue
+    if (at > 0 && args[at - 1].startsWith('-')) continue
+    return args[at]
+  }
+  return null
+}
 
 function ghApiWrites(args) {
   for (let at = 0; at < args.length; at += 1) {
@@ -354,6 +399,33 @@ function ghApiWrites(args) {
   }
   return false
 }
+
+// A GraphQL query and a GraphQL mutation are the same call: a POST to
+// `/graphql` carrying `-f query=`. Nothing on the command line tells them
+// apart, and the query text is not always on the command line to read —
+// `-F query=@file` and a shell variable both hide it, and one document can
+// hold a query and a mutation with `operationName` picking between them. So
+// this is refused rather than guessed at, and the refusal has to say so:
+// **no word added to GH_READS could ever help here, because there is no verb**,
+// and a remedy that cannot work is what gets a gate switched off.
+const GRAPHQL = `Blocked: \`gh api graphql\` cannot be classified, so it is refused rather than
+guessed at.
+
+A GraphQL query and a GraphQL mutation are the same call — a POST to /graphql
+carrying \`-f query=\` — so nothing here says which one this is. The query text
+is not reliably readable either: \`-F query=@file\` and a shell variable both
+hide it, and one document can carry both with \`operationName\` choosing. This
+is not a missing entry in a list. There is no verb to add.
+
+Reads that do have a shape are allowed, so reach for one of those:
+
+  gh api repos/{owner}/{repo}/issues/42        REST, and --paginate works
+  gh api repos/{owner}/{repo}/issues --method GET -f state=open
+  gh issue view 42 / gh pr view 42 / gh search issues ...
+
+If what you need exists only in GraphQL, it waits for publish with every other
+outward write, or the owner runs it at their own terminal. That is the same
+escape the boundary gives everything else, and it is deliberate.`
 
 // `bd init --stealth` writes `.beads/` and appends to `.git/info/exclude` and
 // touches nothing tracked, which is ADR 0021's mechanism arrived at
@@ -404,11 +476,22 @@ function judge(line, depth) {
           '`git push --dry-run` is allowed: it contacts the remote and changes nothing.',
       )
     }
-    if (git !== null && git[0] === 'config' && (git.includes('--global') || git.includes('--system'))) {
+    if (
+      git !== null &&
+      git[0] === 'config' &&
+      git.some((token) => GIT_CONFIG_SCOPES.has(token)) &&
+      !gitConfigReads(git)
+    ) {
       deny(
         'Blocked: `--global` and `--system` write outside this repository, into the\n' +
           "operator's home directory and machine configuration.\n\n" +
-          'Repository-local git config is inside the boundary. Drop the flag.',
+          'If this was a read, say so and it is allowed: `--get`, `--get-all`,\n' +
+          '`--get-regexp`, `--list`, or the `git config get` subcommand. The gate\n' +
+          'matches the scope flag rather than counting arguments, so\n' +
+          '`git config --global user.email` is refused too even though it prints\n' +
+          'rather than sets — a miscount in the other direction is a silent write to\n' +
+          'somebody else\'s home directory, and `--get` cannot be got wrong.\n\n' +
+          'Repository-local config is inside the boundary. Drop the scope flag.',
       )
     }
 
@@ -416,10 +499,16 @@ function judge(line, depth) {
     if (gh !== null && gh.length > 0) {
       const path = gh.filter((token) => !token.startsWith('-')).slice(0, 2)
       if (path[0] === 'api') {
-        if (ghApiWrites(gh.slice(1))) {
+        const args = gh.slice(1)
+        // Before the method test, and regardless of it: `--method GET graphql`
+        // is the same unclassifiable call wearing a read's clothes.
+        if (apiEndpoint(args) === 'graphql') deny(GRAPHQL)
+        if (ghApiWrites(args)) {
           deny(
             'Blocked: this `gh api` call carries a write method or a payload, so it is an\n' +
-              `outward write however the endpoint reads.\n\n${PUBLISH}`,
+              `outward write however the endpoint reads.\n\n${PUBLISH}\n\n` +
+              'If it was a read, say so: drop the fields, or keep them and add\n' +
+              '`--method GET`, which puts them in the query string. Both are allowed.',
           )
         }
       } else if (!path.some((token) => GH_READS.has(token))) {
