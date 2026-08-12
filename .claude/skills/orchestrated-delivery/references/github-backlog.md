@@ -1,7 +1,16 @@
 # GitHub as the work queue
 
-Issues are the durable memory of the project. Chat is not. Anything an agent
-should still know next week goes in an issue, an ADR or a gotchas file.
+**One implementation of the backlog port, and the one this repo uses.**
+`references/backlog-port.md` says what the loop needs from any task store, and
+why: in guest mode the host's tracker is not yours to write to, so the verbs
+have to survive the tool changing underneath them. Read that first if your
+backlog is not GitHub's. Read this if it is.
+
+It also says what a portable backlog does *not* buy you, which is the part
+easiest to overclaim: the merge wrapper, the checks and the ruleset stay GitHub.
+
+Everything below is GitHub mechanics. The port's `create`, `read`, `list`,
+`comment`, `close`, `link` and `label` are what each section is an instance of.
 
 ## Shape
 
@@ -23,8 +32,11 @@ glance in the list.
 
 ## Real sub-issue links, not just labels
 
-A label convention does not give you a tree you can read. The API wants the
-numeric issue **id**, not the issue number, which is the part that trips people:
+A label convention does not give you a tree you can read. This is the port's
+`link` verb, and it is the requirement that disqualifies candidate tools rather
+than merely inconveniencing them: a task store with no parent concept cannot
+carry this loop. GitHub's answer is sub-issues. The API wants the numeric issue
+**id**, not the issue number, which is the part that trips people:
 
 ```bash
 gh api --method POST repos/{owner}/{repo}/issues/<parent>/sub_issues \
@@ -65,6 +77,12 @@ findable from the thing it decided, and nobody relitigates it.
 
 The label is what makes this work at a glance. A question filed without it is a
 question nobody knows is waiting, and the owner finds it a week later.
+
+**In guest mode this issue is not filed on the host's tracker.** Escalating is a
+backlog write, and the boundary does not make an exception for a question. It
+goes in the local store with everything else and travels at the publish step, or
+it is asked in prose at the end of a turn, which costs nothing and waits for
+nobody. `references/backlog-port.md`.
 
 ## Housekeeping
 

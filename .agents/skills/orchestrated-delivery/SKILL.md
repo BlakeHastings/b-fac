@@ -1,11 +1,11 @@
 ---
 name: orchestrated-delivery
 description: >-
-  Run a project as an orchestrator driving implementation subagents against a
-  GitHub issue backlog: break work into issues, brief agents that work in
-  isolated worktrees, review what comes back, and merge through a path that
-  mechanically refuses red checks. Use when asked to "orchestrate", "act as an
-  orchestrator", "manage agents", "keep working while I'm away", "break this
+  Run a project as an orchestrator driving implementation subagents against an
+  issue backlog, GitHub's by default: break work into issues, brief agents that
+  work in isolated worktrees, review what comes back, and merge through a path
+  that mechanically refuses red checks. Use when asked to "orchestrate", "act
+  as an orchestrator", "manage agents", "keep working while I'm away", "break this
   down into GitHub issues", or when taking over a repo that already has
   docs/process/orchestrating.md. Also use when setting this workflow up in a new
   repo, when a subagent's PR needs reviewing before merge, when several agents
@@ -85,6 +85,12 @@ question, and a wrong guess toward owned opens issues on someone's real tracker.
 too. A remote tells you the factory *can* write there, which was never the
 question; whether it *may* is a fact about the developer's authority, and no
 amount of repository inspection contains it. Escalate it; do not derive it.
+
+**The backlog is where the write boundary bites first.** What the loop needs
+from a task store is seven verbs, GitHub supplies them in owned mode, and a
+local store supplies them in guest mode where a company tracker is read-only.
+The merge path, the checks and the ruleset stay GitHub either way, so a portable
+backlog is one quarter of this and not all of it. `references/backlog-port.md`.
 
 Record both answers so neither is re-asked nor silently assumed, split by who
 they are about. **Repo facts** — where the backlog lives, which conventions won,
@@ -189,7 +195,8 @@ anyway. Use both of these instead, and neither of them waits:
 
 - **An issue labelled for the owner**, carrying the recommendation and the
   cost. Durable, survives the session, and it is where the answer gets recorded
-  against the thing it decides. `references/github-backlog.md`.
+  against the thing it decides. In guest mode it is filed in the local store,
+  because escalating is still a backlog write. `references/backlog-port.md`.
 - **Plain prose at the end of a turn**, phrased as a question rather than a
   menu. Cheaper than an issue for something you need soon, and the owner can
   answer in their own words.
@@ -330,7 +337,8 @@ in the order its commits show rather than the order listed here.
 | `references/reviewing.md` | A PR is waiting |
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
-| `references/github-backlog.md` | Seeding or maintaining the issue graph |
+| `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
+| `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 
 ## What the loop is worth
