@@ -2,9 +2,13 @@
 //
 // WHAT THIS PREVENTS
 // A guard that is written into `.claude/settings.json` and not loaded by the
-// running process. Hooks are snapshotted at process start, so a session that
-// began before the hook existed never has it, and neither does anything it
-// spawns for as long as it lives. That is not a brief window: this repo ran
+// running process. Hook *entries* are snapshotted at process start, so a
+// session that began before the entry existed never has it, and neither does
+// anything it spawns for as long as it lives. The *script* an entry names is
+// not snapshotted: it is read off disk every time the hook fires, so a change
+// to the guard's rules is live everywhere the moment it lands, and a checkout
+// that is behind is a different problem with a different fix. Both halves are
+// #82. That is not a brief window: this repo ran
 // for two days and roughly fifteen agents that way, believing it had a control
 // it did not have, and the guard never fired once. Nothing said so, because
 // the guard is a gate, and a gate that never fired leaves nothing behind. A
@@ -82,11 +86,11 @@ function configured() {
 
 console.error('Nothing refused this probe, so do not rely on the guard in this process.')
 console.error('')
-console.error('What was observed: this script ran. A loaded guard refuses it by name, so')
-console.error('either no PreToolUse hook is loaded here, or the copy that is loaded predates')
-console.error('this probe. Both have the same fix and neither is a state to work in: until')
-console.error('you have seen a refusal, an agent in this process can merge its own pull')
-console.error('request and nothing will say that it did.')
+console.error('What was observed: this script ran. A live guard refuses it by name, so')
+console.error('either no PreToolUse hook is loaded here, or the guard on disk predates this')
+console.error('probe. Those have different fixes, and what follows narrows it. Neither is a')
+console.error('state to work in: until you have seen a refusal, an agent in this process')
+console.error('can merge its own pull request and nothing will say that it did.')
 console.error('')
 
 const wiring = configured()
@@ -96,9 +100,19 @@ if (wiring === null) {
 } else if (wiring.broken) {
   console.error(`${wiring.file} is not valid JSON, so no hook in it loads at all.`)
 } else {
-  console.error(`It is configured, in ${wiring.file}, and configured is not loaded.`)
-  console.error('Settings are read once, when the CLI starts, so a process that began before')
-  console.error('the hook did will never have it, and neither will anything it spawns.')
-  console.error('Restart the CLI and run this again.')
+  console.error(`It is configured, in ${wiring.file}, and configured is not loaded. Two`)
+  console.error('things produce that, and only one of them is fixed by a restart.')
+  console.error('')
+  console.error('  Wiring. The hook ENTRY is read once, when the CLI starts, so a process')
+  console.error('  that began before that entry existed will never have it, and neither will')
+  console.error('  anything it spawns. Restart the CLI and ask again.')
+  console.error('')
+  console.error('  Logic. The SCRIPT the entry names is read off disk every time the hook')
+  console.error('  fires, so a checkout without the rule that refuses this probe answers')
+  console.error('  "inert" from a hook that is perfectly live. Pull, then ask again. A')
+  console.error('  restart will not help, and neither will waiting for one.')
+  console.error('')
+  console.error('Check the second first: it is the cheaper of the two to rule out. See')
+  console.error('docs/process/orchestrating.md.')
 }
 process.exit(1)

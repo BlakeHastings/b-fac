@@ -67,7 +67,7 @@ matcher is narrowed.
 **A hook does not protect the session that installs it.** `.claude/settings.json`
 is read at startup, so the session that adds the guard runs unguarded to the
 end. Verified: `gh pr merge --help` was not denied in the session that wired it.
-After changing hook config, restart before relying on it, and do not treat a
+After changing hook **wiring**, restart before relying on it, and do not treat a
 non-denial in that session as evidence the guard is broken.
 
 That window is not brief. It lasts as long as the process, including every
@@ -82,8 +82,40 @@ node scripts/check-guard-live.mjs
 ```
 
 Being refused is the answer you want. If it prints instead, the guard is not
-protecting this process, and the fix is to restart the CLI. ADR 0027 says why
-the answer arrives as a refusal rather than as output.
+protecting this process. ADR 0027 says why the answer arrives as a refusal
+rather than as output, and the next trap says which of two fixes applies.
+
+**What is snapshotted is the wiring, not the logic, and only one of them needs
+a restart.** The hook *entry* was read at startup, so adding a hook, deleting
+one, or changing its matcher or its command line reaches nothing already
+running. The *script* that entry names is read off disk every time the hook
+fires, so a change to what the guard decides is live in every session that
+exists, the moment it lands on `main`, with no restart and no staging.
+
+Both halves are measured, in different sessions. #45's two-day blind spot was
+wiring: the `PreToolUse` block was written three hours after the CLI started and
+a restart was the only fix. #95's logic fix was watched arriving mid-session, in
+a process that had been running for hours:
+`{ node scripts/check-guard-live.mjs; }` was allowed, a `git pull` brought the
+new `LEADING_WORDS` into the main checkout, and the same line minutes later was
+denied. Nothing else changed.
+
+Two consequences, and neither is optional reading before you touch a guard:
+
+- **A merged guard change is verifiable live, immediately, and that is the only
+  way it is verifiable at all.** On its own branch it is not, because
+  `$CLAUDE_PROJECT_DIR` points at the main checkout (below). So an agent's PR
+  correctly says "tests and reasoning only", and the orchestrator can watch the
+  new behaviour in their own long-running session the moment it merges. Do that
+  rather than restarting to be sure.
+- **Merging a broken guard breaks every session at once**, including agents
+  already dispatched, with no window in which only new sessions are affected.
+  That is the price of the first, and it is why a guard change wants deny *and*
+  allow cases before it lands.
+
+`node scripts/check-guard-live.mjs` still printing after a `git pull` therefore
+means the wiring, not the script. Restart. It printing before one means the
+checkout is behind, and restarting will not help.
 
 **A guard that reads the whole command line denies people quoting it.** Within
 seconds of the guard first firing it refused a `gh issue comment` whose body
@@ -121,12 +153,20 @@ them the check is the net, not the merge. An agent that took `0.17.0` while
 `main` was still at `0.15.0`, because that number survives either merge order,
 had the better idea and it did not come from these docs.
 
-**The probe kills the command it rides in on.** `guard-merge.mjs` refuses
-`check-guard-live.mjs` by name, and `PreToolUse` refuses the whole line, so
-`git pull && node scripts/check-guard-live.mjs` pulls nothing. The refusal is
-also the answer you wanted, so it reads as success and there is no error to
-notice. Run the probe alone. #82 warned about this and the warning did not stop
-me doing it.
+**The probe kills the command it rides in on, and the guard now says so.**
+`guard-merge.mjs` refuses `check-guard-live.mjs` by name, and `PreToolUse`
+refuses the whole tool call, so `git pull && node scripts/check-guard-live.mjs`
+pulls nothing. The refusal is also the answer you wanted, so it reads as success
+and there was no error to notice. #82 warned about it in this file and the
+warning did not stop the next orchestrator, which is what a rule that has to be
+remembered is worth.
+
+The probe is still refused on a compound line, because allowing it would let
+`node scripts/check-guard-live.mjs && true` run the probe in a session where the
+guard is live and report it inert. What changed is that the denial now names the
+loss instead of ending "Nothing is wrong". Run the probe alone anyway; the point
+is that forgetting to now produces something to read rather than a clean-looking
+success. ADR 0038.
 
 **Renaming a CI job breaks merging invisibly.** `scripts/merge-pr.mjs` matches
 job names as strings, and a name that never appears is treated as "never ran",

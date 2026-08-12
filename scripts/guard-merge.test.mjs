@@ -17,8 +17,9 @@ function run(command) {
     input: JSON.stringify({ tool_input: { command } }),
     encoding: 'utf8',
   })
-  if (!out.trim()) return { denied: false }
-  return { denied: JSON.parse(out).hookSpecificOutput.permissionDecision === 'deny' }
+  if (!out.trim()) return { denied: false, reason: '' }
+  const { permissionDecision, permissionDecisionReason } = JSON.parse(out).hookSpecificOutput
+  return { denied: permissionDecision === 'deny', reason: permissionDecisionReason }
 }
 
 const DENIED = [
@@ -89,6 +90,14 @@ const DENIED = [
   // arrives with the authority of a measurement, and it invites the reader to
   // go looking for another route.
   'GH_TOKEN=x node scripts/check-guard-live.mjs',
+  // #82. The probe stays refused when it rides in on a compound line, for that
+  // same reason: allowing it here would let anyone append `&& true` and get a
+  // confident "inert" out of a live guard. What changes is the wording, and
+  // that is asserted separately below.
+  'git pull --ff-only --quiet origin main && node scripts/check-guard-live.mjs',
+  'node scripts/check-guard-live.mjs && gh issue comment 82 --body "loaded"',
+  'node scripts/check-guard-live.mjs || echo inert',
+  'bash -c "git pull && node scripts/check-guard-live.mjs"',
 ]
 
 const ALLOWED = [
@@ -192,6 +201,61 @@ for (const command of DENIED) {
 for (const command of ALLOWED) {
   test(`allows: ${command || '(empty)'}`, () => {
     assert.equal(run(command).denied, false, 'should have been allowed')
+  })
+}
+
+// #82. Refusing the probe is the answer the probe exists to produce, so this is
+// the one denial in the guard that reads as success. When the probe is the
+// whole tool call that reading is correct. When anything else is on the line,
+// the harness threw that away too and the same words say "nothing is wrong"
+// about a `git pull` that did not happen. Two orchestrators lost a command that
+// way, the second after reading a warning about the first, so the tables below
+// pin which message each shape gets.
+//
+// The verdict is deny on both sides and is asserted in DENIED above. What is
+// asserted here is which denial.
+const ALONE = [
+  'node scripts/check-guard-live.mjs',
+  'node ./scripts/check-guard-live.mjs',
+  // A brace group is how #82's second measurement was actually taken. `}` is a
+  // compound command's closing syntax rather than a command, so nothing is lost.
+  '{ node scripts/check-guard-live.mjs; }',
+  // An assignment prefix binds a variable for the probe and runs nothing itself.
+  'GH_TOKEN=x node scripts/check-guard-live.mjs',
+  // A shell in front of the probe is still a tool call that is only the probe.
+  'bash -c "node scripts/check-guard-live.mjs"',
+  // Asking twice loses nothing either.
+  'node scripts/check-guard-live.mjs && node scripts/check-guard-live.mjs',
+]
+
+const IN_COMPANY = [
+  // Verbatim from #82's comment. The pull never ran, `git log` still showed the
+  // previous merge, and the guard's reply was the one being asked for.
+  'git pull --ff-only --quiet origin main && node scripts/check-guard-live.mjs',
+  // #82's opening loss, which was a `gh issue comment`, in the other order.
+  'node scripts/check-guard-live.mjs && gh issue comment 82 --body "loaded"',
+  'cd repo; node scripts/check-guard-live.mjs',
+  'node scripts/check-guard-live.mjs || echo inert',
+  // What is lost can sit on either side of a shell payload, so the question has
+  // to be asked of the whole tool call and not of the segment the probe is in.
+  'git pull && bash -c "node scripts/check-guard-live.mjs"',
+  'bash -c "git pull && node scripts/check-guard-live.mjs"',
+  'bash -c "echo hi" && node scripts/check-guard-live.mjs',
+]
+
+for (const command of ALONE) {
+  test(`says nothing is wrong: ${command}`, () => {
+    const { denied, reason } = run(command)
+    assert.equal(denied, true, 'the probe must be refused whatever else is on the line')
+    assert.match(reason, /Nothing is wrong\./)
+  })
+}
+
+for (const command of IN_COMPANY) {
+  test(`says what was lost: ${command}`, () => {
+    const { denied, reason } = run(command)
+    assert.equal(denied, true, 'the probe must be refused whatever else is on the line')
+    assert.match(reason, /nothing else on that line ran/)
   })
 }
 

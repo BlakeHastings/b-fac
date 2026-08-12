@@ -116,9 +116,11 @@ the check itself. What it does not cover:
 - **A hook written into settings, which is not a hook that runs.** There are
   three states and the check can only see the first. The hook is *written into
   `.claude/settings.json`*. The hook was *loaded by this process*, which was
-  decided once at startup, before any of today's work. The hook *fires on the
-  command in front of you*, which is the only one of the three that denies
-  anything. **The middle state is invisible from inside**, so do not write a
+  decided once at startup, before any of today's work. What was decided then is
+  the entry and not the script it names, so today's edit to the guard's rules is
+  live in that process while today's edit to the wiring is not. The hook *fires
+  on the command in front of you*, which is the only one of the three that
+  denies anything. **The middle state is invisible from inside**, so do not write a
   status update that treats it as observed: a live guard and an inert one read
   the same to you, to the agent, and to this check. Only a denial somebody
   watched happen distinguishes them, which is a denial you can ask for: see
@@ -167,6 +169,17 @@ refuses, and nothing has to be copied beside the guard for the answer to exist.
 prints the guest gate's, because a green layer 2 and a refusal are two different
 claims and you want both. Ask after installing, after any change to hook
 settings, and when you take over a session.
+
+*Alone on the line.* A `PreToolUse` hook refuses the whole tool call, so
+`git pull && node scripts/guard-merge.mjs --probe` pulls nothing and then prints
+the answer you were hoping for. That the refusal is the result you asked for is
+what makes this one hard to catch: there is no error, nothing looks wrong, and
+the commands chained to the probe did not happen. It has caught two
+orchestrators on the project this skill came from, the second of them after
+reading a warning about the first. Treat the paragraph you are reading as the
+weaker of the two available remedies. The stronger one is a denial that names
+what it cost instead of ending "nothing is wrong", and this guard does not do
+that yet.
 
 *Not through `npm run`.* npm re-invokes the script through a shell of its own,
 so the hook is shown `npm run <name>` and the file name it matches on is nowhere
@@ -225,10 +238,36 @@ returned a correct deny. Nothing anywhere said the layer was absent, because a
 guard that was never loaded produces exactly the same output as a guard with
 nothing to deny.
 
-So restart after any hook change before relying on it, and never read a
-non-denial as evidence about the guard. It says nothing either way. The one
-exception is the probe, whose whole line was written to be denied, which is what
-makes its silence mean something.
+**What is snapshotted is that block, not the file it names.** The distinction is
+worth more than it looks, and conflating it has cost time in both directions.
+The hook *entry* is read once, at startup, so adding a hook, deleting one, or
+changing its matcher or its command line reaches nothing already running. The
+*script* the entry invokes is read off disk every time the hook fires, so a
+change to what the guard decides is live in every running session the moment it
+lands, with no restart and no staging.
+
+Both halves are measured. The run above is the wiring half, and only a restart
+would have fixed it. The logic half was watched happening in a process that had
+been running for hours: a probe line was allowed, a `git pull` brought a fix to
+the guard's parser into the checkout, and the same line minutes later was
+denied, with nothing else changed.
+
+So **restart after a change to the wiring, and do not bother after a change to
+the rules**, where a restart buys nothing and waiting for one wastes the window
+in which the fix is already live. Two things follow that a guard's author needs
+before they start:
+
+- A guard change **can** be verified live, right after it merges, in a session
+  that predates it. That is often the only way it can be verified at all, since
+  a branch that edits the script does not change the guard for the agent writing
+  it: the hook command resolves against the checkout the session started in.
+- A **broken** guard reaches every running session and every dispatched agent
+  the same way, at once. Land rule changes on deny and allow cases, not on a
+  staged rollout, because there is no such thing here.
+
+Never read a non-denial as evidence about the guard. It says nothing either way.
+The one exception is the probe, whose whole line was written to be denied, which
+is what makes its silence mean something.
 
 **That run also priced layer 0, by accident.** With the only preventive layer
 inert for two days and roughly fifteen agents dispatched, exactly one merged
@@ -363,7 +402,9 @@ node .factory/guard-guest-writes.mjs --probe
 ```
 
 Being refused is the answer you want. If it prints, the gate is not in this
-process and the fix is a restart. This gate had the one-file probe first; layer
+process and the fix is a restart. Alone on the line, for layer 2's reason: the
+whole tool call is refused, and this refusal reads as success too. This gate had
+the one-file probe first; layer
 2's guard has it now too, and until it did, a repository installing this skill
 had no way to ask its only preventive layer anything at all.
 
