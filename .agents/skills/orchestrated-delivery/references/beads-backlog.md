@@ -81,9 +81,11 @@ being complete, and a truncation notice satisfies that as well as `--limit 0`
 does.
 
 **`link` removes the port's only body mutation.** On GitHub a `Parent: #N` line
-is kept in the body beside the real edge, because the edge is invisible in a
-terminal. Here `bd show` renders the tree, so there is nothing to duplicate and
-nothing to keep in sync.
+is kept in the body beside the real edge. That was because the edge was
+invisible in a terminal, and `gh` 2.94.0 closed most of that gap by printing
+`parent:` and `sub-issues:` lines of its own, leaving the duplicate as cover for
+older clients. Here `bd show` renders the tree and there is nothing to duplicate
+at all.
 
 ## Seeding, which is the verb that matters
 
@@ -132,12 +134,12 @@ parent-child counts before anything is written. Edges belong in the top-level
 `edges` array; a `deps` array on a node takes different field names and is easy
 to get wrong quietly.
 
-This collapses `github-backlog.md`'s three phases into one call, which also
-retires the resumable state file that existed because phase two could die
-halfway. Note what does *not* transfer: the port says `create` "must hand back a
-stable id immediately, because seeding creates parents in one phase and links
-children in a later one". That clause describes GitHub, not the port. With an
-atomic graph apply, ids never have to exist before the links do.
+This collapses `github-backlog.md`'s two phases into one call, which also
+retires the resumable state file that existed because a phase could die halfway.
+Note what does *not* transfer: the port says `create` "must hand back a stable
+id immediately, because seeding creates every parent before the children that
+name it". That clause describes GitHub, not the port. With an atomic graph
+apply, ids never have to exist before the links do.
 
 ## Concurrent writers
 
