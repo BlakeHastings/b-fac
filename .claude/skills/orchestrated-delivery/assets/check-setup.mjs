@@ -37,18 +37,24 @@
 // skipped the step. That is worth printing, and it is not a reason to fail a
 // setup that is otherwise complete.
 //
+// This also writes the owned answer, with `--record-owned`, because until #100
+// nothing could: the guest record is written by installing the gate, and owned
+// has no gate to install. See that section below for why the reader of a fact
+// is a defensible place to keep its writer.
+//
 //   node <skill>/assets/check-setup.mjs   # from the repo root, before anything
 //   node scripts/check-setup.mjs          # after, once it has been copied in
 //   node scripts/check-setup.mjs --root=/path/to/repo
+//   node scripts/check-setup.mjs --record-owned   # answer ADR 0021's question
 //
 // Requires Node 18 or later, and `git` for two comparisons it skips without.
 // No network, no `gh`, no Python. If `node` itself is missing, that is this
 // check's first finding without it having to run, because layers 1 to 3 ship as
 // Node scripts. The LAYERS table below is the same checklist by eye, for a repo
 // where you cannot run it.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 
 const OK = 'ok'
 const PARTIAL = 'PARTIAL'
@@ -214,6 +220,200 @@ function visibleToTheHostRepo(paths) {
     return null
   }
 }
+
+// ---------------------------------------------------------------------------
+// --record-owned, which is the answer this repository could not produce
+//
+// ADR 0021 calls the write boundary a machine fact **either way**, and has the
+// question asked out loud at initialisation. Only one thing ever wrote that
+// fact, `guard-guest-writes.mjs --install`, and it only ever writes `guest`,
+// because installing the gate *is* the guest declaration (ADR 0029). So the two
+// states a repository reached on its own were guest and unrecorded, and an
+// owned repository printed NOT RECORDED for ever while being told to write a
+// line nothing could write. ADR 0029's own rule about remedies applies to a
+// report as well as to a gate: a wall with a signpost pointing nowhere is how a
+// layer gets switched off.
+//
+// The cost is worse than a wasted paragraph, and it is the reason this exists
+// rather than the output simply being softened. NOT RECORDED means two things
+// at once: **nobody asked**, which is the state ADR 0021's asymmetry is built
+// to catch, and **asked, answered owned, nowhere to put it**, which is fine. A
+// state every owned repository is permanently in carries no signal. Softening
+// the text instead would have made silence mean owned, and silence meaning
+// owned is the one inference ADR 0021 forbids: "no record" is a fact about the
+// repository in exactly the way "no gate installed" is, and a work repository
+// with nothing set up yet looks precisely like an owned one.
+//
+// **The writer lives beside the reader**, which is the same argument ADR 0027
+// makes for the probe and the rule being one file. The one thing the two halves
+// must agree on is the shape of the `Write boundary:` line, and here they cannot
+// disagree. Guest keeps its own writer, because there the record is a byproduct
+// of installing the gate, and a guest record written without the gate is a
+// declaration with nothing behind it.
+//
+// **It writes the record and excludes it, and does nothing else.** No gate, no
+// hook, no settings file: owned mode has no boundary to hold. A misfire in a
+// repository that is not yours therefore writes one untracked file that makes
+// this report say `owned`, which is already the checklist it reports when
+// nobody has recorded anything, and it cannot touch the gate, which never reads
+// the mode.
+// ---------------------------------------------------------------------------
+
+// The same line `guard-guest-writes.mjs --install` and `discover-checks.mjs`
+// append, spelled a third time for the reason ADR 0029 gives: an asset is
+// copied into a host repo on its own, and a two-file asset is a setup step that
+// gets half done. `.gitignore` is tracked, and editing a tracked ignore file to
+// hide your own scratch state is itself a change to the repository.
+const EXCLUDE_LINE = `/${dirname(MACHINE_RECORD)}/`
+
+// What an owned record says, which is nearly all reason and one fact. There is
+// no owned equivalent of the guest record's backlog line or probe command: in
+// owned mode the backlog and the check command are repo facts, true for anyone
+// who clones, and they belong in a committed `AGENTS.md`. The boundary is the
+// only machine fact owned mode has, so this file is thin on purpose, and its
+// worth is that it exists rather than what it holds.
+const OWNED_RECORD = `# Machine facts
+
+Not committed, and not committable. ADR 0021 splits the initialisation answers
+by who they are about: repo facts are true for anyone who clones and belong in
+\`AGENTS.md\`, and machine facts are about *this* operator on *this* checkout.
+This file is the second kind, kept out of the tree through
+\`.git/info/exclude\`, so nobody else who clones this repository inherits it.
+
+Write boundary: owned
+
+The factory may write outward from here: create the repository, seed a backlog,
+push branches, open and merge pull requests, configure CI, apply a ruleset.
+
+That is the whole of the answer, and the file is short because owned mode has
+one machine fact and no gate to hold it. The guest record names a gate to probe
+at this point. What there is to ask here is the owned enforcement stack, which
+answers a different question: what may land, rather than what may be written
+outward.
+
+    check-setup.mjs               the layers, and whether each one is wired
+    node ${MERGE_GUARD} --probe   whether the one that refuses a merge loaded
+
+Written by \`check-setup.mjs --record-owned\`, which refuses to overwrite it. If
+the answer here changes, delete this file and record the new one.
+`
+
+// The path to print in a command the reader is meant to run. Relative to the
+// repo root when this script is inside it, which is the copied-into-`scripts/`
+// case, and absolute when it is still being run out of the skill.
+const SELF = (() => {
+  const path = process.argv[1] ?? ''
+  const rel = relative(ROOT, path).replace(/\\/g, '/')
+  return rel !== '' && !rel.startsWith('..') ? rel : path
+})()
+
+// `.git/info/exclude` lives in the common directory, so a linked worktree and
+// its main checkout share one. That is the right scope: the boundary is a fact
+// about this operator and this repository, not about which branch is out.
+function excludeFile() {
+  const common = resolve(ROOT, git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
+  return join(common, 'info', 'exclude')
+}
+
+const untracked = () => git(['status', '--porcelain', '-uall']).split('\n').filter(Boolean)
+
+function recordOwned() {
+  const refuse = (lines) => {
+    for (const line of lines) console.error(line)
+    console.error('')
+    console.error('Nothing was written.')
+    process.exit(1)
+  }
+
+  // An answer already here is not this command's to overwrite, whether it
+  // answers or not. Somebody wrote it, and the fix for a wrong one is to look
+  // at it rather than to have it replaced from underneath.
+  if (BOUNDARY.record !== undefined) {
+    const line = /^Write boundary:.*$/m.exec(BOUNDARY.record)?.[0] ?? 'no "Write boundary:" line'
+    refuse([
+      `${MACHINE_RECORD} already exists, so the question has been answered here.`,
+      `It says: ${line}`,
+      '',
+      'Delete the file if the answer has changed, and record the new one. Replacing',
+      'it from underneath is how an operator stops believing what it says.',
+    ])
+  }
+
+  // The one case where writing `owned` would be actively wrong: the gate is
+  // installed and its record was deleted, which layer G already reports as what
+  // guest mode looks like with its record gone. Refusing here is not inferring
+  // the mode from the repository. It is declining to write a fact that
+  // contradicts a control somebody deliberately installed.
+  if (read(GUEST_GATE) !== null) {
+    refuse([
+      `${GUEST_GATE} is installed here, and installing that gate is the guest`,
+      'declaration (ADR 0029). Recording this repository as owned would leave a control',
+      'in place that the record says is unnecessary, which is the disagreement layer G',
+      'reports rather than a state to write on purpose.',
+      '',
+      'If this repository really is yours, remove the gate and its wiring first.',
+    ])
+  }
+
+  let exclude
+  let before
+  try {
+    exclude = excludeFile()
+    before = untracked()
+  } catch {
+    refuse([
+      '`git` did not answer, so there is no way to put this file out of the tree.',
+      `Writing ${MACHINE_RECORD} without excluding it leaves the operator's own scratch`,
+      "state showing in `git status` as somebody's changes, and ADR 0021 keeps machine",
+      'facts out of the tree. Run this from inside a git repository, with git on PATH.',
+    ])
+  }
+
+  const done = []
+  const existing = existsSync(exclude) ? readFileSync(exclude, 'utf8') : ''
+  if (existing.split(/\r?\n/).some((line) => line.trim() === EXCLUDE_LINE)) {
+    done.push(`found ${EXCLUDE_LINE} already in .git/info/exclude`)
+  } else {
+    mkdirSync(dirname(exclude), { recursive: true })
+    const separator = existing === '' || existing.endsWith('\n') ? '' : '\n'
+    writeFileSync(exclude, `${existing}${separator}${EXCLUDE_LINE}\n`)
+    done.push(`excluded ${EXCLUDE_LINE} through .git/info/exclude`)
+  }
+
+  // The exclusion first, then the file, so the record is never visible to the
+  // repository even for the moment in between.
+  mkdirSync(join(ROOT, dirname(MACHINE_RECORD)), { recursive: true })
+  writeFileSync(join(ROOT, MACHINE_RECORD), OWNED_RECORD)
+  done.push(`wrote ${MACHINE_RECORD}, saying "Write boundary: owned"`)
+
+  console.log(`Recorded the write boundary in ${ROOT}\n`)
+  for (const line of done) console.log(`  - ${line}`)
+
+  // The guest gate promises a host repo's `git status` is byte-for-byte what it
+  // was, and asks you to check rather than believe it. This has the same
+  // promise and can check its own, so it does. Lines that *vanished* are the
+  // exclusion catching scratch state that was already showing, which is a
+  // repair rather than a violation, so only additions count.
+  const added = untracked().filter((line) => !before.includes(line))
+  if (added.length > 0) {
+    console.error('\nBut this repository can now see files it could not before:\n')
+    for (const line of added) console.error(`  ${line}`)
+    console.error('\nThat is the half of the promise this command exists to keep. The exclusion')
+    console.error('did not take, and the record is visible to anyone running `git status` here.')
+    process.exit(1)
+  }
+  console.log('\n`git status --porcelain -uall` gained nothing, which was checked here rather')
+  console.log('than claimed. Nothing tracked changed and nothing outside this repository was')
+  console.log('written.')
+
+  console.log('\nThis installed nothing: owned mode has no gate, and the answer is the whole')
+  console.log('point. NOT RECORDED now means nobody asked, which is what it is for. Run the')
+  console.log('report to read it back:\n')
+  console.log(`    node ${SELF}`)
+  process.exit(0)
+}
+
+if (process.argv.includes('--record-owned')) recordOwned()
 
 // A copied-but-unedited placeholder, in the two forms the assets ship: the
 // SETUP constants in the scripts, and bracketed phrases in the process docs.
@@ -624,11 +824,22 @@ const PROBE = [
 // *this* operator on *this* checkout may publish outward, which is not true of
 // anyone else who clones. So it never goes in a committed file, and the
 // AGENTS.md line the skill asks for names the backlog tool rather than this.
+//
+// Both answers are writable, which they were not until #100. The guest one is
+// written by installing the gate, because that installation *is* the
+// declaration; the owned one is written here, because owned mode has no gate to
+// declare it with. Naming only the first is what made this block ask an owned
+// repository for a line nobody could produce, run after run, for ever.
 const UNRECORDED_REMINDER = [
   'Nobody has recorded the write boundary here. Record it before the loop starts.',
   'It is a machine fact either way, about this operator on this checkout, so it is',
   `never committed: one line in ${MACHINE_RECORD}, kept out of the tree through`,
-  '.git/info/exclude. `guard-guest-writes.mjs --install` writes it for guest mode.',
+  '.git/info/exclude. Whichever answer is true here, one command writes it:',
+  '',
+  '    node <skill>/assets/guard-guest-writes.mjs --install',
+  '        not your repository: the gate, and the record as part of installing it',
+  `    node ${SELF} --record-owned`,
+  '        yours: the record, and nothing else',
 ]
 
 if (unmet === 0) {
