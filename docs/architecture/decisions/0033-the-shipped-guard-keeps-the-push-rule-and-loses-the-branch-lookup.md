@@ -1,4 +1,4 @@
-# 0032. The shipped guard keeps the push rule and loses the branch lookup
+# 0033. The shipped guard keeps the push rule and loses the branch lookup
 
 Status: accepted
 

@@ -21,7 +21,7 @@
 // `/usr/bin/gh pr create` and `git.exe push` denied by the guest gate and
 // allowed by this repository's merge guard, because every rule there goes
 // through `commandName` while `ghArguments` there compares the raw token. ADR
-// 0032 keeps a push rule in the shipped guard that ADR 0001 deleted from this
+// 0033 keeps a push rule in the shipped guard that ADR 0001 deleted from this
 // repository's. Asserting equal verdicts would be asserting a fiction.
 // Asserting equal segmentation is asserting the thing that is actually one
 // thing.

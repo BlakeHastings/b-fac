@@ -15,7 +15,7 @@
 //
 // WHAT THIS ASSERTS THAT command-reader.test.mjs DOES NOT
 // That file proves all three copies read a command line the same way. It says
-// nothing about what any of them then decides, and it must not: ADR 0032 keeps
+// nothing about what any of them then decides, and it must not: ADR 0033 keeps
 // a push rule here that ADR 0001 deleted from this repository's copy. The rules
 // are what this file is for.
 //
@@ -57,7 +57,7 @@ const DENIED = [
   'gh api repos/{owner}/{repo}/pulls/1/merge -f merge_method=squash',
   'gh api -X PUT "repos/o/r/pulls/9/merge"',
   // A push whose own arguments name the default branch. These are the rules
-  // ADR 0001 removed from this repository's copy and ADR 0032 keeps here,
+  // ADR 0001 removed from this repository's copy and ADR 0033 keeps here,
   // because the repository installing this has no ruleset to make them
   // redundant. Every one of them lands a commit on `main` with no pull request.
   'git push origin main',
@@ -237,7 +237,7 @@ const ALLOWED = [
   'FOO=1',
   'FOO=1 BAR=2',
 
-  // ADR 0032, and the gap it takes deliberately. A `git merge` is dangerous or
+  // ADR 0033, and the gap it takes deliberately. A `git merge` is dangerous or
   // harmless depending on the branch you are standing on, and a PreToolUse hook
   // runs before its command and cannot know which that is. The earlier copy
   // shelled out to `git rev-parse` and was measured giving opposite verdicts
