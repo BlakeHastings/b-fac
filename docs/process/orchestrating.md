@@ -110,6 +110,24 @@ expect to spend a rebase per PR after the first. This is the price of strict
 required status checks, and it is the mechanical form of "verify the merge
 result, not the branch". Do not relax the ruleset to avoid it.
 
+**The version line does not conflict when both branches guess the same
+number.** Two parallel payload branches both read `0.16.0`, both wrote `0.17.0`,
+and the rebase resolved silently because nothing disagreed. The second branch
+then claimed a version `main` had already released, and `npm run check:version`
+is what caught it — git had nothing to report. So the standing advice to "expect
+a one-line conflict in `plugin.json`" is wrong in exactly the case parallel work
+makes likely: the more disciplined the agents, the more identical the edit. Tell
+them the check is the net, not the merge. An agent that took `0.17.0` while
+`main` was still at `0.15.0`, because that number survives either merge order,
+had the better idea and it did not come from these docs.
+
+**The probe kills the command it rides in on.** `guard-merge.mjs` refuses
+`check-guard-live.mjs` by name, and `PreToolUse` refuses the whole line, so
+`git pull && node scripts/check-guard-live.mjs` pulls nothing. The refusal is
+also the answer you wanted, so it reads as success and there is no error to
+notice. Run the probe alone. #82 warned about this and the warning did not stop
+me doing it.
+
 **Renaming a CI job breaks merging invisibly.** `scripts/merge-pr.mjs` matches
 job names as strings, and a name that never appears is treated as "never ran",
 which refuses the merge. The job `name:`, the `REQUIRED` array, and the
