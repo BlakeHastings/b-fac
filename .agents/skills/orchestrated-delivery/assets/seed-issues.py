@@ -7,6 +7,10 @@ after a failure links what exists rather than duplicating half the backlog.
 Epics and issues reference each other by KEY, not by number, because numbers do
 not exist at authoring time.
 
+Needs gh 2.94.0 or newer, for `gh issue create --parent`. On an older gh the
+link is a separate REST call against the issue *id*; see
+references/github-backlog.md.
+
     python seed-issues.py --dry-run     # print what would be created
     python seed-issues.py               # create it
 
@@ -15,6 +19,7 @@ work and is the fastest way to seed the next project.
 """
 
 import argparse
+import itertools
 import json
 import os
 import subprocess
@@ -22,6 +27,11 @@ import sys
 
 REPO = "OWNER/NAME"  # SETUP
 STATE_FILE = os.path.join(os.path.dirname(__file__), "issues-created.json")
+
+# A dry run still has to hand a number to the next phase's --parent, or it
+# prints a create command without the flag a real run would carry. Obviously
+# fake, and never written to the state file: see save_state.
+DRY_NUMBERS = itertools.count(901)
 
 # Appended verbatim to every leaf issue. Linking to the review doc instead of
 # inlining this does not work: an agent that has to follow a link to learn what
@@ -93,39 +103,28 @@ def load_state():
 
 
 def save_state(state, dry):
-    # A dry run must not write state. It records 0 for every key, and because
-    # the resume check tests the VALUE rather than the key, a poisoned file
-    # turns the real run into a silent no-op that prints "exists as #0" for
-    # everything and creates nothing.
+    # A dry run must not write state. Its numbers are invented, and because the
+    # resume check tests the VALUE rather than the key, a poisoned file turns
+    # the real run into a silent no-op that reports every item as already
+    # created. The fakes look plausible, which is what makes this worth a guard
+    # rather than a habit.
     if dry:
         return
     with open(STATE_FILE, "w", encoding="utf-8") as handle:
         json.dump(state, handle, indent=2)
 
 
-def create_issue(title, body, labels, dry):
+def create_issue(title, body, labels, dry, parent=0):
     cmd = ["gh", "issue", "create", "--repo", REPO, "--title", title, "--body", body]
     for label in labels:
         cmd += ["--label", label]
+    # --parent takes the issue NUMBER. Creating and linking in one call also
+    # means there is no window in which a child exists unattached, so a run that
+    # dies halfway leaves a shorter tree rather than a pile of orphans.
+    if parent:
+        cmd += ["--parent", str(parent)]
     url = run(cmd, dry)
-    return int(url.rsplit("/", 1)[-1]) if url else 0
-
-
-def rest_id(number, dry):
-    """GitHub's sub-issue API wants the numeric issue *id*, not its number."""
-    out = run(["gh", "api", f"repos/{REPO}/issues/{number}", "--jq", ".id"], dry)
-    return int(out) if out else 0
-
-
-def link_sub(parent_number, child_number, dry):
-    run(
-        [
-            "gh", "api", "--method", "POST",
-            f"repos/{REPO}/issues/{parent_number}/sub_issues",
-            "-F", f"sub_issue_id={rest_id(child_number, dry)}",
-        ],
-        dry,
-    )
+    return next(DRY_NUMBERS) if dry else int(url.rsplit("/", 1)[-1])
 
 
 def main():
@@ -150,25 +149,13 @@ def main():
             print(f"  {key} exists as #{state[key]}")
             continue
         parent = state.get(epic_key, 0)
-        # A plain parent line as well as the API link: it survives API changes
-        # and reads fine in a terminal.
+        # A plain parent line as well as the real edge. gh prints a `parent:`
+        # line of its own from 2.94.0, so this is redundancy now, but it is the
+        # only form anyone on an older client sees.
         full = body + "\n" + DOD + (f"\n\nParent: #{parent}\n" if parent else "")
-        number = create_issue(title, full, labels, args.dry_run)
-        print(f"  {key} -> #{number}")
+        number = create_issue(title, full, labels, args.dry_run, parent)
+        print(f"  {key} -> #{number} under #{parent}" if parent else f"  {key} -> #{number}")
         state[key] = number
-        save_state(state, args.dry_run)
-
-    print("Linking sub-issues")
-    for key, epic_key, *_ in ISSUES:
-        link_key = f"link:{key}"
-        if link_key in state:
-            continue
-        parent, child = state.get(epic_key), state.get(key)
-        if not parent or not child:
-            continue
-        link_sub(parent, child, args.dry_run)
-        print(f"  #{child} under #{parent}")
-        state[link_key] = True
         save_state(state, args.dry_run)
 
 

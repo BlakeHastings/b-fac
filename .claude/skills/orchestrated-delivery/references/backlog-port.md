@@ -23,7 +23,7 @@ the table can be re-derived instead of remembered.
 
 | Verb | What the loop does with it | Asked for in |
 | --- | --- | --- |
-| `create` | Epics carrying prose context, leaf items carrying the full anatomy, and everything filed mid-flight by you or by an agent. Must hand back a stable id immediately, because seeding creates parents in one phase and links children in a later one | `github-backlog.md` (shape, seeding), `briefing.md`, the loop's step 8 |
+| `create` | Epics carrying prose context, leaf items carrying the full anatomy, and everything filed mid-flight by you or by an agent. Must hand back a stable id immediately, because seeding creates every parent before the children that name it | `github-backlog.md` (shape, seeding), `briefing.md`, the loop's step 8 |
 | `read` | One item in full, by id. This is the first line of every brief's reading order, so it is the verb an implementation agent uses most | `briefing.md`'s annotated brief |
 | `list` | Open items, filtered by label, and **not truncated**. `Next: nothing` is paid for by listing every open item and saying what each waits on, and a list that silently stops at thirty makes that claim false while looking complete | `SKILL.md` "Before you stop", `github-backlog.md` housekeeping |
 | `comment` | The review record, posted before merging, in the three headings plus a verdict | `reviewing.md`, `assets/review.md` |

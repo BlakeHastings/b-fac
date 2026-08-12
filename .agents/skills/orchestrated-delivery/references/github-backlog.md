@@ -35,23 +35,51 @@ glance in the list.
 A label convention does not give you a tree you can read. This is the port's
 `link` verb, and it is the requirement that disqualifies candidate tools rather
 than merely inconveniencing them: a task store with no parent concept cannot
-carry this loop. GitHub's answer is sub-issues. The API wants the numeric issue
-**id**, not the issue number, which is the part that trips people:
+carry this loop. GitHub's answer is sub-issues, and from **`gh` 2.94.0** the
+whole verb is flags:
 
 ```bash
-gh api --method POST repos/{owner}/{repo}/issues/<parent>/sub_issues \
-  -F sub_issue_id=<child_id>
+gh issue create --title "..." --body "..." --parent <parent>   # born linked
+gh issue edit <parent> --add-sub-issue <child>                 # adopt an orphan
+gh issue view <parent> --json subIssues,subIssuesSummary       # read the tree
 ```
 
-Keep a plain `Parent: #N` line in the body too. It survives API changes and
-reads fine in a terminal.
+Each of those takes an issue **number** or a URL, the identifier already on
+screen. Worth saying, because the fallback does not.
+
+**Run `gh --version` before assuming you have them.** Below 2.94.0 there are no
+flags and no `parent` JSON field, and the only route is the REST endpoint, which
+wants the numeric issue **id** rather than the number. That is the part that
+trips people, and it is now the sole thing the endpoint buys:
+
+```bash
+child_id=$(gh api repos/{owner}/{repo}/issues/<child> --jq .id)
+gh api --method POST repos/{owner}/{repo}/issues/<parent>/sub_issues \
+  -F sub_issue_id="$child_id"
+```
+
+An out-of-date `gh` is the ordinary case, not the exotic one. The machine this
+was written on ran 2.88.1, nine releases behind, which is exactly why the
+fallback sat here for months looking like the way to do it.
+
+The same release added `--blocked-by`, `--blocking` and `--type`, with matching
+`blockedBy`, `blocking` and `issueType` JSON fields. This loop uses none of
+them: it has no computed ready state, and "epic" is a label here rather than an
+issue type. That is a decision to revisit, not an oversight.
+
+Keep a plain `Parent: #N` line in the body as well. From 2.94.0 `gh issue view`
+prints `parent:` and `sub-issues:` lines of its own, so the duplicate is
+redundancy rather than the only readable form — one line, and still the only
+form anyone on an older client sees.
 
 ## Seeding
 
 Write a one-shot generator rather than creating issues by hand. Epics and issues
 as data, referencing parents **by key** rather than by number, because numbers
-do not exist at authoring time. Then three phases: create epics, create issues,
-link children.
+do not exist at authoring time. Then two phases: create the epics, then create
+their children with `--parent`, which links at birth and leaves no window in
+which a child exists unattached. Below 2.94.0 it is three, with a linking pass
+at the end.
 
 Make it resumable. Record created numbers to a state file and short-circuit
 anything already created, so a rerun after a failure does not duplicate half the
@@ -90,7 +118,9 @@ Small, and it decays fast if skipped.
 
 - Close epics when their children are done, so the list shows real state.
 - Deduplicate, keeping the better framing and closing the other into it.
-- Link orphan issues to their epic. `gh issue create` does not, so anything
-  filed mid-flight is an orphan until you say otherwise.
+  `gh issue close <n> --duplicate-of <m>` is both halves in one command.
+- Link orphan issues to their epic. A `gh issue create` without `--parent`
+  leaves one, so anything filed mid-flight in a hurry is an orphan until you say
+  otherwise.
 - `gh issue list` and `gh pr list` default to 30. Any count taken without
   `--limit` is wrong the moment the project passes thirty of anything.
