@@ -97,12 +97,12 @@ question; whether it *may* is a fact about the developer's authority, and no
 amount of repository inspection contains it. Escalate it; do not derive it.
 
 **The backlog is where the write boundary bites first.** What the loop needs
-from a task store is seven verbs, GitHub supplies them in owned mode, and a
+from a task store is eight verbs, GitHub supplies them in owned mode, and a
 local store supplies them in guest mode where a company tracker is read-only.
 The merge path, the checks and the ruleset stay GitHub either way, so a portable
 backlog is one quarter of this and not all of it. `references/backlog-port.md`.
 The local store is **beads**, driven by `bd`; `references/beads-backlog.md` maps
-the seven verbs onto it and names the two commands that will write to a host
+the eight verbs onto it and names the two commands that will write to a host
 repo if you let them. **Which tool it is has to be written down**, in one line,
 where the loop will meet it: `AGENTS.md` in owned mode, and out of the tree with
 the machine facts below in guest mode, because a host repo's tracked files are
@@ -373,7 +373,7 @@ in the order its commits show rather than the order listed here.
 | `references/host-checks.md` | Working out what a repo you did not create actually runs |
 | `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
-| `references/beads-backlog.md` | The same seven verbs on beads, which is what guest mode uses |
+| `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 
 ## What the loop is worth
