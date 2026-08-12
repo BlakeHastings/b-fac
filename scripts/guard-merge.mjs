@@ -28,7 +28,7 @@
 // `sudo` to land a pull request by accident. The set of programs that can
 // launch another program has no edge, so closing six of them buys a longer
 // list rather than a closed hole, and it buys that at the cost of this
-// section's accuracy — which is the part of the file worth the most.
+// section's accuracy, which is the part of the file worth the most.
 //
 // Shell *syntax* an ordinary command can contain is a different matter: it is
 // a closed set, and covering it is what issue #90 did. See LEADING_WORDS. The
@@ -244,7 +244,8 @@ function endOfHeredoc(line, from, delimiter) {
 //
 // Matching is by whole token, so a brace that is part of a word is not one of
 // these: `gh api repos/{owner}/{repo}/pulls/1/merge` still reads as one token
-// and is still denied, and `mkdir -p docs/{process,architecture}` is not.
+// and is still denied, and `mkdir -p docs/{process,architecture}` keeps its
+// brace too.
 const LEADING_WORDS = new Set(['{', '!', 'then', 'else', 'elif', 'do', 'time'])
 
 function withoutLeadingWords(tokens) {
@@ -259,8 +260,8 @@ function segmentsOf(line) {
   // operator after it would read as that argument's contents — including a
   // real chained merge. A quote with no partner is text, so read it that way.
   const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
-  // Stripping can empty a segment — `time` on its own is a whole command —
-  // and every rule below reads the first token.
+  // Stripping can empty a segment, since `time` on its own is a whole
+  // command, and every rule below reads the first token.
   return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
 }
 

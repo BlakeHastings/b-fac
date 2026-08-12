@@ -44,7 +44,7 @@ const DENIED = [
   'yes | gh pr merge 42',
   '(cd repo && gh pr merge 42)',
   // #90. The line above passes without the fix, because the bracket lands on
-  // `42` rather than on the token a rule reads — which is exactly why nothing
+  // `42` rather than on the token a rule reads, which is exactly why nothing
   // caught this. A `)` has to end a command with no `$(` open, as `(` does.
   '(cd repo && gh pr merge)',
   '(gh pr merge)',
@@ -123,8 +123,8 @@ const ALLOWED = [
   'gh pr create --body "Denied: (cd repo && gh pr merge)"',
   'gh issue comment 90 --body "| `(cd repo && gh pr merge)` | allowed |"',
   // Windows paths carry brackets, and this hook runs on Windows. Unquoted, the
-  // line below is shell-invalid and the parse of it is nonsense either way —
-  // `(` has split it since #58. What matters is that the verdict stays allow.
+  // line below is shell-invalid and the parse of it is nonsense either way,
+  // since `(` has split it since #58. The verdict is what has to stay allow.
   'cd C:\\Program Files (x86)\\repo',
   'pwsh -Command "ls \'C:\\Program Files (x86)\\Git\'"',
   // A leading reserved word is matched as a whole token, so a brace inside a
