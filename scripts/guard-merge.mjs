@@ -14,6 +14,28 @@
 // `-EncodedCommand`, or a script file the command merely names is invisible to
 // it, and no amount of pattern work changes that.
 //
+// Nor does it cover a command that runs another command, or `gh` reached under
+// another name. Every line below was run against this guard and allowed
+// through, and `gh pr merge` with no argument merges the current branch's pull
+// request, so each of them is a working merge:
+//
+//   sudo gh pr merge      env gh pr merge       command gh pr merge
+//   nohup gh pr merge     xargs gh pr merge     time -p gh pr merge
+//   \gh pr merge          /usr/bin/gh pr merge
+//
+// They are left open on purpose. The threat model is an agent that forgot, or
+// that talked itself into it, not one that is hiding, and nobody reaches for
+// `sudo` to land a pull request by accident. The set of programs that can
+// launch another program has no edge, so closing six of them buys a longer
+// list rather than a closed hole, and it buys that at the cost of this
+// section's accuracy — which is the part of the file worth the most.
+//
+// Shell *syntax* an ordinary command can contain is a different matter: it is
+// a closed set, and covering it is what issue #90 did. See LEADING_WORDS. The
+// `time -p` line above is the seam between the two, one flag past the reserved
+// word that is handled, and skipping it would mean keeping a table of someone
+// else's flags.
+//
 // The permitted route is `node scripts/merge-pr.mjs <n>`. It does not match
 // anything below, and the `gh api` call it makes internally is a child process
 // rather than a Bash tool call, so this guard never sees it. Making the safe
@@ -49,8 +71,9 @@ function deny(reason) {
 }
 
 // Characters that end one command and begin another when they are not inside
-// quotes. A closing `)` is handled separately, since it only ends a command
-// when a `$(` opened one.
+// quotes. A closing `)` is handled separately, because ending the command is
+// only half of what it does: when a `$(` opened one, it also restores the
+// quote that `$(` interrupted.
 const OPERATORS = new Set(['&', '|', ';', '\n', '\r', '(', '`'])
 
 const ESCAPABLE = new Set([...OPERATORS, ')', '"', "'", '\\', '$', ' ', '\t'])
@@ -104,9 +127,15 @@ function parse(line, literalQuote) {
       i += 1
       continue
     }
-    if (char === ')' && quote === null && resume.length > 0) {
+    // A `)` ends a command whether or not this parser saw the thing that
+    // opened one. Requiring an open `$(` made every other closing bracket fall
+    // through to ordinary text, where it glued itself to the preceding token:
+    // `(cd repo && gh pr merge)` presented a command named `merge)` and walked
+    // past the rule (#90). Restoring the interrupted quote stays conditional,
+    // because only `$(` interrupts one.
+    if (char === ')' && quote === null) {
       endSegment()
-      quote = resume.pop()
+      if (resume.length > 0) quote = resume.pop()
       continue
     }
 
@@ -200,13 +229,39 @@ function endOfHeredoc(line, from, delimiter) {
   }
 }
 
+// Words that stand in front of a command without being one, so the command is
+// whatever follows them. `if gh pr checks 42; then gh pr merge 42; fi` is an
+// agent doing ordinary work rather than an agent hiding, and the guard has to
+// see the merge inside it.
+//
+// The set is closed because every word in it is a shell reserved word that
+// takes no arguments of its own, which is what makes stripping them blindly
+// safe. Wrapper *commands* are the opposite on both counts and are named under
+// NOT COVERED instead. `time` is the one that sits on the seam: it is a bash
+// reserved word and also a real binary on some systems. It is here because
+// both readings run the merge, so there is no wrong answer to get, and because
+// timing a command is something an agent does on purpose rather than to hide.
+//
+// Matching is by whole token, so a brace that is part of a word is not one of
+// these: `gh api repos/{owner}/{repo}/pulls/1/merge` still reads as one token
+// and is still denied, and `mkdir -p docs/{process,architecture}` is not.
+const LEADING_WORDS = new Set(['{', '!', 'then', 'else', 'elif', 'do', 'time'])
+
+function withoutLeadingWords(tokens) {
+  let at = 0
+  while (at < tokens.length && LEADING_WORDS.has(tokens[at])) at += 1
+  return tokens.slice(at)
+}
+
 function segmentsOf(line) {
   const first = parse(line, null)
-  if (first.unterminated === null) return first.segments
   // An apostrophe in ordinary text opens a quote that never closes, and every
   // operator after it would read as that argument's contents — including a
   // real chained merge. A quote with no partner is text, so read it that way.
-  return parse(line, first.unterminated).segments
+  const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
+  // Stripping can empty a segment — `time` on its own is a whole command —
+  // and every rule below reads the first token.
+  return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
 }
 
 // `gh` takes its global flags before the subcommand and no positional argument
