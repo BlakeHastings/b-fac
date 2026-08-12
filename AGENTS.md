@@ -17,6 +17,9 @@ describe how work actually happens here, not an aspiration.
   municipal permitting in one pass, and `npm run check:vocabulary` fails if the
   original vocabulary comes back. If you add an example, keep it concrete and
   keep it in that domain.
+- **This repo's backlog is GitHub issues, addressed through `gh`.** That is the
+  one line the backlog port asks every repo to state; the verbs behind it are in
+  `.agents/skills/orchestrated-delivery/references/backlog-port.md`.
 - **Agents do not merge.** Push the branch, open the PR, report, stop. Merging
   is the orchestrator's, through `node scripts/merge-pr.mjs <n>`.
 - **A skill body stays under ~500 lines**, with detail pushed into
