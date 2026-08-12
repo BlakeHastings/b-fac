@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const GUARD = fileURLToPath(new URL('./guard-merge.mjs', import.meta.url))
@@ -27,9 +27,36 @@ const DENIED = [
   'gh pr merge --auto 42',
   'gh   pr   merge   42',
   'gh pr "merge" 42',
+  'gh pr me"rge" 42',
   'gh api --method PUT repos/o/r/pulls/42/merge',
   'gh api repos/{owner}/{repo}/pulls/1/merge -f merge_method=squash',
+  'gh api -X PUT "repos/o/r/pulls/9/merge"',
+  // A global flag sits between `gh` and its subcommand, so finding the
+  // subcommand means stepping over flags rather than reading tokens 2 and 3.
+  'gh --repo o/r pr merge 42',
+  // Every way one command follows another. #58's fix reads the head of each
+  // command rather than the whole line, so each of these has to be recognised
+  // as a command boundary or the fix becomes a hole.
   'git push origin feature && gh pr merge 7',
+  'cd repo; gh pr merge 42',
+  'gh pr view 42 || gh pr merge 42',
+  'git push origin feature\ngh pr merge 7',
+  'yes | gh pr merge 42',
+  '(cd repo && gh pr merge 42)',
+  'echo "$(gh pr merge 42)"',
+  'echo `gh pr merge 42`',
+  // An unterminated quote is text, not an argument that swallows the rest of
+  // the line. Read the other way, an apostrophe hides everything after it.
+  "echo don't && gh pr merge 5",
+  // Each shell tool the hook is wired to can invoke the other one.
+  'bash -c "gh pr merge 42"',
+  'pwsh -Command "gh pr merge 42"',
+  // The liveness probe is refused on purpose: being refused is its answer. If
+  // this ever passes, a session has no way to tell a loaded guard from an
+  // inert one, which is the state that went unnoticed here for two days.
+  'node scripts/check-guard-live.mjs',
+  'node ./scripts/check-guard-live.mjs',
+  'node C:\\Users\\o\\repo\\scripts\\check-guard-live.mjs',
 ]
 
 const ALLOWED = [
@@ -52,6 +79,33 @@ const ALLOWED = [
   // Empty and malformed payloads are not this guard's problem.
   '',
   '   ',
+
+  // #58. The guard denied all of these, and none of them merges anything: the
+  // blocked command appears as the *text* of an argument to a different one.
+  // Recording that the guard works was the first thing it refused to allow.
+  'gh issue comment 45 --body "| Command | Result |\n| gh pr merge --help | denied |"',
+  'gh pr create --title "Fix the guard" --body "It denied a comment quoting gh pr merge."',
+  'git commit -m "Deny gh pr merge before it runs, not after"',
+  // The #45 probe flagged this one as the next false positive it expected.
+  'echo "gh pr merge 1"',
+  // A heredoc body is data. It is also how an agent writes a long --body, so
+  // it is the second most likely place for the command to appear as prose.
+  "gh pr create --body \"$(cat <<'EOF'\n| gh pr merge 42 | denied |\nEOF\n)\"",
+  // A comment posted through the API, with the command in the payload.
+  'gh api repos/o/r/issues/58/comments -f body="gh pr merge 42 was denied"',
+  // An endpoint that is not a merge, with `/merge` in a field value.
+  'gh api repos/o/r/issues/58/comments -f body="see /merge"',
+  // Recursion into a shell payload must read it as a command line too, not
+  // scan it, or the nested case reintroduces exactly the bug above.
+  'bash -c "echo gh pr merge 42"',
+  'pwsh -Command "gh issue comment 58 --body \'gh pr merge is denied\'"',
+
+  // The probe rule is held to the same standard as the merge rules: reading
+  // the command, not the line. Talking about the probe is not running it.
+  'echo "node scripts/check-guard-live.mjs"',
+  'cat scripts/check-guard-live.mjs',
+  'git add scripts/check-guard-live.mjs',
+  'node scripts/check-collisions.mjs',
 ]
 
 for (const command of DENIED) {
@@ -65,6 +119,15 @@ for (const command of ALLOWED) {
     assert.equal(run(command).denied, false, 'should have been allowed')
   })
 }
+
+// The probe and the rule that refuses it are two files agreeing on a filename.
+// Rename one and the probe stops being refused, which does not fail anything:
+// it just answers "inert" for ever, in a session where the guard is fine.
+test('the guard refuses the probe script that actually ships', () => {
+  const probe = fileURLToPath(new URL('./check-guard-live.mjs', import.meta.url))
+  assert.equal(existsSync(probe), true, 'scripts/check-guard-live.mjs is absent')
+  assert.equal(run(`node ${probe}`).denied, true, 'the guard does not refuse its own probe')
+})
 
 test('a malformed payload does not deny', () => {
   const out = execFileSync('node', [GUARD], { input: 'not json', encoding: 'utf8' })

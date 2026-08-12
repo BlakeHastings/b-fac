@@ -70,6 +70,35 @@ end. Verified: `gh pr merge --help` was not denied in the session that wired it.
 After changing hook config, restart before relying on it, and do not treat a
 non-denial in that session as evidence the guard is broken.
 
+That window is not brief. It lasts as long as the process, including every
+agent it dispatches, and here it lasted the whole project: the CLI started
+three hours before the hook existed and the guard never fired once in two days
+(#45). Nothing said so, because a gate that was never loaded is silent in
+exactly the way a gate with nothing to deny is silent. **Ask, once, at the top
+of a session:**
+
+```bash
+node scripts/check-guard-live.mjs
+```
+
+Being refused is the answer you want. If it prints instead, the guard is not
+protecting this process, and the fix is to restart the CLI. ADR 0027 says why
+the answer arrives as a refusal rather than as output.
+
+**A guard that reads the whole command line denies people quoting it.** Within
+seconds of the guard first firing it refused a `gh issue comment` whose body
+described the guard working, in a markdown table (#58). The rules now read what
+each command in the line *invokes*. When adding a rule, match the head of a
+command, not text anywhere in it, and add the allow case before the deny one.
+
+**A subagent's hook runs the main checkout's copy of the script, not the
+worktree's.** `$CLAUDE_PROJECT_DIR` resolves to the repository the session
+started in, so a branch that changes `scripts/guard-merge.mjs` does not change
+the guard for the agent writing it. Measured by instrumenting the worktree copy
+and watching it never run. Consequences: a guard change cannot be verified live
+on its own branch, only through its tests and a fresh process, and no agent can
+weaken the guard for itself by editing its branch.
+
 **Every merge invalidates every other open PR.** The ruleset requires branches
 to be up to date with `main`, so the moment one PR lands, every other open one
 is `BEHIND` and its green belongs to a base that no longer exists. With three
