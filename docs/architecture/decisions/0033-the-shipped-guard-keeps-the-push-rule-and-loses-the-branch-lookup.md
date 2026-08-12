@@ -60,6 +60,23 @@ remaining refspec's destination half compared whole against `DEFAULT_BRANCH`.
 So `git push origin HEAD:main` and `git push origin :main` are refused and
 `git push origin main-fix` is not.
 
+**A dry run is allowed**, matching `assets/guard-guest-writes.mjs`, which has
+excluded `--dry-run` and `-n` from its own push rule since it was written. It
+contacts the remote and changes nothing, so a rule about landing code has
+nothing to act on, and two guards disagreeing about the same command for a
+reason neither can state is how a reader stops trusting both. Review of this
+change caught it shipping without the allowance, which is the wrong shape for a
+change whose entire argument is that false positives are the dangerous half.
+
+The short form is matched as a whole token, and that was checked rather than
+assumed: `git push -h` lists exactly one `-n` and it is `--dry-run`, so the
+token cannot mean anything else in a push. What it does not catch is a bundled
+cluster, since git's parser accepts `git push -nq`. That stays denied, which is
+the harmless direction, and widening the match to any cluster containing `n`
+would be the harmful one: `-on` is `-o n`, a push option, and reading it as a
+dry run would allow a real push to the default branch. The guest gate has the
+identical residual, so the two still agree.
+
 **The branch lookup goes, and that half of ADR 0001's reasoning does
 transfer.** The earlier asset shelled out to `git rev-parse --abbrev-ref HEAD`
 and denied a bare `git push` or any `git merge` when the answer was the default

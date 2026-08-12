@@ -429,6 +429,22 @@ function pushesToDefaultBranch(args) {
   return positional.slice(1).some((refspec) => pushDestination(refspec) === DEFAULT_BRANCH)
 }
 
+// A dry run contacts the remote and changes nothing, so there is nothing for a
+// rule about landing code to act on. `assets/guard-guest-writes.mjs` beside this
+// one has always allowed it and says so in its refusal; this rule shipped for
+// one review without it, and two guards disagreeing about the same command for
+// no reason either can state is how a reader stops trusting both.
+//
+// `-n` is matched as a whole token, and that is safe rather than assumed:
+// `git push -h` lists exactly one `-n`, `--dry-run`, so the token cannot mean
+// anything else here. What it does not catch is a bundled cluster — git's
+// option parser accepts `git push -nq`, which is a dry run whose token is
+// `-nq`. That stays denied, which is the harmless direction, and widening the
+// match to any cluster containing `n` would be the harmful one: `-on` is
+// `-o n`, a push option named `n`, and reading it as a dry run would allow a
+// real push to the default branch.
+const isDryRun = (args) => args.includes('--dry-run') || args.includes('-n')
+
 function judge(line, depth) {
   for (const tokens of segmentsOf(line)) {
     const gh = ghArguments(tokens)
@@ -443,10 +459,17 @@ function judge(line, depth) {
     }
 
     const git = gitArguments(tokens)
-    if (git !== null && git[0] === 'push' && pushesToDefaultBranch(git.slice(1))) {
+    if (
+      git !== null &&
+      git[0] === 'push' &&
+      !isDryRun(git) &&
+      pushesToDefaultBranch(git.slice(1))
+    ) {
       deny(
         `Blocked: pushing to ${DEFAULT_BRANCH} skips review and CI entirely.\n\n` +
-          `Push your feature branch instead:  git push -u origin HEAD\n\n${USE_WRAPPER}`,
+          `Push your feature branch instead:  git push -u origin HEAD\n\n` +
+          '`git push --dry-run` is allowed: it contacts the remote and changes\n' +
+          `nothing. So is \`-n\`.\n\n${USE_WRAPPER}`,
       )
     }
 

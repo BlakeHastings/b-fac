@@ -73,6 +73,13 @@ const DENIED = [
   'git push --delete origin main',
   // Quoting comes off the tokens, so this reads the same as the bare form.
   'git push "origin" "main"',
+  // The residual of the `--dry-run` allowance below, named rather than widened.
+  // git's option parser accepts a bundled cluster, so `-nq` is a dry run and is
+  // denied anyway. That is the harmless direction: matching any cluster
+  // containing `n` would read `-on` — which is `-o n`, a push option — as a dry
+  // run and allow a real push. Pinned so a change that appears to close this
+  // has to change this line and say why.
+  'git push -nq origin main',
   // git's own flags come before the subcommand, and some swallow a value.
   'git -C /work/repo push origin main',
   'git -c push.default=current push origin main',
@@ -159,6 +166,19 @@ const ALLOWED = [
   // push *to* `main`.
   'git push main',
   'git push main HEAD:feature',
+
+  // A dry run contacts the remote and changes nothing, so a rule about landing
+  // code has nothing to act on. `assets/guard-guest-writes.mjs` has always
+  // allowed it; this rule shipped for one review without it, which is the wrong
+  // shape for a change whose whole argument is that false positives are the
+  // dangerous half. `git push -h` lists exactly one `-n` and it is `--dry-run`,
+  // so the short form is safe to match as a whole token.
+  'git push --dry-run origin main',
+  'git push -n origin main',
+  'git push --dry-run --force origin HEAD:main',
+  'git push -n origin :main',
+  'git -C /work/repo push --dry-run origin main',
+  'GIT_TRACE=1 git push --dry-run origin main',
 
   // The false positives the shipped guard actually produced, kept as
   // regressions. Each one is the reason a guard gets switched off rather than
