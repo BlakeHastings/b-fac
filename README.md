@@ -148,9 +148,9 @@ npm run check:harnesses # four other harnesses still find the skill (needs Docke
 ```
 
 No dependencies and no lockfile: everything runs on Node 22's built-ins.
-`check:harnesses` is the exception to "everything is fast": it builds a 2 GB
-container, so it is out of `npm run check` and out of the pull request gate, and
-runs weekly instead. ADR 0020 says why.
+`check:harnesses` is the exception: it needs Docker and builds a 2 GB container,
+so it is out of `npm run check` and runs weekly in CI rather than on every pull
+request. ADR 0020 says why, and the reason is not the one you would guess.
 
 **Edit `.agents/skills/`, never `.claude/skills/`.** The second is generated and
 your change will be overwritten. `npm run check:sync` catches it, and CI runs

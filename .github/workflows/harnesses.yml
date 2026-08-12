@@ -1,14 +1,24 @@
 # Whether harnesses other than Claude Code still discover this repo's skill.
 #
 # WHY THIS IS NOT IN checks.yml
-# checks.yml is the mechanical gate: it finishes in about eleven seconds and
-# every job in it is required by the ruleset. This builds a 2 GB image with four
-# harness CLIs in it. Adding that to every pull request would multiply the cost
-# of the gate by two orders of magnitude to re-answer a question our own diffs
-# almost never change, and adding it as a third required context would put a
+# Not speed, and it would be dishonest to argue it on speed. A cold build of the
+# 2 GB image plus a full probe measured 47 seconds on a GitHub runner — 29 of
+# them building — against a `Checks` job of about eleven. Locally the first build
+# takes minutes; the runners have far better npm bandwidth. That is a real
+# multiple and not a prohibitive one.
+#
+# The reason is that our own diffs are almost never what changes the answer. The
+# sentinel name and the canonical layout are already gated by `check:plugin-load`
+# and `check:sync`. What breaks harness discovery is a harness changing under us,
+# on its release calendar. Re-running this on every pull request would re-answer
+# a question that could only have changed on someone else's schedule, however
+# cheap it is to ask.
+#
+# Cost does decide the second question. A *required* context here would put a
 # third copy of a job name into the ruleset, the `REQUIRED` array in
-# scripts/merge-pr.mjs and a workflow file. docs/process/orchestrating.md
-# already records that duplication as a known cost. See ADR 0020.
+# scripts/merge-pr.mjs and a workflow file, and would make every merge wait on a
+# container build. docs/process/orchestrating.md already records that
+# duplication as a known cost. See ADR 0020.
 #
 # NOTHING HERE IS REQUIRED, ON PURPOSE
 # Both jobs are advisory. A red run means "go and look", not "this branch may

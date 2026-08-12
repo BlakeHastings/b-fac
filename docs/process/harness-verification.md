@@ -23,9 +23,11 @@ this:
 and none of them still saw it once the skill trees were deleted.
 ```
 
-The first build installs four CLIs and takes a few minutes. Later runs are
-seconds. Docker is required and there is no host fallback, deliberately: see
-"Why a container" below.
+The first build installs four CLIs and takes a few minutes on a laptop; later
+runs are seconds. On a GitHub runner a cold build and probe together measured 47
+seconds, which is worth knowing because it is the number the CI decision below
+turns out *not* to rest on. Docker is required and there is no host fallback,
+deliberately: see "Why a container" below.
 
 ## The asymmetry this rests on
 
@@ -187,9 +189,10 @@ which is what the 90-day threshold is calibrated against.
 discovery` and `Harness pins`, weekly and on `workflow_dispatch`. **Neither is a
 required check**, so a red one does not block a merge; `merge-pr.mjs` reports
 the merge state as `UNSTABLE` and proceeds. ADR 0020 has the reasoning, in
-short: a 2 GB image on every pull request is disproportionate against an
-eleven-second gate, and the thing most likely to break these answers changes on
-the harnesses' calendar rather than in our diffs.
+short: the thing most likely to break these answers changes on the harnesses'
+release calendar rather than in our diffs, so it is sampled on a clock. Note
+that the reasoning is *not* that a container is too slow for a pull request —
+measured, it is not.
 
 The one exception is a pull request touching `tools/harness-verify/**`, which
 does run both jobs, because a change to the probe's parsers is the only diff

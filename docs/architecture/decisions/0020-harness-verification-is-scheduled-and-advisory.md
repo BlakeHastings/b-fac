@@ -11,17 +11,27 @@ open.
 `.agents/skills/`, credential-free, with a negative control in the same run. It
 was consumed by nothing: no npm script, no CI.
 
-Two facts shape where it can go. It builds a 2.01 GB image with four CLIs in it,
-against a `Checks` job whose every other step finishes in about eleven seconds.
-And the required check contexts on `main` are already three copies of one fact —
-the job `name:`, the `REQUIRED` array in `scripts/merge-pr.mjs`, and the ruleset
-— which `docs/process/orchestrating.md` records as a known cost.
+It builds a 2.01 GB image with four CLIs in it, against a `Checks` job whose
+every other step finishes in about eleven seconds. That sounds decisive and is
+not: measured on a GitHub runner, a cold build plus a full probe is **47
+seconds**, 29 of them building. Locally the first build takes minutes, because a
+laptop does not have a runner's npm bandwidth. So the honest position is that
+putting this on every pull request would be affordable, and the argument against
+it has to be made on something other than cost.
 
-The third fact is the one that decides the cadence. This repo's own diffs are
-almost never what breaks harness discovery. The sentinel name and the canonical
-layout are already gated by `check:plugin-load` and `check:sync`. What actually
-breaks the answer is a harness changing under us, on the harnesses' calendar.
-That is not an event a pull request can be triggered by.
+That argument is that this repo's own diffs are almost never what breaks harness
+discovery. The sentinel name and the canonical layout are already gated by
+`check:plugin-load` and `check:sync`. What actually breaks the answer is a
+harness changing under us, on the harnesses' release calendar, which is not an
+event a pull request can be triggered by. A check re-run on every pull request
+that could only have changed on someone else's schedule is ceremony however fast
+it is.
+
+Cost still decides the second question. The required check contexts on `main`
+are already three copies of one fact — the job `name:`, the `REQUIRED` array in
+`scripts/merge-pr.mjs`, and the ruleset — which `docs/process/orchestrating.md`
+records as a known cost, and a required context here would also make every merge
+wait on a container build.
 
 ## Decision
 
