@@ -1,0 +1,109 @@
+# Whether harnesses other than Claude Code still discover this repo's skill.
+#
+# WHY THIS IS NOT IN checks.yml
+# Not speed, and it would be dishonest to argue it on speed. A cold build of the
+# 2 GB image plus a full probe measured 47 seconds on a GitHub runner — 29 of
+# them building — against a `Checks` job of about eleven. Locally the first build
+# takes minutes; the runners have far better npm bandwidth. That is a real
+# multiple and not a prohibitive one.
+#
+# The reason is that our own diffs are almost never what changes the answer. The
+# sentinel name and the canonical layout are already gated by `check:plugin-load`
+# and `check:sync`. What breaks harness discovery is a harness changing under us,
+# on its release calendar. Re-running this on every pull request would re-answer
+# a question that could only have changed on someone else's schedule, however
+# cheap it is to ask.
+#
+# Cost does decide the second question. A *required* context here would put a
+# third copy of a job name into the ruleset, the `REQUIRED` array in
+# scripts/merge-pr.mjs and a workflow file, and would make every merge wait on a
+# container build. docs/process/orchestrating.md already records that
+# duplication as a known cost. See ADR 0020.
+#
+# NOTHING HERE IS REQUIRED, ON PURPOSE
+# Both jobs are advisory. A red run means "go and look", not "this branch may
+# not land". merge-pr.mjs reports the merge state as UNSTABLE and proceeds,
+# which is the correct behaviour for a signal about the outside world rather
+# than about the change under review.
+#
+# WHY A SCHEDULE
+# The thing most likely to break these answers is a harness changing under us,
+# which happens on the harnesses' calendar and not on ours. A weekly run is what
+# turns "it worked when someone last tried it" into a date.
+#
+# GitHub disables a scheduled workflow after 60 days with no commits to the
+# repository, and says so by email. If this stops running, that is usually why.
+name: harnesses
+
+on:
+  schedule:
+    # Mondays, 06:17 UTC. Off the hour deliberately: GitHub's scheduler queues
+    # heavily on the hour and a 2 GB build is not a job to put in that queue.
+    - cron: '17 6 * * 1'
+
+  # The manual entry point. Use it after bumping a pin, or when a harness ships
+  # something that sounds like it touches skill discovery.
+  workflow_dispatch:
+
+  # The one diff this job is the only judge of. Everything else about the skill
+  # payload is covered by checks.yml, but a change to the probe's parsers can
+  # only be judged by running it, and docs/process/harness-verification.md asks
+  # for exactly that by hand on every edit. working-an-issue.md says a manual
+  # check done every time belongs in CI. Narrow on purpose: an ordinary pull
+  # request touches nothing under this path and never sees this workflow.
+  pull_request:
+    paths:
+      - 'tools/harness-verify/**'
+      - '.github/workflows/harnesses.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harnesses-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Two jobs rather than two steps, which is the opposite of the call checks.yml
+  # makes. There the cost of a job is a required context; here nothing is
+  # required, so a job is free and buys two things. The answers are independent
+  # — "the harnesses still find the skill" and "those are still the harnesses
+  # people run" fail for unrelated reasons and want separate red marks — and the
+  # pins answer arrives in seconds without waiting on, or being hidden by, an
+  # image build that may itself be what broke.
+  discovery:
+    name: Harness discovery
+    runs-on: ubuntu-latest
+    # The first build installs four CLIs. Ten minutes locally, and the ceiling
+    # is here so a hung harness CLI cannot burn six hours of scheduled runtime.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Docker is preinstalled on the GitHub-hosted ubuntu runners, so there is
+      # no setup step. verify.mjs checks for it and says so rather than failing
+      # obscurely if that ever stops being true.
+      - name: Harnesses discover the skill
+        run: npm run check:harnesses
+
+  pins:
+    name: Harness pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Without this the job above tests the same four binaries every week for
+      # ever, and a green would mean nothing more than that a pin is a pin. See
+      # the header of check-pins.mjs for why this measures age rather than
+      # releases behind.
+      - name: Pinned harness versions are not stale
+        run: npm run check:harness-pins
