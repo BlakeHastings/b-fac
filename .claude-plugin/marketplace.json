@@ -10,7 +10,7 @@
     {
       "name": "b-fac",
       "source": "./",
-      "description": "Run a project as an orchestrator driving implementation subagents against a GitHub issue backlog: break work into issues, brief agents that work in isolated worktrees, verify what comes back rather than accepting it, and merge through a path that mechanically refuses red checks.",
+      "description": "Run a project as an orchestrator driving implementation subagents against a tracked backlog: break work into items, brief agents that work in isolated worktrees, verify what comes back rather than accepting it, and merge through a path that mechanically refuses red checks. GitHub issues by default; a local store where the repo is not yours.",
       "category": "workflow",
       "keywords": [
         "orchestration",

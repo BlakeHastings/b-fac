@@ -91,6 +91,9 @@ from a task store is seven verbs, GitHub supplies them in owned mode, and a
 local store supplies them in guest mode where a company tracker is read-only.
 The merge path, the checks and the ruleset stay GitHub either way, so a portable
 backlog is one quarter of this and not all of it. `references/backlog-port.md`.
+**Which tool it is has to be written down**, in one line, where the loop will
+meet it: `AGENTS.md` in owned mode, and out of the tree with the machine facts
+below in guest mode, because a host repo's tracked files are not yours to edit.
 
 Record both answers so neither is re-asked nor silently assumed, split by who
 they are about. **Repo facts** — where the backlog lives, which conventions won,
