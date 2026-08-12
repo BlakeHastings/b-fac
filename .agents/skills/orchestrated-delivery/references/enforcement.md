@@ -84,6 +84,28 @@ afterwards, and keep both. A layer whose script is present and whose wiring is
 absent reports as absent rather than partial, on layer 0's reasoning: a control
 nothing invokes is an instruction.
 
+**It reports the layers that apply to the mode it is in**, which is the one
+place a report is allowed to read the write boundary off disk. It reads
+`.factory/machine.md`, and it prints one of three answers: owned, guest, or
+nobody having said. In guest mode the four layers above report `n/a` with the
+mode as the reason and the gate below is the only one judged; in owned mode the
+reverse. **An absent layer explained by the mode is not a failure and does not
+move the exit code**, because a permanently red line and a guard that cries wolf
+get switched off the same way.
+
+The third state is a finding rather than an error. ADR 0021 has the boundary
+asked out loud at initialisation, so a repo where nobody wrote the answer down
+skipped the step. Worth printing, and not a reason to fail a setup that is
+otherwise complete. Such a repo is reported against the owned checklist, and the
+output says so, because **if the repo is not yours those four layers are the
+wrong thing to install** and a silent default would be how that happens.
+
+That the *report* may read the mode and the *gate* may not is ADR 0030, and the
+difference is position in time rather than trust: a hook runs before its command
+and cannot know where that command will land, while a report runs where you are
+standing with nothing in front of it. Neither of them infers the mode from the
+repo, and neither from a remote.
+
 It reads files, so the principle this chapter applies to each layer applies to
 the check itself. What it does not cover:
 
@@ -288,6 +310,17 @@ node .factory/guard-guest-writes.mjs --probe
 
 Being refused is the answer you want. If it prints, the gate is not in this
 process and the fix is a restart.
+
+`check-setup.mjs` reports this gate as **G** rather than as a fifth layer, for
+the same reason it has its own section here. It answers the two questions a
+listing cannot (is it wired, and did installing it change the host repo), and it
+cannot answer the third, which is whether the process ever loaded it. So a green
+`G` and the probe's refusal are two different claims and you want both.
+
+The install promises that `git status --porcelain -uall` is byte-for-byte what
+it was before, and the report checks that promise: a gate that got committed, or
+one wired by editing the host's tracked `.claude/settings.json`, works exactly
+as well and has already broken the boundary it holds.
 
 ### And say the boring sentence at publish
 

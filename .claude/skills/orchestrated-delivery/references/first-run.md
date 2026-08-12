@@ -236,6 +236,14 @@ update, the same way the owned sequence keeps `check-setup.mjs`'s before and
 after: the difference between a copied control and an installed one is the only
 thing either pair of outputs is for.
 
+`check-setup.mjs` is that same before-and-after here and is worth running in
+guest mode too, before and after the install. It reads the machine record, so it
+reports the gate as **G** and every owned layer as `n/a` with the mode as the
+reason, and it exits 0 once the gate is installed rather than demanding four
+layers that must never exist in somebody else's repo. Before the install it
+says the boundary has not been recorded, which is exactly the state you are in
+until you run it.
+
 `references/enforcement.md` says what the gate covers, what it does not, and why
 it is not installed into your home directory.
 
