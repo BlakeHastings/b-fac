@@ -322,6 +322,27 @@ it was before, and the report checks that promise: a gate that got committed, or
 one wired by editing the host's tracked `.claude/settings.json`, works exactly
 as well and has already broken the boundary it holds.
 
+### The other half of guest mode: a check, not a gate
+
+The gate above refuses outward writes. What stands in for layers 1 and 3 is the
+host repository's own check command, run locally before work lands on your
+integration branch — ADR 0021's table, the row where owned mode reads a remote
+rollup and guest mode has none to read.
+
+That is a **check** in this chapter's sense and nothing about it refuses.
+Establishing what the command is in a repository the factory did not create is
+`assets/discover-checks.mjs`, and its one rule is that nothing becomes the entry
+point until it has been executed and seen to exit 0. A check the factory
+invented and never ran is worse than none: it produces confident red or
+confident green about the wrong thing, and the first gets it switched off the
+same way a guard that cries wolf does.
+
+*Does not cover:* their environment. A local run reproduces their steps by
+construction and never the infrastructure, secrets and services their runners
+have, so it buys fewer round trips rather than a pull request that will pass.
+Their pipeline file is read for description and never adopted as a command, for
+the same reason. `references/host-checks.md`.
+
 ### And say the boring sentence at publish
 
 The gate makes the boundary refusable inside an agent session. It does not make
