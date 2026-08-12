@@ -26,6 +26,46 @@
 // assembled from a variable, a base64 `-EncodedCommand`, or a script file the
 // command merely names.
 //
+// Nor does it cover a command that runs another command. Every line below was
+// run against this file and allowed through, so each one is a working outward
+// write from inside guest mode:
+//
+//   sudo git push origin HEAD       ALLOWED    nohup git push origin HEAD    ALLOWED
+//   env gh pr create --fill         ALLOWED    xargs git push origin HEAD    ALLOWED
+//   command git push origin HEAD    ALLOWED    time -p git push origin HEAD  ALLOWED
+//
+// They are open on purpose. The set of programs that can launch another program
+// has no edge, so closing six of them buys a longer list rather than a closed
+// hole, and it buys that at the cost of this section's accuracy, which is the
+// part of the file worth the most. What makes that defensible in somebody
+// else's repository is the threat model: an agent that forgot, or that talked
+// itself into it, not one that is hiding. Nobody reaches for `sudo` to push a
+// branch by accident. `time -p` is the seam, one flag past the reserved word
+// that *is* handled, and closing it would mean keeping a table of someone
+// else's flags.
+//
+// Two more, measured the same way and open for their own reasons:
+//
+//   GIT_TRACE=1 git push origin HEAD                      ALLOWED
+//   bash -c "bash -c \"bash -c 'git push origin HEAD'\""  ALLOWED
+//
+// The first is the one that does not fit the paragraph above: an assignment
+// prefix is shell *syntax*, a closed form the way `then` and `do` are, and
+// `GIT_TRACE=1 git push` is an agent debugging rather than an agent hiding. It
+// is left open here only because the merge guard has the identical hole and
+// this file exists to stop the two readers drifting apart; issue #97 closes
+// both at once. The second is the two-shell recursion limit in `judge`.
+//
+// Shell syntax an ordinary command *can* contain is otherwise covered, and
+// covering it is what issue #96 did here after #90 did it for the merge guard.
+// See LEADING_WORDS.
+//
+// Where this gate is stronger than the merge guard, measured rather than
+// assumed: `\git push`, `/usr/bin/gh pr create` and `git.exe push` are all
+// DENIED here and allowed there, because every rule below asks `commandName`
+// instead of comparing the raw token. That is why this list was measured
+// against this file's own rules rather than copied from the merge guard's.
+//
 // The gap is the point rather than an embarrassment. **The one thing this gate
 // refuses is exactly the one step guest mode reserves for the owner**, and a
 // hook cannot see the owner's own terminal. Publish is theirs, taken
@@ -245,13 +285,48 @@ function endOfHeredoc(line, from, delimiter) {
   }
 }
 
+// Words that stand in front of a command without being one, so the command is
+// whatever follows them. `if gh pr checks 42; then git push origin HEAD; fi` is
+// an agent being careful rather than an agent hiding, and `for b in a b; do git
+// push origin $b; done` is how two branches get pushed. The gate has to see the
+// push inside both.
+//
+// The set is closed because every word in it is a shell reserved word that
+// takes no arguments of its own, which is what makes stripping them blindly
+// safe. Wrapper *commands* are the opposite on both counts and are named under
+// NOT COVERED instead. `time` sits on the seam: it is a bash reserved word and
+// also a real binary on some systems, and it is here because both readings run
+// the command, so there is no wrong answer to get.
+//
+// Matching is by whole token, so a brace that is part of a word is not one of
+// these: `gh api repos/{owner}/{repo}/issues` is still one token and still
+// reads as `gh api`, and `mkdir -p docs/{process,architecture}` keeps its brace.
+//
+// Stripping cuts both ways here in a way it did not in the merge guard, whose
+// two rules only ever deny. This gate denies `gh` by default, so a reserved
+// word in front of a *read* used to be allowed for the wrong reason — the
+// segment simply did not start with `gh`. After stripping, `then gh issue view
+// 42` reaches the `gh` rules and has to be allowed by GH_READS on its merits.
+// Those are the cases the tests weigh most, because a false positive in a
+// repository the operator does not own is the failure that gets guest mode
+// abandoned.
+const LEADING_WORDS = new Set(['{', '!', 'then', 'else', 'elif', 'do', 'time'])
+
+function withoutLeadingWords(tokens) {
+  let at = 0
+  while (at < tokens.length && LEADING_WORDS.has(tokens[at])) at += 1
+  return tokens.slice(at)
+}
+
 function segmentsOf(line) {
   const first = parse(line, null)
-  if (first.unterminated === null) return first.segments
   // An apostrophe in ordinary text opens a quote that never closes, and every
   // operator after it would read as that argument's contents — including a real
   // chained push. A quote with no partner is text, so read it that way.
-  return parse(line, first.unterminated).segments
+  const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
+  // Stripping can empty a segment, since `time` on its own is a whole command,
+  // and every rule below reads the first token.
+  return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
 }
 
 const commandName = (token) =>

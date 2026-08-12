@@ -101,6 +101,23 @@ const DENIED = [
   '(cd repo && git push)',
   'echo "$(gh pr create --fill)"',
   "echo don't && git push origin HEAD",
+  // Grouping, and the reserved words that introduce a command inside a compound
+  // one. Every one of these was allowed until #96 while the bare form was
+  // denied, and every one is an outward write from a repository the operator is
+  // a guest in. `for ... do git push ...; done` is the one that happens by
+  // accident: pushing several branches in a loop is ordinary work, not evasion.
+  '{ git push origin HEAD; }',
+  'if true; then git push origin HEAD; fi',
+  'time git push origin HEAD',
+  '! git push origin HEAD',
+  'for b in a b; do git push origin $b; done',
+  'if false; then echo no; else git push origin HEAD; fi',
+  // The other four rules reach through a reserved word too, or only the push
+  // rule would have been ported.
+  'if gh pr checks 42; then gh pr create --fill; fi',
+  'time git config --global user.email agent@example.com',
+  '! gh api graphql -f query=x',
+  'for r in a b; do bd setup claude; done',
   // Each shell tool the hook is wired to can invoke the other one.
   'bash -c "git push origin HEAD"',
   'pwsh -Command "gh issue create --title x"',
@@ -178,6 +195,41 @@ const ALLOWED = [
   // case quietly reintroduces the text scan.
   'bash -c "echo git push origin main"',
   'pwsh -Command "git commit -m \'gh pr create is denied in guest mode\'"',
+
+  // A read behind a reserved word, which is the allow direction #96 created and
+  // the merge guard never had. Its two rules only ever deny, so stripping a
+  // word there could not turn a read into a refusal. Here `gh` is
+  // deny-by-default, so these were allowed before #96 only because the segment
+  // began with `then` and the `gh` rules never saw it — the right verdict for
+  // the wrong reason. Stripping puts them in front of GH_READS, where they have
+  // to be allowed on their merits. A false positive in a repository the
+  // operator does not own is the failure that gets guest mode abandoned.
+  'then gh issue view 42',
+  'do bd list',
+  '! gh pr view 42',
+  '{ gh issue view 42; }',
+  'time gh pr checks 42',
+  'else gh pr diff 42',
+  'elif gh run view 991',
+  'if gh pr checks 42; then gh pr view 42; fi',
+  'for r in 41 42; do gh issue view $r; done',
+  'time git config --global --get user.email',
+  '! git push --dry-run origin HEAD',
+  '{ bd init --stealth; }',
+  'time gh api repos/o/r/issues/3',
+  // The compound forms with nothing in them to deny, which is most of the work
+  // an agent does inside one.
+  '{ npm run check; }',
+  'time npm run check',
+  'for f in docs/*.md; do git add "$f"; done',
+  // A leading reserved word is matched as a whole token, so a brace inside a
+  // word is not one of them.
+  'mkdir -p docs/{process,architecture}',
+  'echo "{ git push origin HEAD; }"',
+  // Stripping a leading word can leave a segment with no tokens at all, and
+  // every rule reads the first one. Without the filter this throws.
+  'time',
+  'time; git status',
 ]
 
 for (const command of DENIED) {
@@ -236,6 +288,12 @@ const OWNED_MODE_UNAFFECTED = [
   'gh label create area:zoning',
   'bd init --skip-agents',
   'git config --global user.email agent@example.com',
+  // Both readers strip reserved words now, so the compound forms have to hold
+  // the modes apart the same way the bare forms do. That is the whole point of
+  // #96: the two copies answer the same question and had stopped agreeing.
+  '{ git push origin HEAD; }',
+  'if true; then gh pr create --fill; fi',
+  'for b in a b; do git push origin $b; done',
 ]
 
 for (const command of OWNED_MODE_UNAFFECTED) {
