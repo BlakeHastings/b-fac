@@ -380,11 +380,12 @@ test('the probe reports not loaded, loudly, when nothing intercepts it', () => {
   assert.match(failed.stderr, /Restart/)
 })
 
-// npm re-invokes through a shell of its own, so the hook is shown `npm run
-// <name>` and the file name the rule matches on is nowhere in that line. The
-// probe would then run in a session where the guard is loaded and report it
-// absent, which is the one wrong answer that looks like a right one. ADR 0027.
-test('the probe refuses to report at all when npm is in the way', () => {
+// A script runner re-invokes through a shell of its own, so the hook is shown
+// `npm run <name>` and the file name the rule matches on is nowhere in that
+// line. The probe would then run in a session where the guard is loaded and
+// report it absent, which is the one wrong answer that looks like a right one.
+// ADR 0027.
+test('the probe refuses to report at all when a package script is in the way', () => {
   let failed = null
   try {
     execFileSync('node', [GUARD, '--probe'], {
@@ -397,7 +398,18 @@ test('the probe refuses to report at all when npm is in the way', () => {
   }
   assert.notEqual(failed, null, 'a probe that cannot be refused must not report')
   assert.doesNotMatch(failed.stderr, /NOT loaded/, 'it answered a question it could not observe')
-  assert.match(failed.stderr, /not through npm/)
+  assert.match(failed.stderr, /not through a package script/)
+  // The remedy has to be the command that works, not a restart. A restart
+  // cannot fix a state that is not wrong.
+  assert.match(failed.stderr, /node scripts\/guard-merge\.mjs --probe/)
+  // And the message has to name the runners it means. #110 measured npm 11.12.1,
+  // pnpm 10.34.5, yarn 1.22.22 and yarn 4.18.0 all setting `npm_lifecycle_event`
+  // on a `run`, so a message blaming npm alone tells a pnpm reader something
+  // false about why they were refused. Pinned here because narrowing it back is
+  // a one-word edit, and the words are the whole of a guard's interface at the
+  // moment someone is deciding whether to trust it.
+  assert.match(failed.stderr, /pnpm/)
+  assert.match(failed.stderr, /yarn/)
 })
 
 const SOURCE = readFileSync(GUARD, 'utf8')
