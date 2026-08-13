@@ -37,6 +37,21 @@ surface, which neither had set out to do.
 The one time this was misjudged, the second agent spent its rebase splitting a
 file rather than building.
 
+## Size a dispatch against the window, not just the surface
+
+An agent that fills its context gets compacted, and what the summariser drops
+first is the brief: the evidence bar, the out-of-scope list, the artefact it was
+told to check. It carries on and reports confidently, and you are not told.
+`references/continuity.md` has what reaches the agent and how to see afterwards
+that it happened; this is the half that stops it happening.
+
+**There is no number here and inventing one would be worse than nothing.** What
+is known is the shape: agents that read a lot of large files compact, and it is
+the reading rather than the thinking that does it. So prefer a brief that names
+the files to a brief that says "read the module", say which parts of a large
+file matter, and split an issue that needs the whole of two subsystems in one
+head rather than paying for it in a summary you never see.
+
 ## Assign ADR numbers explicitly
 
 Three agents once claimed 0005 and 0006 between them, each taking "the next free

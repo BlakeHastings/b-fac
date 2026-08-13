@@ -71,6 +71,33 @@ Refusing a bare figure here is the round trip an evidence bar exists to save. If
 the central claim is going to be a number, put the boundary and the instrument
 in the brief instead, as `references/briefing.md` says to do with any bar.
 
+## Check whether the agent still had its brief
+
+A long-running agent's context compacts, and when it does the summariser keeps
+the shape of its brief and loses the evidence bar, the out-of-scope list and the
+artefact it was told to check. Nothing errors and nothing tells you. The report
+you are reading may be a good-faith answer to a smoothed-over version of what
+you asked.
+
+It is on the record, per agent:
+
+```bash
+grep -c '"subtype":"compact_boundary"' \
+  ~/.claude/projects/<slug>/<session_id>/subagents/agent-*.jsonl
+```
+
+A non-zero count is not a finding and it does not make the work wrong. What it
+changes is how much a **silence** in the report is worth. An agent that never
+mentions the constraint you set may have met it, or may no longer have been able
+to see it, and those two are indistinguishable from the report alone. So verify
+the central claim as usual, and then check the parts of the brief the report
+does not mention: the bar, the bounds, the artefact you named.
+
+Asking for it in the brief is the cheap half (`references/briefing.md`), and a
+report that says "no compaction" against a transcript that shows four is its own
+kind of signal. `references/continuity.md` has the mechanics and ADR 0042 has
+why this is a check and not a gate.
+
 ## Verify the merge result, not the branch
 
 An agent verifies against the branch point it started from. By the time you
