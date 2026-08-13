@@ -105,6 +105,18 @@
 // hook cannot see the owner's own terminal. Publish is theirs, taken
 // deliberately, outside the agent session. There is nothing to add here for it.
 //
+// WHAT ANSWERS THE LIST ABOVE, WHICH IS NOT THIS FILE
+// Every hole above is a hole in *prevention*, and prevention is a net. The
+// fourth constraint says to add detection, because detection runs on the result
+// and a bypass cannot avoid producing one. `assets/check-outward-writes.mjs` is
+// that half: a push made by `sudo`, by `env`, by a human at a terminal, or by a
+// session this gate was never loaded into writes exactly the same
+// `update by push` reflog entry as one this gate would have refused, and it
+// reads them all. It closes none of the non-git routes: `curl`, `npm publish`
+// and the rest stay invisible to both halves, and it says so in the same
+// register this section does. Run it at publish, ask this file `--probe`, and
+// put both answers in the same update.
+//
 // HOW IT READS A COMMAND
 // It asks what each command in the line *invokes*, never what the line's text
 // contains. That distinction is not theoretical: the merge guard beside this
@@ -147,9 +159,9 @@
 //   node <path>/guard-guest-writes.mjs --install     # install into this repo
 //   node <path>/guard-guest-writes.mjs --user-hook   # print the machine-wide block
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Where the guard and the machine facts live in a repository that is not yours:
@@ -173,6 +185,7 @@ import { fileURLToPath } from 'node:url'
 const HOME = 'factory'
 const GUARD = `${HOME}/guard-guest-writes.mjs`
 const RECORD = `${HOME}/machine.md`
+const REFUSALS = `${HOME}/refusals.log`
 const SETTINGS = '.claude/settings.local.json'
 
 // Where an install from before #122 put the same two files. Reported rather
@@ -186,7 +199,62 @@ const LEGACY_HOME = '.factory'
 // tool against a `"matcher": "Bash"` hook and was not denied.
 const MATCHER = 'Bash|PowerShell'
 
-function deny(reason) {
+// A refusal is the one thing this gate knows that nothing else can find out
+// afterwards, and until #94 it wrote none of them down. So "the boundary held"
+// and "the boundary was never tested" produced identical evidence, which is the
+// same ambiguity ADR 0027 built the probe for one step further along.
+//
+// **This is not a recorder.** It records only what was already refused, so it
+// has exactly this gate's coverage and cannot claim a command's worth more: no
+// new hook surface, no second set of failure modes, nothing observed that the
+// verdict above did not already observe. A recorder of every command would need
+// this same pre-execution surface and would inherit every hole in WHAT THIS
+// DOES NOT COVER, for no coverage it does not already have.
+//
+// **The command line is deliberately not written down.** Three tokens of the
+// segment that was refused, each truncated, is enough to tell a push from a
+// `gh pr create` and enough to prove the gate fired. A full line would put an
+// agent's arbitrary text (a `--body`, an assignment prefix that happens to be
+// a token) into a file on disk, and a boundary that leaks what it refused to
+// protect is a poor trade for a longer log line.
+//
+// **The log goes beside this file, and only when this file is the installed
+// copy.** `--install` puts the gate at `<git common dir>/factory/`, so an
+// installed gate writes into the git common directory, where the host
+// repository's `git status` cannot see it and every linked worktree reads the
+// same one. ADR 0037.
+//
+// Deriving that from this file's own path rather than from the working
+// directory is a correction rather than a convenience, and it was earned: the
+// first version resolved the common directory of `process.cwd()`, and the test
+// suite, which runs the gate straight out of `assets/` with the repository as
+// its working directory, wrote seventeen hundred refusals into the developer's
+// own `.git/`. A gate invoked out of the skill directory is not installed
+// anywhere, so it has no repository to be about and writes nothing. That state
+// is what `check-setup.mjs` already reports as copied rather than installed.
+//
+// It also removes a `git rev-parse` per refusal, and with it the question of
+// which repository a refusal belongs to when the answer came from a cwd.
+const SELF_DIRECTORY = dirname(fileURLToPath(import.meta.url))
+const LOG = basename(SELF_DIRECTORY) === HOME ? join(SELF_DIRECTORY, 'refusals.log') : null
+
+function record(rule, tokens) {
+  if (LOG === null) return
+  try {
+    const head = tokens
+      .slice(0, 3)
+      .map((token) => (token.length > 40 ? `${token.slice(0, 39)}...` : token))
+      .join(' ')
+      .replace(/[\t\r\n]/g, ' ')
+    appendFileSync(LOG, `${new Date().toISOString()}\t${head}\t${rule}\n`)
+  } catch {
+    // A gate that fails to refuse because it could not write a log would be
+    // worse than one that keeps no log at all. The verdict is already on stdout
+    // by the time this runs.
+  }
+}
+
+function deny(reason, refused) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
@@ -196,6 +264,10 @@ function deny(reason) {
       },
     }),
   )
+  // The probe is refused by design and is not an outward write anybody
+  // attempted, so it is not recorded. Counting it would make "the boundary was
+  // tested" true for a session in which the only thing tested was the gate.
+  if (refused !== undefined) record(refused.rule, refused.tokens)
   process.exit(0)
 }
 
@@ -702,6 +774,7 @@ function judge(line, depth) {
       deny(
         `Blocked: pushing is an outward write, and this repository is not yours.\n\n${PUBLISH}\n\n` +
           '`git push --dry-run` is allowed: it contacts the remote and changes nothing.',
+        { rule: 'git-push', tokens },
       )
     }
     if (
@@ -720,6 +793,7 @@ function judge(line, depth) {
           'rather than sets — a miscount in the other direction is a silent write to\n' +
           'somebody else\'s home directory, and `--get` cannot be got wrong.\n\n' +
           'Repository-local config is inside the boundary. Drop the scope flag.',
+        { rule: 'git-config-global', tokens },
       )
     }
 
@@ -730,13 +804,14 @@ function judge(line, depth) {
         const args = gh.slice(1)
         // Before the method test, and regardless of it: `--method GET graphql`
         // is the same unclassifiable call wearing a read's clothes.
-        if (apiEndpoint(args) === 'graphql') deny(GRAPHQL)
+        if (apiEndpoint(args) === 'graphql') deny(GRAPHQL, { rule: 'gh-api-graphql', tokens })
         if (ghApiWrites(args)) {
           deny(
             'Blocked: this `gh api` call carries a write method or a payload, so it is an\n' +
               `outward write however the endpoint reads.\n\n${PUBLISH}\n\n` +
               'If it was a read, say so: drop the fields, or keep them and add\n' +
               '`--method GET`, which puts them in the query string. Both are allowed.',
+            { rule: 'gh-api-write', tokens },
           )
         }
       } else if (!path.some((token) => GH_READS.has(token))) {
@@ -745,6 +820,7 @@ function judge(line, depth) {
             `an outward write.\n\n${PUBLISH}\n\n` +
             'If it really only reads, add its verb to GH_READS in this file and say in the\n' +
             'commit why the boundary was not what it looked like.',
+          { rule: 'gh-write-verb', tokens },
         )
       }
     }
@@ -754,6 +830,7 @@ function judge(line, depth) {
       deny(
         `Blocked: this writes files into a repository you are a guest in.\n\n${beads}\n\n` +
           'See references/beads-backlog.md.',
+        { rule: 'beads-writes-tracked', tokens },
       )
     }
 
@@ -793,6 +870,17 @@ separate question from whether it is installed, and \`check-setup.mjs\` answers
 it: a wiring in one checkout's \`${SETTINGS}\` covers sessions started in that
 directory only, and the machine-wide block covers every session inside this
 repository. ADR 0037.
+
+A gate is prevention and prevention is a net, so at publish ask what actually
+happened rather than only what was refused:
+
+    node <skill>/assets/check-outward-writes.mjs
+
+It reads this repository's remote-tracking reflogs, which record a push however
+it was made, including by a session this gate was never loaded into. It also
+reads \`${join(common, REFUSALS)}\`, which this gate
+appends to every time it refuses something, so "the boundary held" stops reading
+the same as "the boundary was never tested". ADR 0021's promise, and #94.
 `
 
 // The block the operator installs themselves, and the only thing that reaches a
@@ -978,6 +1066,16 @@ Restart the harness, then ask the gate whether it is loaded:
 
 Being refused is the answer you want. If it prints instead, the gate is not in
 this process and the fix is another restart, not another install.
+
+A gate refuses; it does not audit, and everything under WHAT THIS DOES NOT
+COVER in this file is silent when it is bypassed. At publish, ask what happened
+instead of what was refused:
+
+    node <skill>/assets/check-outward-writes.mjs
+
+Every refusal this gate makes from now on is appended to
+${join(common, REFUSALS)}, so that report can tell a
+boundary that held from one nothing ever tested.
 
 WHICH SESSIONS THIS COVERS, WHICH IS NOT ALL OF THEM
 The wiring above is in one checkout, and Claude Code reads project settings from

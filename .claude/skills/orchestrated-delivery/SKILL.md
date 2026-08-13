@@ -65,11 +65,18 @@ Reading external systems is normal — pulling a ticket in is the usual case —
 every outward write waits for **one explicit publish step** the owner asks for.
 Guest is a boundary rather than a temperament, which is the point: "no external
 writes happened" is a claim something can check afterwards, and "the agent was
-careful" never was. **Install the thing that checks it before you do anything
+careful" never was. **Install the thing that refuses before you do anything
 else** — `assets/guard-guest-writes.mjs --install` refuses a push, a non-read
 `gh` verb, a `gh api` write and the beads commands that write tracked files,
 and it installs into untracked local files so that saying it changed nothing is
-true. `references/enforcement.md`, and `references/first-run.md` for the order.
+true. **Then, at publish, run the thing that checks**, because the fourth
+constraint applies to this gate like any other and its not-covered list is long:
+`assets/check-outward-writes.mjs` reads the remote-tracking reflogs, which
+record a push made by `sudo`, by a human at a terminal, or by a session the gate
+never loaded into, and distinguish it from a colleague's. It answers the *no
+branch pushed* clause and no other; whether an issue was opened or a comment
+posted is still yours to state, because `gh` leaves no local record.
+`references/enforcement.md`, and `references/first-run.md` for the order.
 Guest mode has no remote rollup either, so **its gate is the host repo's own
 check command, run locally** — which somebody has to establish in a repo the
 factory did not create. `assets/discover-checks.mjs` gathers the evidence,
@@ -436,6 +443,7 @@ is silent, and one repository spent two days that way.
 | `handoff-hooks.mjs` | `scripts/`, wired to `PreCompact` and `SessionStart` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
+| `check-outward-writes.mjs` | **Guest mode, at publish.** Run in place. Reports what actually left, from the reflog; `--mark` after an authorised publish | Nothing |
 
 `references/first-run.md` walks this whole sequence as one repo actually ran it,
 in the order its commits show rather than the order listed here.

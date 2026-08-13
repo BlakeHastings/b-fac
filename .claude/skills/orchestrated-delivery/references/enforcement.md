@@ -373,6 +373,9 @@ node <this skill>/assets/guard-guest-writes.mjs --install
 *Does not cover:* any process the harness did not load it into, a human at a
 terminal, and any outward write that does not arrive through `git`, `gh` or
 `bd` — `curl`, `glab`, `npm publish`, an editor's own forge integration.
+**The publish-time audit below is what covers the first two**, for the one
+vector it can see, and this is the guest stack's version of the sentence layer 2
+already makes about layer 3.
 
 **The gap and the design are the same sentence here.** The one thing this gate
 refuses is the one step guest mode reserves for the owner, and no hook of ours
@@ -517,13 +520,88 @@ have, so it buys fewer round trips rather than a pull request that will pass.
 Their pipeline file is read for description and never adopted as a command, for
 the same reason. `references/host-checks.md`.
 
-### And say the boring sentence at publish
+### The detection half, which is what the gate's not-covered list is for
 
 The gate makes the boundary refusable inside an agent session. It does not make
-it *audited*, and the two are different claims. At publish, state it plainly:
-no branch pushed, no item opened on the host's tracker, no comment posted,
-nothing outside this machine touched. If you cannot say that sentence, say
-precisely what you did instead.
+it *audited*, and the two are different claims. Everything in its not-covered
+list is silent when it is bypassed, which is the fourth constraint's whole
+subject, so the guest stack has a check as well as a gate for the same reason
+the owned stack does.
+
+```bash
+node <this skill>/assets/check-outward-writes.mjs
+```
+
+**It is a check in this chapter's sense**: it reports, and nothing about it
+refuses. It reads this repository's remote-tracking reflogs, and the reason that
+is worth doing rather than merely possible is that the reflog **attributes**.
+Measured on git 2.44.0 against a real remote:
+
+| What happened | What the remote-tracking ref gains |
+| --- | --- |
+| we pushed, however we pushed | `update by push` |
+| a colleague pushed and we fetched | `fetch origin: fast-forward` |
+| we cloned | nothing |
+| we pushed `--dry-run`, or pushed nothing new | nothing |
+
+So a push made by `sudo`, by `env`, by a human at a terminal, or from a session
+the gate was never loaded into leaves the same entry as one the gate would have
+refused. **That is the half of the not-covered list this closes**, and it closes
+it for `git push` only.
+
+It also reads `factory/refusals.log`, which the gate appends to every time it
+refuses something. Without that, "the boundary held" and "the boundary was never
+tested" produce identical evidence, which is the probe's ambiguity one step
+further along. The log records three tokens of the refused command and never the whole
+line, so the boundary does not leak what it refused; the probe is refused and
+deliberately not logged, since counting it would make "tested" true in a session
+where the only thing tested was the gate.
+
+**Three states and three exit codes**, because a check that scans nothing
+passes: `CLEAR` and 0 is looked and saw nothing, `FOUND` and 1 is looked and saw
+something, `UNCHECKED` and **2** is could not look. A repository with
+`core.logAllRefUpdates=false` records no push at all, and calling that clear
+would be the confident lie this whole chapter is written against.
+
+*Does not cover:* anything that is not a `git push`. An issue opened, a comment
+posted, a pull request created on a branch that was already pushed: `gh` keeps
+no local record of what it wrote. Measured, by inspecting its state directories,
+which hold config, a device id and an HTTP cache of GET responses.
+Nor any route that is neither git nor gh, which is the gate's list again. Nor a
+push whose destination was a URL rather than a named remote, or one that was
+made and then deleted, or one older than the reflog's expiry. All three erase or
+never leave the evidence, and all three are measured and named in the file.
+Nor whether the gate was loaded, which is the probe's question: the report
+prints the probe line and **refuses to run it for you**, because a hook sees
+tool calls and not the child processes a script spawns, so an answer collected
+from in there would always say inert.
+
+`--remote` adds `git ls-remote`, which is the only source that sees a push made
+by URL and the only one that can attribute nothing: a colleague pushing a branch
+whose name matches ours looks identical. It reports and never fails the check,
+on the standing rule that one false accusation ends a detection layer.
+
+`--mark` bookmarks an authorised publish so the report is not red for ever
+afterwards. It does not hide what is below it, because that is the baseline rule
+from the provenance audit and the same hazard, so earlier pushes stay counted
+and stay printed.
+
+### And still say the part that is yours
+
+One clause of the publish sentence is now checked and the rest are not, so say
+the rest deliberately rather than as a habit:
+
+| Clause | Who says it |
+| --- | --- |
+| no branch pushed | the check, from the reflog, attributably |
+| no item opened on the host's tracker | you |
+| no comment posted | you |
+| nothing outside this machine touched | you, and nothing can help |
+
+If you cannot say the remaining three, say precisely what you did instead. ADR
+0021 promised the boundary would be assertable; this keeps the first row of that
+promise and the other three are still somebody's word, which is worth stating
+plainly rather than letting a green report imply otherwise.
 
 ## The provenance baseline
 
