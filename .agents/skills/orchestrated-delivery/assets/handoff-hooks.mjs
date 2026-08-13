@@ -1,0 +1,332 @@
+// Two hooks about one file: the handoff the orchestrator keeps topped up, and
+// what happens to it when the context window is compacted.
+//
+// SETUP
+// Three knobs, below: HANDOFF, DEFAULT_BRANCH, and the two staleness numbers.
+// Wire both events to this same file; it decides which one it is from the
+// payload. The block is in references/continuity.md.
+//
+// WHAT THIS PREVENTS
+// A compaction is the one event that destroys the orchestrator's working memory
+// without failing. The summariser keeps the gist and loses the specifics, and
+// the specifics — which agent is on which issue, what the owner said an hour
+// ago, which assumption a brief was written under — are exactly what nobody can
+// reconstruct from the repository afterwards. The loop then continues,
+// confidently, on a version of the state that is smoothed over.
+//
+// So: the handoff is a file, the file survives compaction losslessly, and
+// SessionStart puts it back into the resumed context.
+//
+// THE HOOK CANNOT WRITE THE HANDOFF, AND THAT DECIDES THE DESIGN
+// A hook is a shell command. It has stdout, stderr and an exit code. It cannot
+// call a tool, run a slash command, or make the model do anything. Only the
+// conversation can write prose, so a hook's whole vocabulary here is *refuse*
+// and *inject*. This file does one of each.
+//
+// THE ASYMMETRY IS THE LOAD-BEARING PART: `manual` MAY BE REFUSED, `auto` MAY
+// NOT
+// A `PreCompact` hook that exits 2 blocks the compaction. Measured on Claude
+// Code 2.1.228, both triggers, and the two answers are not the same:
+//
+//   manual  Refused, and the harness prints this hook's stderr. The
+//           orchestrator writes the handoff and runs /compact again. A gate
+//           whose only cost is doing the thing it asked for.
+//
+//   auto    Refused too — and there is no way out. The session keeps growing,
+//           the next request comes back "Prompt is too long", and the hook goes
+//           on firing and on refusing. Measured: eleven fills into a 100K
+//           window, every turn after the eleventh failed identically, and the
+//           hook logged a refusal for each one. The gate cannot be satisfied
+//           from inside, because the model cannot be reached to satisfy it.
+//
+// So the `auto` path in this file exits 0 unconditionally. Not as a fallback,
+// and not as a weaker setting: a gate that can wedge the thing it protects is
+// worse than no gate, and this one wedges it silently at the exact moment the
+// session is most valuable.
+//
+// The escape, if you ever get there: a manual /compact still works on a wedged
+// session, so long as the manual rule allows it. Measured. That is another
+// reason the two triggers must never share a verdict.
+//
+// AND `auto` IS ALSO HOW A SUBAGENT COMPACTS
+// A subagent's context compacts independently of yours, `PreCompact` fires for
+// it with `trigger: "auto"`, and **the payload does not say it is a subagent**:
+// no `agent_id`, no `agent_type`, nothing this hook could read to tell whose
+// context it is looking at. `SubagentStart` carries both fields; `PreCompact`
+// carries neither.
+//
+// Measured, with the auto rule set to exit 2: a `general-purpose` subagent
+// reading twelve files died with `Agent terminated early due to an API error:
+// Prompt is too long`, while the parent session was untouched and reported the
+// error. With the auto rule exiting 0 the same subagent compacted and finished.
+//
+// So a blocking `auto` rule does not merely risk wedging the orchestrator. It
+// kills long-running implementation agents, in a repository whose hook settings
+// are tracked and therefore reach every worktree. Nothing in this file can
+// distinguish that case, which is the second independent reason the rule below
+// is unconditional rather than careful.
+//
+// WHAT THIS DOES NOT COVER
+// **The far side does not exist for subagents.** A subagent's compaction fires
+// `PreCompact` and then no `SessionStart` at all — measured, by timestamp,
+// against a log that recorded every one. An implementation agent that compacts
+// mid-run gets the summariser and nothing else, and neither it nor you is told.
+// Keep briefs self-contained and keep dispatches short enough not to find out.
+//
+// **A handoff nobody wrote.** This file checks a file's age and refuses one
+// command over it. Whether the words in it are worth carrying is not a thing a
+// hook can see, and the failure this whole mechanism is aimed at — a handoff
+// written under pressure that is confidently wrong — looks perfectly fresh from
+// here.
+//
+// **Merges you have not fetched.** The count below reads the local default
+// branch, so it is a floor and never a ceiling: work that landed and has not
+// been pulled is invisible, and the handoff is staler than this says.
+//
+// **Whether it is loaded.** See --probe.
+
+// ---------------------------------------------------------------------------
+// The knobs
+// ---------------------------------------------------------------------------
+
+// Relative to the session's directory. In guest mode this is not committable
+// and it does not belong in the host's tree; where it goes instead is the
+// question issue #122 is answering, and this line is how that answer arrives.
+const HANDOFF = 'docs/process/handoff.md'
+
+const DEFAULT_BRANCH = 'main'
+
+// Two clocks, because a repository can be busy without time passing and the
+// other way round. Either one alone makes the handoff stale.
+//
+// Five merges rather than one: a handoff that has to be rewritten after every
+// merge is a handoff nobody writes. The number comes from the failure it is
+// calibrated against — the worked example in docs/process/handoff.md was
+// written at a calm moment and was wrong about its largest claim within the
+// hour, because eight issues closed underneath it.
+const STALE_AFTER_MERGES = 5
+const STALE_AFTER_HOURS = 8
+
+// ---------------------------------------------------------------------------
+// Reading the handoff's age
+// ---------------------------------------------------------------------------
+
+import { execFileSync } from 'node:child_process'
+import { readFileSync, statSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
+
+// The payload carries the session's `cwd`, so the path is resolved against a
+// measured field rather than against an environment variable that may name a
+// different checkout. A hook fired from a worktree and a hook fired from the
+// main checkout are two different sessions with two different answers, and
+// guessing which is a defect this project has already shipped once.
+const resolveHandoff = (cwd) => (isAbsolute(HANDOFF) ? HANDOFF : join(cwd, HANDOFF))
+
+// Everything here runs inside a hook, where an exception is not a useful
+// outcome: a crash on a repository with no git, or a shallow clone, or a
+// default branch under another name, would be indistinguishable to the reader
+// from the hook not being wired. Every failure to measure reports as "cannot
+// tell", and "cannot tell" never refuses.
+function mergesSince(cwd, when) {
+  try {
+    const out = execFileSync(
+      'git',
+      [
+        'log',
+        '--first-parent',
+        '--format=%h',
+        `--since=${when.toISOString()}`,
+        DEFAULT_BRANCH,
+        '--',
+      ],
+      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    )
+    return out.split('\n').filter((line) => line.trim() !== '').length
+  } catch {
+    return null
+  }
+}
+
+function readHandoff(cwd) {
+  const path = resolveHandoff(cwd)
+  let stat
+  try {
+    stat = statSync(path)
+  } catch {
+    return { path, present: false }
+  }
+
+  const hours = (Date.now() - stat.mtimeMs) / 3_600_000
+  const merges = mergesSince(cwd, stat.mtime)
+  return {
+    path,
+    present: true,
+    hours,
+    merges,
+    stale: hours >= STALE_AFTER_HOURS || (merges !== null && merges >= STALE_AFTER_MERGES),
+    text: () => readFileSync(path, 'utf8'),
+  }
+}
+
+const age = (state) => {
+  const hours = state.hours < 1 ? 'under an hour' : `${Math.round(state.hours)}h`
+  const merges =
+    state.merges === null
+      ? `commits since could not be counted (no ${DEFAULT_BRANCH} here, or no git)`
+      : `${state.merges} commit${state.merges === 1 ? '' : 's'} on ${DEFAULT_BRANCH} since`
+  return `${hours} old, ${merges}`
+}
+
+// ---------------------------------------------------------------------------
+// PreCompact: the one refusal
+// ---------------------------------------------------------------------------
+
+function preCompact(payload) {
+  // Unconditional, and the two reasons are at the top of this file. Read them
+  // before narrowing this line: both were measured, and one of them kills
+  // subagents rather than the session you are sitting in.
+  if (payload.trigger !== 'manual') process.exit(0)
+
+  const state = readHandoff(payload.cwd ?? process.cwd())
+
+  // The first compaction of a fresh session must not wedge, and there is
+  // nothing to be stale about yet. Silence rather than a nudge, because a
+  // PreCompact hook that exits 0 has no channel the model can hear.
+  if (!state.present || !state.stale) process.exit(0)
+
+  process.stderr.write(
+    `Blocked: ${HANDOFF} is ${age(state)}.\n` +
+      '\n' +
+      'Compaction keeps the gist and loses the specifics, and the specifics are the\n' +
+      'part nobody can reconstruct from the repository afterwards: which agent is on\n' +
+      'which issue, what the owner said and when, which assumption a brief was\n' +
+      'written under.\n' +
+      '\n' +
+      'Top the handoff up, then run /compact again. It is a snapshot with a decay\n' +
+      'note and not a source of truth — say where the work stopped, what is\n' +
+      'dispatched, what is waiting on the owner, and at which commit that was true.\n' +
+      '\n' +
+      'Only /compact is refused here. Automatic compaction is never blocked, because\n' +
+      'a refused auto-compact cannot be satisfied: the session then fails every\n' +
+      'request with "Prompt is too long" and this hook goes on refusing it. See\n' +
+      'references/continuity.md.\n',
+  )
+  process.exit(2)
+}
+
+// ---------------------------------------------------------------------------
+// SessionStart: the far side
+// ---------------------------------------------------------------------------
+
+// stdout from a SessionStart hook is added to the resumed context. Measured
+// intact at 1 MB, first line, middle line and last line, so nothing here
+// truncates or summarises: a handoff that silently lost its second half would
+// be worse than one that was never injected, and the caller has no way to tell
+// the two apart.
+//
+// Only the `compact` matcher, deliberately. On `startup` and `resume` the file
+// is on disk and can be read; after a compaction the model has a summary that
+// does not know the file exists, which is the case where injection is the only
+// thing that works.
+function sessionStart(payload) {
+  const state = readHandoff(payload.cwd ?? process.cwd())
+
+  if (!state.present) {
+    process.stdout.write(
+      `The context was just compacted. There is no handoff at ${HANDOFF}, so nothing\n` +
+        'was carried across besides the summary you are holding.\n' +
+        '\n' +
+        'Re-read the backlog and the log before acting on anything you think you\n' +
+        'remember, and write the handoff as part of this pass so the next compaction\n' +
+        'costs less than this one did.\n',
+    )
+    process.exit(0)
+  }
+
+  process.stdout.write(
+    `The context was just compacted. Below is ${HANDOFF} verbatim, ${age(state)}.\n` +
+      '\n' +
+      'It is a snapshot, not a source of truth. Where it disagrees with the\n' +
+      'repository the repository is right, and the summary you are holding is lossy\n' +
+      'in ways neither of you can see. Reconcile against the backlog before acting,\n' +
+      'and top this file up as part of the loop rather than at the next boundary.\n' +
+      '\n' +
+      `----- ${HANDOFF} -----\n` +
+      state.text() +
+      `\n----- end ${HANDOFF} -----\n`,
+  )
+  process.exit(0)
+}
+
+// ---------------------------------------------------------------------------
+// --probe, and the hook
+// ---------------------------------------------------------------------------
+
+// This probe answers a smaller question than the one in guard-merge.mjs, and
+// the difference is worth stating rather than glossing.
+//
+// That probe is refused by the guard, so being refused proves the guard is
+// loaded in this process. Nothing here can do that: PreCompact never sees a
+// command line, so there is no line for it to refuse, and a compaction is not
+// something you can ask for on demand with a stale handoff to hand.
+//
+// What this prints is the verdict the rules would give right now. That is the
+// written state and not the loaded one, and those are different (ADR 0027).
+//
+// The loaded state has one honest answer and it is free: after any compaction,
+// look for the injected block in your own context. It is either in this
+// compaction's context or it is not, and unlike a heartbeat file there is
+// nothing to be stale — the far side leaves its evidence in the only place that
+// cannot be read from a previous process.
+//
+// No npm guard here, unlike the other probes in this skill. Those refuse to run
+// under a package script because a runner hides the file name from a hook that
+// matches on it; this one is not matched on anything, so a runner changes
+// nothing about its answer.
+function probe() {
+  const state = readHandoff(process.cwd())
+
+  if (!state.present) {
+    console.log(`No handoff at ${state.path}.`)
+    console.log('')
+    console.log('Nothing is refused: the first compaction of a fresh session must not wedge,')
+    console.log('and an absent file is not a stale one. SessionStart would inject a note')
+    console.log('saying the summary is all there is.')
+  } else if (state.stale) {
+    console.log(`STALE: ${state.path} is ${age(state)}.`)
+    console.log('')
+    console.log(`Thresholds: ${STALE_AFTER_MERGES} commits or ${STALE_AFTER_HOURS} hours.`)
+    console.log('A manual /compact would be refused. An automatic one would not be.')
+  } else {
+    console.log(`Current: ${state.path} is ${age(state)}.`)
+    console.log('')
+    console.log(`Thresholds: ${STALE_AFTER_MERGES} commits or ${STALE_AFTER_HOURS} hours.`)
+  }
+
+  console.log('')
+  console.log('This is the rules half. It says nothing about whether the hooks are loaded')
+  console.log('in this process, which is a separate state and is answered by seeing the')
+  console.log('injected handoff block in your context after the next compaction.')
+  process.exit(state.present && state.stale ? 1 : 0)
+}
+
+if (process.argv.includes('--probe')) {
+  probe()
+} else {
+  let raw = ''
+  for await (const chunk of process.stdin) raw += chunk
+
+  let payload
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    process.exit(0) // An unparseable payload is not this hook's problem.
+  }
+
+  // One file, wired to both events, deciding from the payload rather than from
+  // an argv flag. A flag is a setup step that gets copied wrong, and the wrong
+  // half of this file firing on the wrong event is a refusal nobody expects.
+  if (payload.hook_event_name === 'PreCompact') preCompact(payload)
+  if (payload.hook_event_name === 'SessionStart') sessionStart(payload)
+  process.exit(0)
+}

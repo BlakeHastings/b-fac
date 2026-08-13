@@ -71,6 +71,7 @@ as payload, so adding a survey does not require a version bump and should not.
 | --- | --- | --- |
 | [2026-08-12-local-backlog-and-storage.md](2026-08-12-local-backlog-and-storage.md) | #60, #61 | Which local issue trackers are real candidates, and why every git-native storage format relocates the conflict problem rather than solving it |
 | [2026-08-12-local-gating-hooks-and-vocabulary.md](2026-08-12-local-gating-hooks-and-vocabulary.md) | #60, #63, #65 | That a local gate is one runner-agnostic entry point rather than a CI emulator, why `act` cannot authorise a merge, and where the check/gate/driver vocabulary comes from |
+| [2026-08-12-compaction-hooks-and-context-continuity.md](2026-08-12-compaction-hooks-and-context-continuity.md) | #124 | That refusing a manual compaction works and refusing an automatic one wedges the session, that `SessionStart` injects a handoff intact at 1 MB, and that a subagent's compaction fires the same hook indistinguishably and gets no injection back |
 
 `npm run check:references` holds that table to this directory in both
 directions: a survey with no row fails, and so does a row naming a file that is

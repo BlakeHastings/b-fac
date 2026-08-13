@@ -133,6 +133,7 @@ demand rather than all at once:
 | `references/reviewing.md` — a PR is waiting |
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |
+| `references/continuity.md` — wiring the compaction hooks, or the context is filling |
 | `references/host-checks.md` — working out what a repo you did not create actually runs |
 | `references/backlog-port.md` — the backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
