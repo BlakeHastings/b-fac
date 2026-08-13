@@ -312,7 +312,7 @@ node <this skill>/assets/discover-checks.mjs --run    # run the proposal, then r
 
 It ranks their task runner above the ecosystem manifest, prints their pipeline's
 commands as description and **never proposes one**, and records
-`.factory/checks.md` only for commands it has executed and seen exit 0. Where
+`factory/checks.md` only for commands it has executed and seen exit 0. Where
 the evidence is thin or points two ways it refuses and prints the question to
 ask, which is the outcome you want rather than a failure of the step: a wrong
 check produces confident red or confident green about the wrong thing.
@@ -348,12 +348,54 @@ three steps entirely — no backlog seeded outward, no ruleset, no CI.
   The comment you want to leave on it is an outward write, and it waits with
   everything else for the one step the owner asks for.
 
-The boundary is worth stating in the boring, checkable form at publish time: no
-branch pushed, no issue opened, no comment posted, nothing outside this machine
-touched. If you cannot say that sentence, say precisely what you did instead.
-That is the whole reason guest is defined as a boundary rather than as a list of
-features left switched off.
+### Publish, and check the one clause that can be checked
 
-**Say it even with the gate installed.** A gate refuses; it does not audit, and
-it covers the agent session rather than the machine. The sentence is still
-yours to make true and still yours to write.
+Guest mode is a boundary rather than a list of features left switched off for
+one reason, and publish is where it comes due: ADR 0021 chose that shape because
+"no external writes happened" is a claim something can check. **One clause of
+that sentence is now checked and three are not**, and knowing which is which is
+the difference between a publish note and a claim wearing its clothes.
+
+```bash
+node <this skill>/assets/check-outward-writes.mjs
+```
+
+It reads this repository's remote-tracking reflogs, where a push leaves
+`update by push` and a colleague's push arriving by fetch does not, so it can
+say a push was **ours**. That catches the push the gate could not refuse: from
+`sudo`, from a session the hook never loaded, from a worktree, from a human at a
+terminal. It also reads the gate's refusal log, so "the boundary held" stops
+reading the same as "the boundary was never tested". Exit 0 is looked and saw
+nothing, 1 is found something, and **2 is could not look**, which is not the
+same as clean.
+
+Then write the note:
+
+| Clause | Who says it |
+| --- | --- |
+| no branch pushed | the check said so, and here is its output |
+| no item opened on the host's tracker | you |
+| no comment posted | you |
+| nothing outside this machine touched | you, and nothing can help |
+
+`gh` keeps no local record of what it wrote, measured, so the middle two
+cannot be mechanised on this machine at all, and nothing that is neither git nor
+gh can be seen by either half. If you cannot say the last three, say precisely
+what you did instead.
+
+**Ask the gate `--probe` in the same breath, as its own tool call.** The report
+prints the line and will not run it for you: a hook sees tool calls and not the
+child processes a script spawns, so an answer collected from inside the report
+would say inert in a session where the gate was holding. A gate refuses; it does
+not audit; and a report audits without telling you whether anything was
+refusing. You want both answers and they are two different claims.
+
+**After a publish the owner authorised, mark it**, or this report is red for
+ever from then on:
+
+```bash
+node <this skill>/assets/check-outward-writes.mjs --mark
+```
+
+It bookmarks the moment and does not hide what is below it, for the reason the
+provenance audit refuses to let a baseline move forward to silence a failure.
