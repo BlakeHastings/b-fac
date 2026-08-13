@@ -1,4 +1,4 @@
-# 0041. The injected block is addressed to whoever compacted, and the record is what says an agent did
+# 0042. The injected block is addressed to whoever compacted, and the record is what says an agent did
 
 Status: accepted
 

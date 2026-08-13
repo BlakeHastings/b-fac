@@ -164,7 +164,7 @@ in it and ends `Prompt is too long`. The `SubagentStart` at 03:22:39 is not that
 agent continuing, it is `a9923f06d14b39837`, a fresh agent, and it is the one
 that returned the marker. See
 [2026-08-13-subagent-compaction-detection.md](2026-08-13-subagent-compaction-detection.md)
-finding 8 and ADR 0041.*
+finding 8 and ADR 0042.*
 
 With `auto` exiting 2, the same run:
 
@@ -224,7 +224,7 @@ figure, and no hook event fires on a context threshold. The documented fields on
   own transcript file. `PreCompact` is still no help, and `prompt_id` on it turns
   out to be the parent turn's, shared by everything dispatched in that turn. See
   [2026-08-13-subagent-compaction-detection.md](2026-08-13-subagent-compaction-detection.md)
-  and ADR 0041.*
+  and ADR 0042.*
 - **The real auto-compact threshold as a fraction of the window.** Auto-compact
   first fired at turn 4 of ~15K tokens each, which is consistent with anything
   from 40% to 70% of 100K. The number is not documented and was not narrowed.

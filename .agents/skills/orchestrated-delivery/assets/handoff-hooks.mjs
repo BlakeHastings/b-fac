@@ -73,7 +73,7 @@
 // any other, and the stdout lands in *that subagent's* resumed context.
 // Measured: three subagent compactions, three injections 0.3s later, in a
 // session whose own context never compacted, and the marker came back in the
-// agent's report. #124's survey recorded the opposite; ADR 0041 has why, and it
+// agent's report. #124's survey recorded the opposite; ADR 0042 has why, and it
 // comes down to a compaction that died before it completed.
 //
 // So this file talks to an implementation agent every time one compacts in a

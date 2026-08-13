@@ -95,7 +95,7 @@ does not mention: the bar, the bounds, the artefact you named.
 
 Asking for it in the brief is the cheap half (`references/briefing.md`), and a
 report that says "no compaction" against a transcript that shows four is its own
-kind of signal. `references/continuity.md` has the mechanics and ADR 0041 has
+kind of signal. `references/continuity.md` has the mechanics and ADR 0042 has
 why this is a check and not a gate.
 
 ## Verify the merge result, not the branch

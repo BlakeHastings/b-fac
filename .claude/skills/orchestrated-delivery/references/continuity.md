@@ -217,7 +217,7 @@ subagent. It came from a run in which the compaction never completed: the agent
 died of `Prompt is too long` and the `SubagentStart` seconds later was the
 parent's retry, not the same agent continuing. A compaction that fires and then
 kills the agent looks identical in a hook log and leaves no boundary in the
-transcript. ADR 0041.*
+transcript. ADR 0042.*
 
 ## Finding out afterwards that an agent compacted
 
@@ -253,7 +253,7 @@ command above already is. Its exit 2 *does* reach the agent and the agent obeys,
 which makes it a gate on the report rather than a check, arriving after the work
 instead of during it. And it never fires for the case that matters most: an
 agent that dies of `Prompt is too long` produces no `SubagentStop` at all, while
-its transcript is still on disk. ADR 0041.
+its transcript is still on disk. ADR 0042.
 
 **Ask in the report contract as well.** The agent can tell: the summary it is
 holding opens with "This session is being continued from a previous conversation

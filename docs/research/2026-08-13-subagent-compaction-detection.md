@@ -3,7 +3,7 @@
 **Verified on** 2026-08-13
 
 Asked by **#127**, which needed to know whether an orchestrator can find out that
-an implementation agent lost its brief mid-run. ADR 0041 is the decision that
+an implementation agent lost its brief mid-run. ADR 0042 is the decision that
 came out of it. The parent survey is
 [2026-08-12-compaction-hooks-and-context-continuity.md](2026-08-12-compaction-hooks-and-context-continuity.md),
 whose closing question was exactly this one, filed there under "could not be
@@ -326,7 +326,7 @@ MARKER-JULIET-5150
 
 It read a file it had never been told about and complied. So there is a **second**
 channel to a subagent, later than finding 8's and stronger: it can refuse the
-report rather than merely annotate the context. Whether to build it is ADR 0041,
+report rather than merely annotate the context. Whether to build it is ADR 0042,
 and the answer there is no, because finding 8 arrives earlier, costs no gate, and
 is already wired.
 
