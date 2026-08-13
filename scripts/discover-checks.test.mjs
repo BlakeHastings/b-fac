@@ -24,7 +24,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -32,6 +32,12 @@ import { fileURLToPath } from 'node:url'
 const DISCOVER = fileURLToPath(
   new URL('../.agents/skills/orchestrated-delivery/assets/discover-checks.mjs', import.meta.url),
 )
+
+// Where the record lives, relative to a main checkout, whose git common
+// directory is its own `.git`. It is there rather than in the working tree
+// because every checkout of a repository needs the answer and an agent works in
+// a worktree. ADR 0037.
+const FACTORY = '.git/factory'
 
 // The exit code is read off the process rather than inferred from the output.
 // This repository has mis-measured one three times by letting a pipe swallow it.
@@ -180,7 +186,7 @@ test('proposing writes nothing', () => {
   const root = repo({ 'package.json': pkg({ check: 'node -e "process.exit(0)"' }) })
   discover(root)
 
-  assert.equal(existsSync(join(root, '.factory')), false)
+  assert.equal(existsSync(join(root, FACTORY)), false)
   assert.equal(porcelain(root), '')
 })
 
@@ -190,16 +196,41 @@ test('--run executes the proposal and records it, and the host repo cannot see t
   const { code, out } = discover(root, ['--run'])
 
   assert.equal(code, 0)
-  assert.match(out, /npm run check {3}0\.\ds/)
-  assert.match(out, /Recorded in \.factory\/checks\.md/)
+  // The duration is reported, not asserted to be small. Pinning it to a tenth
+  // of a second made this test a load meter: it passes alone and fails when the
+  // rest of the suite is running beside it.
+  assert.match(out, /npm run check {3}\d+\.\ds/)
+  assert.match(out, /Recorded in .*factory[\\/]checks\.md/)
 
-  const record = readFileSync(join(root, '.factory/checks.md'), 'utf8')
+  const record = readFileSync(join(root, FACTORY, 'checks.md'), 'utf8')
   assert.match(record, /npm run check/)
   assert.match(record, /exit 0/)
 
-  assert.match(readFileSync(join(root, '.git/info/exclude'), 'utf8'), /^\/\.factory\/$/m)
+  // No exclude line, and none needed. ADR 0037 puts the record inside the git
+  // common directory, which git does not look into, so what ADR 0021 asked an
+  // ignore rule to achieve is structural. An ignore rule can be lost.
+  assert.doesNotMatch(readFileSync(join(root, '.git/info/exclude'), 'utf8'), /factory/)
   assert.equal(porcelain(root), before)
   assert.match(out, /byte-for-byte what it was before this ran/)
+})
+
+// The reason it moved, asserted rather than described. The check entry point is
+// a fact about the repository, and an agent works in a worktree.
+test('the recorded entry point is readable from a linked worktree', () => {
+  const root = repo({ 'package.json': pkg({ check: 'node -e "process.exit(0)"' }) })
+  assert.equal(discover(root, ['--run']).code, 0)
+
+  const worktree = join(root, '..', `wt-${Math.random().toString(36).slice(2, 8)}`)
+  execFileSync('git', ['worktree', 'add', '--quiet', worktree, '-b', 'agent'], { cwd: root })
+  try {
+    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: worktree,
+      encoding: 'utf8',
+    }).trim()
+    assert.match(readFileSync(join(common, 'factory/checks.md'), 'utf8'), /npm run check/)
+  } finally {
+    rmSync(worktree, { recursive: true, force: true })
+  }
 })
 
 test('a command that fails is not recorded, however plausible it looked', () => {
@@ -208,7 +239,7 @@ test('a command that fails is not recorded, however plausible it looked', () => 
 
   assert.equal(code, 1)
   assert.match(out, /1 of 1 exited non-zero, so nothing has been recorded/)
-  assert.equal(existsSync(join(root, '.factory/checks.md')), false)
+  assert.equal(existsSync(join(root, FACTORY, 'checks.md')), false)
 })
 
 test('--run with nothing to run refuses rather than inventing something', () => {
@@ -217,7 +248,7 @@ test('--run with nothing to run refuses rather than inventing something', () => 
 
   assert.equal(code, 1)
   assert.match(out, /Nothing to run: there is no proposal, and --command= was not given/)
-  assert.equal(existsSync(join(root, '.factory')), false)
+  assert.equal(existsSync(join(root, FACTORY)), false)
 })
 
 test('--command= is how an escalated question gets answered, and it still has to run', () => {
@@ -226,7 +257,7 @@ test('--command= is how an escalated question gets answered, and it still has to
 
   assert.equal(code, 0)
   assert.match(out, /Given with --command=, not proposed/)
-  assert.match(readFileSync(join(root, '.factory/checks.md'), 'utf8'), /Given by hand with --command=/)
+  assert.match(readFileSync(join(root, FACTORY, 'checks.md'), 'utf8'), /Given by hand with --command=/)
 })
 
 // The brief for this asset put it plainest: write the limit where someone will
@@ -239,6 +270,6 @@ test('the limit is on every output and in the record', () => {
 
   assert.match(discover(root).out, limit)
   assert.match(discover(root, ['--run']).out, limit)
-  assert.match(readFileSync(join(root, '.factory/checks.md'), 'utf8'), limit)
+  assert.match(readFileSync(join(root, FACTORY, 'checks.md'), 'utf8'), limit)
   assert.match(discover(repo({ 'README.md': '# nothing\n' }), ['--run']).out, limit)
 })

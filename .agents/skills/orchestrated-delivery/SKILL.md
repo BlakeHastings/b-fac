@@ -400,8 +400,8 @@ is silent, and one repository spent two days that way.
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
 | `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
-| `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `.factory/` | Nothing |
-| `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `.factory/` | Nothing |
+| `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
+| `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
 
 `references/first-run.md` walks this whole sequence as one repo actually ran it,
 in the order its commits show rather than the order listed here.

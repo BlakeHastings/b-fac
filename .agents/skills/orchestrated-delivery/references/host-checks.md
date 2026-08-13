@@ -146,10 +146,16 @@ still the first place a human should look before answering the question.
 
 ## The entry point is a recorded line, not a file added to their repo
 
-`--run` writes `.factory/checks.md`, beside the machine record, and appends
-`/.factory/` to `.git/info/exclude` if the guest gate has not already. Afterwards
-`git status --porcelain -uall` is byte-for-byte what it was before, and the
+`--run` writes `factory/checks.md` inside the git common directory, beside the
+machine record. No ignore rule is needed and none is written: git does not look
+inside `.git/`, so `git status --porcelain -uall` is byte-for-byte what it was
+before as a property of the location rather than of an exclude line, and the
 script checks that rather than claiming it.
+
+**Inside the common directory rather than at the working-tree root**, because a
+repository is not one directory. The check entry point is a fact every checkout
+needs, and an agent works in a linked worktree, which has no untracked files of
+the main checkout's. ADR 0037, and #122 is what it cost to learn.
 
 **No wrapper script is installed.** Adding `check.sh` beside somebody's Makefile
 is imposing a convention on a repository that already has one, which is the
@@ -200,8 +206,9 @@ gap named.
 
 Setup, in the order `references/first-run.md` gives it: install the write
 boundary first, then discover the check entry point, then work. Discovery
-depends on the gate having run, in the weak sense that `.factory/` and its
-exclusion already exist by then; it will create both itself if it goes first.
+depends on the gate having run only in the weak sense that `factory/` inside the
+git common directory already exists by then; it will create it itself if it goes
+first, and needs nothing excluded either way.
 
 `references/enforcement.md` says what each control is worth and what it does not
 cover. This one covers no violation at all: it is a **check** in the strict

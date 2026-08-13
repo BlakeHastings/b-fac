@@ -315,6 +315,16 @@ check reading the working directory is reading somewhere else. That is a
 property of the mechanism, not a bug, so branch-dependent rules in a hook are
 unsound and the durable guards read only command text.
 
+*One thing a hook may read the filesystem for, and the line between them is
+worth keeping.* The guest gate's `--scope` asks git for the common directory of
+wherever the session is standing and stands aside unless it is the repository
+the hook was installed for. That is not a verdict on a command; it decides
+whether the gate is about this repository at all. Two things make it sound where
+the branch lookup was not: the fact it reads is `--git-common-dir`, which answers
+identically from every checkout of a repository where `--abbrev-ref HEAD` does
+not, and being out of scope only ever means standing aside. The `cd` problem
+still applies and is written into the gate's own not-covered list. ADR 0037.
+
 **The shipped guard broke that rule itself, and it was caught.** For a bare
 `git push` or `git merge` it shelled out to `git rev-parse --abbrev-ref HEAD`
 and denied only when the answer was the default branch. Run from inside a
@@ -371,48 +381,115 @@ agent session, so there is nothing for the gate to add to it.
 
 ### Where it lives, which is the harder half
 
-The wiring block above says `.claude/settings.json`, and in a repository you are
-a guest in that file is somebody else's. So the gate installs into
-**`.claude/settings.local.json`**, which is untracked by convention, and copies
-itself to **`.factory/`** beside the machine record, with both paths appended to
-`.git/info/exclude` rather than to `.gitignore`. Afterwards
+Two questions, and conflating them is what produced #122. **Where the gate and
+its facts live** is one. **Which sessions the gate is registered for** is the
+other, and it is the one that was wrong.
+
+#### The files: the git common directory, because a repository is not one directory
+
+The gate copies itself to **`factory/` inside the git common directory**, beside
+the machine record and the discovered check command. `git rev-parse
+--git-common-dir` answers the same thing from a main checkout and from every
+linked worktree of it, which `--show-toplevel` and `--git-dir` do not, so that
+is the only place a per-repository fact can go and be read from every checkout.
+
+It is also outside the working tree, so **nothing has to be excluded to keep it
+invisible**: git does not look inside `.git/`. The exclude append survives for
+`.claude/settings.local.json` alone, which is the one file that has to be in the
+working tree because that is where the harness reads settings from. Afterwards
 `git status --porcelain -uall` is exactly what it was before. Run that yourself
 rather than believing it.
 
-**Not the operator's home directory.** A user-level hook would follow them into
-every other repository on the machine, including owned ones, where everything it
-refuses is a false positive by construction. Installing something under somebody
-else's `~` is also theirs to do, not the factory's.
+This used to be `.factory/` at the working-tree root, kept out of sight with
+`.git/info/exclude`. That was the right instinct one directory short of its own
+reasoning, and ADR 0037 has the correction.
 
-That constraint is what actually limits portability, rather than hooks being
-rare. Checked in August 2026: Claude Code, Copilot CLI, Codex CLI, Gemini CLI
-and opencode **all** have a pre-execution surface that can refuse a command.
-Only Claude Code and Copilot CLI document an untracked repository-level file to
-put one in, and Copilot documents reading Claude Code's. On the other three,
-wiring the gate means editing a tracked file, which is the boundary breaking
-itself to enforce itself — so there the boundary stays a declaration, and the
-publish-time statement below is what you have.
+#### The registration: measure which sessions it reaches, and say so
 
-### Ask it whether it is loaded
+**Claude Code reads project settings from the directory the session started in
+and from nowhere else.** Not the parent, not the repository, not `.git/`.
+Measured on 2.1.228 with a `SessionStart` hook as a marker: a session in the
+main checkout fired it, and sessions in a sibling worktree and in one nested at
+`.claude/worktrees/x` inside the main checkout fired nothing. `$CLAUDE_PROJECT_DIR`
+is that same directory, so in a worktree session it is the worktree.
 
-Same problem as layer 2, and the same answer, in the gate for this mode:
+So there are two registrations and they do not cover the same sessions:
+
+| Where the block is | Covers |
+| --- | --- |
+| `.claude/settings.local.json` in one checkout | sessions started in that directory, and nothing else |
+| `~/.claude/settings.json`, carrying `--scope` | every session inside the repository it names, worktrees included, and worktrees that do not exist yet |
+
+`--install` writes the first and **prints** the second. That is not a
+formality: until #122 only the first existed, and **the sessions it did not
+reach were the ones doing the writing**. An orchestrator sits in the main
+checkout, where the gate is installed and works. Subagents sit in worktrees, and
+subagents are what push branches, open pull requests and comment on the host's
+tracker. The probe did not catch it either: run in the main checkout it is
+correctly refused, and the boundary is enforced for the one session that is not
+writing anything outward.
+
+**The home directory is still not ours to write to**, and printing a block is
+not installing one. What changed is the other objection to a user-level hook —
+that it follows the operator into every repository on the machine, where every
+refusal is a false positive by construction. The printed block carries
+`--scope <git common dir>`, and the gate stands aside outside the repository it
+names. It is a literal in the wiring rather than a mode read off disk, so
+installing the gate is still the declaration, and the git fact it compares is
+the one that is identical from every checkout. ADR 0037.
+
+Get the block again at any time:
 
 ```bash
-node .factory/guard-guest-writes.mjs --probe
+node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --user-hook
+```
+
+**Installing it and removing it are a deliberate pair.** A machine-wide gate
+said out loud is a legitimate answer; a silently machine-wide one is not.
+
+**Which sessions a hook reaches is what actually limits portability**, along
+with which harnesses have an untracked place to put one. Checked in August 2026:
+Claude Code, Copilot CLI, Codex CLI, Gemini CLI and opencode **all** have a
+pre-execution surface that can refuse a command. Only Claude Code and Copilot
+CLI document an untracked repository-level file to put one in, and Copilot
+documents reading Claude Code's. On the other three, wiring the gate means
+editing a tracked file, which is the boundary breaking itself to enforce
+itself — so there the boundary stays a declaration, and the publish-time
+statement below is what you have. **The user-level equivalents on those three
+have not been measured**, so nothing here claims the two-registration shape
+ports; treat that as open.
+
+### Ask it whether it is loaded, from the session that is doing the work
+
+Same problem as layer 2, and the same answer, in the gate for this mode. The
+install prints the absolute path; this is how to derive it:
+
+```bash
+node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --probe
 ```
 
 Being refused is the answer you want. If it prints, the gate is not in this
-process and the fix is a restart. Alone on the line, for layer 2's reason: the
-whole tool call is refused, and this refusal reads as success too. This gate had
-the one-file probe first; layer
-2's guard has it now too, and until it did, a repository installing this skill
-had no way to ask its only preventive layer anything at all.
+process, and there are now three reasons rather than two: no hook, a process
+that predates the hook, or **a session started somewhere the gate is not
+registered for**. The third is the one #122 was about, and the remedy is not a
+restart. Alone on the line, for layer 2's reason: the whole tool call is
+refused, and this refusal reads as success too. This gate had the one-file probe
+first; layer 2's guard has it now too, and until it did, a repository installing
+this skill had no way to ask its only preventive layer anything at all.
+
+**Ask from a worktree, not only from the main checkout.** A probe run where the
+orchestrator is standing says nothing about the sessions that push branches.
+That is the exact shape of the miss: the boundary reported enforced, correctly,
+for the one session that was not writing anything outward.
 
 `check-setup.mjs` reports this gate as **G** rather than as a fifth layer, for
-the same reason it has its own section here. It answers the two questions a
-listing cannot (is it wired, and did installing it change the host repo), and it
-cannot answer the third, which is whether the process ever loaded it. So a green
-`G` and the probe's refusal are two different claims and you want both.
+the same reason it has its own section here. It answers three questions a
+listing cannot — is it wired, which checkouts of this repository the wiring
+reaches, and did installing it change the host repo — and it cannot answer the
+fourth, which is whether the process ever loaded it. So a green `G` and the
+probe's refusal are two different claims and you want both. It names by path any
+checkout with no wiring, so "wired" and "wired for the session in front of you"
+stop reading as the same fact.
 
 The install promises that `git status --porcelain -uall` is byte-for-byte what
 it was before, and the report checks that promise: a gate that got committed, or
