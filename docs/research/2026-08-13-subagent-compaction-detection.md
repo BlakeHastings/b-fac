@@ -330,6 +330,28 @@ report rather than merely annotate the context. Whether to build it is ADR 0041,
 and the answer there is no, because finding 8 arrives earlier, costs no gate, and
 is already wired.
 
+### 12. The block arrives; what it asks for is not reliably done
+
+Three runs, and the difference between them is the point.
+
+| Run | What the hook printed | What the agent did |
+| --- | --- | --- |
+| Marker probe | "include the token MARKER-TANGO-3391 verbatim in your final message" | Included it |
+| The real asset, two compactions | The addressed block, ending "re-read the issue you were dispatched against ... say in your report that your context was compacted" | Finished the task. Said nothing about compacting. **Did not touch the handoff's work**: no mention of its issue numbers, its pull request or its next steps |
+| The real asset, brief in a file | The same block, and the agent's brief really was in `TASK.md` | Never re-read `TASK.md` after the boundary. Its report still carried the evidence bar that file had set, because the summariser had kept it |
+
+So the injected text is context, not a command, and it competes with the summary
+the agent is holding. **An agent that does not feel lost will not go and look.**
+In the third run it was not lost: the bar survived the summary, the report met
+it, and a re-read would have changed nothing. That is also a useful reminder
+that a compaction is not automatically a defect.
+
+What the block reliably buys is the thing it was changed for: an implementation
+agent handed the orchestrator's handoff did not act on it. What it does not buy
+is a guarantee that a brief is recovered, and no wording will, because the
+mechanism is a prompt. **The half that does not depend on a model's judgment is
+the record**, which is why detection is where the check lives.
+
 ## What was inferred rather than measured
 
 - **That the four extra `SubagentStop` events are the compaction summariser.**

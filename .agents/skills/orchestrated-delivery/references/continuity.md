@@ -203,8 +203,14 @@ notice, having just lost its brief. So the block says whose the file is before
 printing it, tells a dispatched agent not to act on it, and tells it what it
 actually lost: its brief, which is in the issue, which it can re-read.
 
-That is the whole recovery, and it is the only thing that arrives in time. Keep
-briefs recoverable so it has somewhere to point (`references/briefing.md`).
+It is the only thing that arrives in time, and it is a prompt rather than a
+mechanism. Measured across three runs: an agent handed the addressed block did
+not pick up the orchestrator's work, which is what the wording is for, and it
+did not re-read its brief either, in a run where the summariser happened to keep
+the evidence bar and the report met it anyway. **An agent that does not feel
+lost will not go and look.** So keep briefs recoverable so the block has
+somewhere to point (`references/briefing.md`), and keep the reliable half of
+this where it does not depend on anyone's judgment: the record, below.
 
 *This corrects the earlier finding that `SessionStart` does not fire for a
 subagent. It came from a run in which the compaction never completed: the agent

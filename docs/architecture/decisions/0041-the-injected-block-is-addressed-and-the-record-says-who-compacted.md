@@ -46,10 +46,16 @@ steps, and it is the reader least able to notice, having just lost its brief. So
 the block says which reader the file belongs to, tells a dispatched agent not to
 act on it, and tells it what it has actually lost and where to get it back.
 
-**That is the recovery, and it is the only one that arrives in time.** It reaches
-the agent at the moment of compaction, mid-run, before the work continues. It
-costs nothing extra: the hook is already wired, already fires, and was already
-printing into that context unaddressed.
+**That is the recovery, it is the only one that arrives in time, and it is a
+prompt rather than a mechanism.** It reaches the agent at the moment of
+compaction, mid-run, before the work continues, and it costs nothing extra: the
+hook is already wired, already fires, and was already printing into that context
+unaddressed. What it reliably buys is measured and narrow. An agent given the
+addressed block did not act on the handoff, which is the failure the addressing
+exists to prevent. The same agent did not re-read its brief either, in a run
+where the summariser had kept the evidence bar and the report met it regardless.
+An agent that does not feel lost will not go and look, and no wording fixes
+that, which is the reason the *check* below is where the weight sits.
 
 **Detection is the record, and it is a check.** A subagent's compaction writes a
 `compact_boundary` entry into
