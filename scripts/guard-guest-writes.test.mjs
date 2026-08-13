@@ -16,7 +16,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -410,12 +410,24 @@ test('the probe refuses to report at all when a package script is in the way', (
 function scratchRepo() {
   const root = mkdtempSync(join(tmpdir(), 'guest-mode-'))
   execFileSync('git', ['init', '--quiet'], { cwd: root })
+  execFileSync('git', ['config', 'user.email', 'agent@example.test'], { cwd: root })
+  execFileSync('git', ['config', 'user.name', 'agent'], { cwd: root })
+  // Whether the host repo can see the gate's scratch state is what the install
+  // promises, and the developer running these may have `.claude/` in their own
+  // global ignore file — this machine does. Pin an empty one so the answer is
+  // the repository's rather than the operator's.
+  writeFileSync(join(root, '.git/empty-excludes'), '')
+  execFileSync('git', ['config', 'core.excludesFile', join(root, '.git/empty-excludes')], { cwd: root })
   return root
 }
 
 function install(root) {
   return execFileSync('node', [GATE, '--install'], { cwd: root, encoding: 'utf8' })
 }
+
+// Where the gate and the machine record live, relative to a main checkout,
+// whose git common directory is its own `.git`. ADR 0037.
+const FACTORY = '.git/factory'
 
 const status = (root) =>
   execFileSync('git', ['status', '--porcelain', '-uall'], { cwd: root, encoding: 'utf8' })
@@ -431,13 +443,232 @@ test('--install leaves the host repo\'s git status empty', () => {
 
     install(root)
 
-    assert.equal(existsSync(join(root, '.factory/guard-guest-writes.mjs')), true)
-    assert.equal(existsSync(join(root, '.factory/machine.md')), true)
+    assert.equal(existsSync(join(root, `${FACTORY}/guard-guest-writes.mjs`)), true)
+    assert.equal(existsSync(join(root, `${FACTORY}/machine.md`)), true)
     assert.equal(existsSync(join(root, '.claude/settings.local.json')), true)
-    assert.match(readFileSync(join(root, '.factory/machine.md'), 'utf8'), /^Write boundary: guest$/m)
+    assert.match(readFileSync(join(root, `${FACTORY}/machine.md`), 'utf8'), /^Write boundary: guest$/m)
     assert.equal(status(root), before, 'installing changed what the host repo sees')
   } finally {
     rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// The half ADR 0021's `.git/info/exclude` was doing, now done by the location
+// instead. An exclude line can be lost, reverted, or never take; `.git/` is a
+// place git does not look.
+test('--install writes nothing into the working tree but the wiring', () => {
+  const root = scratchRepo()
+  try {
+    writeFileSync(join(root, 'README.md'), '# host\n')
+    execFileSync('git', ['add', 'README.md'], { cwd: root })
+    install(root)
+
+    assert.equal(existsSync(join(root, '.factory')), false, 'it wrote a directory into the tree')
+    rmSync(join(root, '.claude'), { recursive: true, force: true })
+    writeFileSync(join(root, '.git/info/exclude'), '')
+    assert.equal(status(root), 'A  README.md\n', 'the gate or the record is visible to the host repo')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// A repository is not one directory
+//
+// #122. `--install` writes untracked files, and a linked worktree has none of
+// them, so the sessions that push branches and open pull requests — the ones in
+// worktrees — registered no hook at all. Measured on Claude Code 2.1.228: the
+// harness reads project settings from the directory the session started in and
+// from nowhere else, not the parent, not the repository, not `.git/`.
+// ---------------------------------------------------------------------------
+
+function worktreeOf(root, name = 'agent') {
+  execFileSync('git', ['commit', '--quiet', '--allow-empty', '-m', 'base'], { cwd: root })
+  const path = join(root, '..', `wt-${name}-${Math.random().toString(36).slice(2, 8)}`)
+  execFileSync('git', ['worktree', 'add', '--quiet', path, '-b', name], { cwd: root })
+  return path
+}
+
+const commonDirOf = (root) =>
+  execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim()
+
+// The property the scope rests on, and the one the clause ADR 0029 killed did
+// not have. That clause read `git rev-parse --abbrev-ref HEAD`, which answers
+// differently in a worktree, and it allowed in one checkout what it denied in
+// another. This asserts the opposite: one answer from every checkout.
+test('the git common directory is the one git fact that is identical from every checkout', () => {
+  const root = scratchRepo()
+  let worktree
+  try {
+    worktree = worktreeOf(root)
+    const nested = join(root, 'nested')
+    execFileSync('git', ['worktree', 'add', '--quiet', nested, '-b', 'nested'], { cwd: root })
+
+    const common = [root, worktree, nested].map(commonDirOf)
+    assert.equal(new Set(common).size, 1, `three checkouts gave ${common.length} answers:\n${common.join('\n')}`)
+
+    const tops = [root, worktree, nested].map((at) =>
+      execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: at, encoding: 'utf8' }).trim(),
+    )
+    assert.equal(new Set(tops).size, 3, 'the working-tree roots were supposed to differ')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    if (worktree) rmSync(worktree, { recursive: true, force: true })
+  }
+})
+
+test('the gate and the record are readable from a linked worktree, and the wiring is not', () => {
+  const root = scratchRepo()
+  let worktree
+  try {
+    install(root)
+    worktree = worktreeOf(root)
+
+    // The reproduction, and the whole of the defect: nothing untracked follows
+    // a checkout into a worktree.
+    assert.equal(existsSync(join(worktree, '.claude/settings.local.json')), false)
+    // What moving into the common directory buys: the same two files, from here.
+    const common = commonDirOf(worktree)
+    assert.equal(existsSync(join(common, 'factory/guard-guest-writes.mjs')), true)
+    assert.match(readFileSync(join(common, 'factory/machine.md'), 'utf8'), /^Write boundary: guest$/m)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    if (worktree) rmSync(worktree, { recursive: true, force: true })
+  }
+})
+
+// --scope is what makes a machine-wide registration acceptable, and it is the
+// answer to ADR 0029's second refusal: a user-level hook that follows the
+// operator into every other repository, where every refusal is a false positive
+// by construction. Both directions, because the false positive is the failure
+// that gets the whole thing uninstalled.
+function scoped(gate, scope, command, cwd) {
+  const out = execFileSync('node', [gate, '--scope', scope], {
+    cwd,
+    input: JSON.stringify({ tool_input: { command } }),
+    encoding: 'utf8',
+  })
+  return out.trim() !== '' && JSON.parse(out).hookSpecificOutput.permissionDecision === 'deny'
+}
+
+test('--scope denies inside the repository it names, from a worktree as well as the main checkout', () => {
+  const root = scratchRepo()
+  let worktree
+  try {
+    install(root)
+    worktree = worktreeOf(root)
+    const common = commonDirOf(root)
+    const gate = join(common, 'factory/guard-guest-writes.mjs')
+
+    for (const [where, at] of [['the main checkout', root], ['a linked worktree', worktree]]) {
+      assert.equal(scoped(gate, common, 'git push origin HEAD', at), true, `a push was allowed from ${where}`)
+      assert.equal(scoped(gate, common, 'gh pr create --fill', at), true, `a PR was allowed from ${where}`)
+      assert.equal(scoped(gate, common, 'git status', at), false, `a read was refused from ${where}`)
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    if (worktree) rmSync(worktree, { recursive: true, force: true })
+  }
+})
+
+// The two sides of the comparison come from different places: one from `git
+// rev-parse`, one from a JSON string the operator pasted, quite possibly out of
+// a terminal that spelled the drive letter the other way. On Windows those are
+// the same path and a case-sensitive compare makes the gate stand aside inside
+// the repository it was installed for — silently, in the allowing direction,
+// which is the shape of hole this whole issue was about.
+test(
+  'on Windows the scope survives a path spelled in a different case',
+  { skip: process.platform !== 'win32' && 'paths are case-sensitive off Windows' },
+  () => {
+    const root = scratchRepo()
+    try {
+      install(root)
+      const common = commonDirOf(root)
+      const gate = join(common, 'factory/guard-guest-writes.mjs')
+
+      for (const spelling of [common.toUpperCase(), common.toLowerCase()]) {
+        assert.equal(
+          scoped(gate, spelling, 'git push origin HEAD', root),
+          true,
+          `a push was allowed inside the scoped repository, spelled ${spelling}`,
+        )
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+test('--scope stands aside everywhere else, which is the whole reason it exists', () => {
+  const root = scratchRepo()
+  const elsewhere = scratchRepo()
+  try {
+    install(root)
+    const common = commonDirOf(root)
+    const gate = join(common, 'factory/guard-guest-writes.mjs')
+
+    for (const command of ['git push origin HEAD', 'gh pr create --fill', 'gh pr merge 42 --squash']) {
+      assert.equal(scoped(gate, common, command, elsewhere), false, `refused in another repository: ${command}`)
+      // Not a repository at all. Failing toward allowing is deliberate: the
+      // other direction is a machine-wide hook denying a push in every
+      // directory where git happens not to answer.
+      assert.equal(scoped(gate, common, command, tmpdir()), false, `refused outside any repository: ${command}`)
+    }
+
+    // And without --scope it is the per-checkout wiring, which judges
+    // everything in the session it was loaded into. Unchanged by #122.
+    const out = execFileSync('node', [gate], {
+      cwd: elsewhere,
+      input: JSON.stringify({ tool_input: { command: 'git push origin HEAD' } }),
+      encoding: 'utf8',
+    })
+    assert.equal(JSON.parse(out).hookSpecificOutput.permissionDecision, 'deny')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(elsewhere, { recursive: true, force: true })
+  }
+})
+
+// The block is printed and never written, which is ADR 0029's first refusal
+// surviving #122 intact: putting a file in somebody's home directory is theirs
+// to do. A block that is wrong is worse than none, so its contents are pinned.
+test('--install prints a machine-wide block and writes nothing to the home directory', () => {
+  const root = scratchRepo()
+  const home = mkdtempSync(join(tmpdir(), 'guest-home-'))
+  try {
+    const out = execFileSync('node', [GATE, '--install'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_CONFIG_DIR: home },
+    })
+
+    assert.equal(readdirSync(home).length, 0, 'it wrote into the operator\'s config directory')
+    assert.match(out, /A linked worktree registers nothing/)
+    assert.match(out, new RegExp(`Paste this into ${home.replace(/[\\/]/g, '.')}`))
+
+    // The block is printed indented, so an operator can see where it starts and
+    // stops. Reading it back the way they would paste it is the only assertion
+    // that catches a block that is well-formed prose and broken JSON.
+    const indented = out
+      .split('\n')
+      .filter((line) => /^ {4}\S|^ {4}$|^ {5,}/.test(line))
+      .map((line) => line.slice(4))
+      .join('\n')
+    const block = JSON.parse(indented.slice(indented.indexOf('{'), indented.lastIndexOf('}') + 1))
+    const hook = block.hooks.PreToolUse[0]
+    assert.equal(hook.matcher, 'Bash|PowerShell', 'the printed block matches one shell tool')
+    assert.match(hook.hooks[0].command, /--scope /, 'the printed block is machine-wide with no scope')
+    assert.match(hook.hooks[0].command, /factory\/guard-guest-writes\.mjs/)
+    // The path has to be absolute: $CLAUDE_PROJECT_DIR is the directory the
+    // session started in, which in a worktree session is the worktree.
+    assert.doesNotMatch(hook.hooks[0].command, /CLAUDE_PROJECT_DIR/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
   }
 })
 

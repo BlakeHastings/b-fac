@@ -35,12 +35,20 @@ repository.
 
 ```bash
 node <skill>/assets/guard-guest-writes.mjs --install   # in the host repo root
+# it ends by printing a block for ~/.claude/settings.json. Install that too:
+# the wiring it wrote covers sessions started in that one directory, and the
+# subagents that push branches work in worktrees. #122, ADR 0037.
 # restart the harness. Hooks are read once, at process start.
-node .factory/guard-guest-writes.mjs --probe           # being refused is success
+node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --probe
 node <skill>/assets/check-setup.mjs                    # expect exit 0, four n/a rows
 node <skill>/assets/discover-checks.mjs                # proposes, does not decide
 node <skill>/assets/discover-checks.mjs --run          # the proposal is not real until this
 ```
+
+Run the probe and `check-setup.mjs` **from a worktree as well as the main
+checkout**. Being refused in the main checkout says nothing about the sessions
+doing the writing, and that is exactly how #122 survived a run that reported the
+boundary enforced.
 
 Four things to say if they hit trouble, all in the docs and all easy to miss:
 

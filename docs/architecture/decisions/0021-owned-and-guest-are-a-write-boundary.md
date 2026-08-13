@@ -136,3 +136,21 @@ command, and `references/enforcement.md` already calls filesystem-dependent
 rules in a hook unsound. The mode is declared by installing the gate; the
 machine record is what the loop reads, not what the gate reads. ADR 0029 has the
 argument.
+
+**"Machine facts are about *this* operator on *this* checkout" named the wrong
+unit, and `.git/info/exclude` was the right instinct pointing at the wrong
+directory.** A repository is not one directory. Machine facts are about this
+operator on this *repository*, and every linked worktree of it needs the same
+answer, so keeping them at the working-tree root put them where only one
+checkout could read them. #122 found that on a work repository, in the first
+real guest run: a worktree had no machine record, no gate and no hook, and the
+subagents doing the writing all work in worktrees.
+
+They now live inside the git common directory, which linked worktrees share.
+That is the same instinct one step further along: this document reached for
+`.git/info/exclude` because it is not a tracked file in somebody else's
+repository, and `.git/` itself is not a *file* in somebody else's repository at
+all. "The host repo's `git status` is unchanged" stops depending on an exclude
+line having taken and becomes a property of the location. The exclude append
+survives for `.claude/settings.local.json` alone, because the harness reads
+settings from the working tree and that one file has to stay there. ADR 0037.

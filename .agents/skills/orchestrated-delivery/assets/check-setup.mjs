@@ -54,6 +54,7 @@
 // where you cannot run it.
 import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { homedir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 
 const OK = 'ok'
@@ -76,12 +77,49 @@ for (;;) {
   ROOT = up
 }
 
-const read = (rel) => {
+const readAt = (root, rel) => {
   try {
-    return readFileSync(join(ROOT, rel), 'utf8')
+    return readFileSync(join(root, rel), 'utf8')
   } catch {
     return null
   }
+}
+
+const read = (rel) => readAt(ROOT, rel)
+
+// ---------------------------------------------------------------------------
+// One repository is not one directory
+//
+// A linked worktree has its own working-tree root and shares the git common
+// directory with the main checkout, so a fact about the *repository* has to be
+// read from the second or it is invisible from every checkout but one. #122
+// found this the hard way: run from a worktree of a repository recorded as
+// guest, this script read no machine record, reported the boundary unrecorded,
+// reported the four owned layers MISSING and told the operator to install a
+// merge wrapper and a CI workflow into somebody else's repository.
+//
+// `git rev-parse --git-common-dir` answers identically from every checkout,
+// which `--show-toplevel` and `--git-dir` do not. That is why the gate and the
+// record moved there in ADR 0037, and why this reads them from there.
+// ---------------------------------------------------------------------------
+function gitCommonDir() {
+  try {
+    return resolve(ROOT, git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
+  } catch {
+    return null
+  }
+}
+
+const COMMON = gitCommonDir()
+const readCommon = (rel) => (COMMON === null ? null : readAt(COMMON, rel))
+
+// Relative when the file is under the checkout you are standing in, absolute
+// when it is not. From a worktree that difference is the point: a path leading
+// out of this directory is the visible form of "this fact is the repository's,
+// not this checkout's".
+const show = (abs) => {
+  const path = relative(ROOT, abs).replace(/\\/g, '/')
+  return path !== '' && !path.startsWith('..') ? path : abs
 }
 
 // ---------------------------------------------------------------------------
@@ -117,10 +155,19 @@ const UNRECORDED = 'unrecorded'
 // rather than shared, for the reason ADR 0029 gives for its command reader
 // existing twice: an asset is copied into a host repo on its own, and a
 // two-file asset is a setup step that gets half done.
-const MACHINE_RECORD = '.factory/machine.md'
-const GUEST_GATE = '.factory/guard-guest-writes.mjs'
+//
+// The first two are relative to the git common directory and the last two to
+// the checkout, because that is what each of them is a fact about. ADR 0037.
+const MACHINE_RECORD = 'factory/machine.md'
+const GUEST_GATE = 'factory/guard-guest-writes.mjs'
 const LOCAL_SETTINGS = '.claude/settings.local.json'
 const REPO_SETTINGS = '.claude/settings.json'
+
+// Where an install from before #122 put the first two. Reported, never removed.
+const LEGACY_FACTORY = '.factory'
+
+const RECORD_AT = COMMON === null ? `<git common dir>/${MACHINE_RECORD}` : show(join(COMMON, MACHINE_RECORD))
+const GATE_AT = COMMON === null ? `<git common dir>/${GUEST_GATE}` : show(join(COMMON, GUEST_GATE))
 
 // SETUP: where layer 2's guard was copied to, if not `scripts/`. Both gates
 // answer `--probe`, so this is also the file the report tells you to ask, and
@@ -129,8 +176,19 @@ const REPO_SETTINGS = '.claude/settings.json'
 const MERGE_GUARD = 'scripts/guard-merge.mjs'
 
 function writeBoundary() {
-  const record = read(MACHINE_RECORD)
-  if (record === null) return { mode: UNRECORDED, why: `${MACHINE_RECORD} does not exist` }
+  const record = readCommon(MACHINE_RECORD)
+  if (record === null) {
+    const legacy = read(`${LEGACY_FACTORY}/machine.md`)
+    if (legacy !== null) {
+      return {
+        mode: UNRECORDED,
+        why:
+          `${LEGACY_FACTORY}/machine.md is here from an install before #122 and ${RECORD_AT} is not.` +
+          ' Re-run the gate\'s --install to move the record where every worktree can read it',
+      }
+    }
+    return { mode: UNRECORDED, why: `${RECORD_AT} does not exist` }
+  }
 
   const declared = /^Write boundary:\s*(\S+)/m.exec(record)?.[1].toLowerCase()
   if (declared === OWNED || declared === GUEST) {
@@ -143,8 +201,8 @@ function writeBoundary() {
     record,
     why:
       declared === undefined
-        ? `${MACHINE_RECORD} exists and has no "Write boundary:" line`
-        : `${MACHINE_RECORD} says "Write boundary: ${declared}", which is neither owned nor guest`,
+        ? `${RECORD_AT} exists and has no "Write boundary:" line`
+        : `${RECORD_AT} says "Write boundary: ${declared}", which is neither owned nor guest`,
   }
 }
 
@@ -259,13 +317,6 @@ function visibleToTheHostRepo(paths) {
 // the mode.
 // ---------------------------------------------------------------------------
 
-// The same line `guard-guest-writes.mjs --install` and `discover-checks.mjs`
-// append, spelled a third time for the reason ADR 0029 gives: an asset is
-// copied into a host repo on its own, and a two-file asset is a setup step that
-// gets half done. `.gitignore` is tracked, and editing a tracked ignore file to
-// hide your own scratch state is itself a change to the repository.
-const EXCLUDE_LINE = `/${dirname(MACHINE_RECORD)}/`
-
 // What an owned record says, which is nearly all reason and one fact. There is
 // no owned equivalent of the guest record's backlog line or probe command: in
 // owned mode the backlog and the check command are repo facts, true for anyone
@@ -276,9 +327,11 @@ const OWNED_RECORD = `# Machine facts
 
 Not committed, and not committable. ADR 0021 splits the initialisation answers
 by who they are about: repo facts are true for anyone who clones and belong in
-\`AGENTS.md\`, and machine facts are about *this* operator on *this* checkout.
-This file is the second kind, kept out of the tree through
-\`.git/info/exclude\`, so nobody else who clones this repository inherits it.
+\`AGENTS.md\`, and machine facts are about *this* operator on *this*
+repository. This file is the second kind, and it is inside the git common
+directory rather than in the working tree, so nobody who clones this repository
+inherits it, no ignore rule has to hold it out of anybody's \`git status\`, and
+every linked worktree reads the same copy. ADR 0037.
 
 Write boundary: owned
 
@@ -307,14 +360,6 @@ const SELF = (() => {
   return rel !== '' && !rel.startsWith('..') ? rel : path
 })()
 
-// `.git/info/exclude` lives in the common directory, so a linked worktree and
-// its main checkout share one. That is the right scope: the boundary is a fact
-// about this operator and this repository, not about which branch is out.
-function excludeFile() {
-  const common = resolve(ROOT, git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
-  return join(common, 'info', 'exclude')
-}
-
 const untracked = () => git(['status', '--porcelain', '-uall']).split('\n').filter(Boolean)
 
 function recordOwned() {
@@ -331,7 +376,7 @@ function recordOwned() {
   if (BOUNDARY.record !== undefined) {
     const line = /^Write boundary:.*$/m.exec(BOUNDARY.record)?.[0] ?? 'no "Write boundary:" line'
     refuse([
-      `${MACHINE_RECORD} already exists, so the question has been answered here.`,
+      `${RECORD_AT} already exists, so the question has been answered here.`,
       `It says: ${line}`,
       '',
       'Delete the file if the answer has changed, and record the new one. Replacing',
@@ -344,9 +389,16 @@ function recordOwned() {
   // guest mode looks like with its record gone. Refusing here is not inferring
   // the mode from the repository. It is declining to write a fact that
   // contradicts a control somebody deliberately installed.
-  if (read(GUEST_GATE) !== null) {
+  //
+  // Both refusals read the common directory, and until #122 they read the
+  // checkout. In a linked worktree of a repository recorded as guest neither one
+  // could see anything, so this wrote `Write boundary: owned` into the worktree
+  // and the repository then held two records contradicting each other —
+  // manufacturing, from a worktree, exactly the disagreement ADR 0039 built
+  // these refusals to prevent.
+  if (readCommon(GUEST_GATE) !== null) {
     refuse([
-      `${GUEST_GATE} is installed here, and installing that gate is the guest`,
+      `${GATE_AT} is installed here, and installing that gate is the guest`,
       'declaration (ADR 0029). Recording this repository as owned would leave a control',
       'in place that the record says is unnecessary, which is the disagreement layer G',
       'reports rather than a state to write on purpose.',
@@ -355,36 +407,37 @@ function recordOwned() {
     ])
   }
 
-  let exclude
   let before
+  if (COMMON === null) {
+    refuse([
+      '`git` did not answer, so the git common directory cannot be resolved and there is',
+      'nowhere to put this record that every checkout of this repository can read.',
+      'ADR 0037 keeps machine facts there rather than in a working tree, precisely so',
+      'that a worktree is not a second opinion. Run this from inside a git repository,',
+      'with git on PATH.',
+    ])
+  }
   try {
-    exclude = excludeFile()
     before = untracked()
   } catch {
     refuse([
-      '`git` did not answer, so there is no way to put this file out of the tree.',
-      `Writing ${MACHINE_RECORD} without excluding it leaves the operator's own scratch`,
-      "state showing in `git status` as somebody's changes, and ADR 0021 keeps machine",
-      'facts out of the tree. Run this from inside a git repository, with git on PATH.',
+      '`git status` did not answer, so the promise this command makes — that the host',
+      'repository sees nothing new — cannot be checked, and an unchecked promise about',
+      "somebody else's repository is not one worth making.",
     ])
   }
 
   const done = []
-  const existing = existsSync(exclude) ? readFileSync(exclude, 'utf8') : ''
-  if (existing.split(/\r?\n/).some((line) => line.trim() === EXCLUDE_LINE)) {
-    done.push(`found ${EXCLUDE_LINE} already in .git/info/exclude`)
-  } else {
-    mkdirSync(dirname(exclude), { recursive: true })
-    const separator = existing === '' || existing.endsWith('\n') ? '' : '\n'
-    writeFileSync(exclude, `${existing}${separator}${EXCLUDE_LINE}\n`)
-    done.push(`excluded ${EXCLUDE_LINE} through .git/info/exclude`)
-  }
 
-  // The exclusion first, then the file, so the record is never visible to the
-  // repository even for the moment in between.
-  mkdirSync(join(ROOT, dirname(MACHINE_RECORD)), { recursive: true })
-  writeFileSync(join(ROOT, MACHINE_RECORD), OWNED_RECORD)
-  done.push(`wrote ${MACHINE_RECORD}, saying "Write boundary: owned"`)
+  // No exclude line, and none needed: the record goes inside `.git/`, which git
+  // does not look into. What ADR 0021 asked `.git/info/exclude` to achieve is
+  // now structural. A repository installed before #122 keeps its `/.factory/`
+  // line; nothing here adds one.
+  mkdirSync(join(COMMON, dirname(MACHINE_RECORD)), { recursive: true })
+  writeFileSync(join(COMMON, MACHINE_RECORD), OWNED_RECORD)
+  done.push(`wrote ${show(join(COMMON, MACHINE_RECORD))}, saying "Write boundary: owned"`)
+  done.push('no ignore rule was needed: it is inside the git common directory, which git')
+  done.push('  does not look into, and which every linked worktree shares')
 
   console.log(`Recorded the write boundary in ${ROOT}\n`)
   for (const line of done) console.log(`  - ${line}`)
@@ -398,8 +451,9 @@ function recordOwned() {
   if (added.length > 0) {
     console.error('\nBut this repository can now see files it could not before:\n')
     for (const line of added) console.error(`  ${line}`)
-    console.error('\nThat is the half of the promise this command exists to keep. The exclusion')
-    console.error('did not take, and the record is visible to anyone running `git status` here.')
+    console.error('\nThat is the half of the promise this command exists to keep, and it should not')
+    console.error('be reachable now that the record lives inside the git common directory. Something')
+    console.error('other than this command put those there.')
     process.exit(1)
   }
   console.log('\n`git status --porcelain -uall` gained nothing, which was checked here rather')
@@ -430,10 +484,10 @@ function leftovers(text, pattern) {
 // was found in. Both gates ask this same question of the same two files, and
 // the answer to "is it wired" is where each of them separates a copied control
 // from an installed one.
-function preToolUseHooks(needle) {
+function preToolUseHooks(needle, root = ROOT) {
   const wired = []
   for (const file of [REPO_SETTINGS, LOCAL_SETTINGS]) {
-    const text = read(file)
+    const text = readAt(root, file)
     if (text === null) continue
     let parsed
     try {
@@ -446,6 +500,78 @@ function preToolUseHooks(needle) {
     }
   }
   return { wired }
+}
+
+// ---------------------------------------------------------------------------
+// Which sessions the guest gate is registered for
+//
+// Measured on Claude Code 2.1.228, because reading the docs would not have
+// answered it: **the harness reads project settings from the directory the
+// session started in and from nowhere else.** Not the parent, not the
+// repository, not `.git/`. A hook in one checkout's `.claude/settings*.json`
+// therefore covers sessions started in that directory and no others, and a
+// linked worktree — where every subagent that pushes a branch or opens a pull
+// request is standing — registers nothing at all.
+//
+// So "is the gate wired" has two answers and this reports both. The second one
+// lives in the operator's home directory, outside the repository, which ADR
+// 0012 already established a check here may read: the question has an answer
+// that is not in the repository, and reporting only the half that is would be
+// the same lie #122 found.
+// ---------------------------------------------------------------------------
+const userSettingsFile = () =>
+  join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
+
+function samePath(a, b) {
+  const normalise = (path) => resolve(path).replace(/[\\/]+$/, '')
+  return process.platform === 'win32'
+    ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
+    : normalise(a) === normalise(b)
+}
+
+function machineWideHooks() {
+  const file = userSettingsFile()
+  const text = (() => {
+    try {
+      return readFileSync(file, 'utf8')
+    } catch {
+      return null
+    }
+  })()
+  if (text === null) return { file, found: [] }
+
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { file, unparseable: true, found: [] }
+  }
+
+  const found = []
+  for (const entry of parsed?.hooks?.PreToolUse ?? []) {
+    for (const hook of entry.hooks ?? []) {
+      const command = hook.command ?? ''
+      if (!command.includes('guard-guest-writes')) continue
+      // The installer writes the scope quoted and absolute. An unquoted one is
+      // somebody's hand edit and still worth reading.
+      const scope = /--scope\s+(?:"([^"]+)"|(\S+))/.exec(command)
+      found.push({ entry, scope: scope ? (scope[1] ?? scope[2]) : null })
+    }
+  }
+  return { file, found }
+}
+
+// Every checkout of this repository, main and linked. `git worktree list` is a
+// read and answers the same from any of them.
+function checkouts() {
+  try {
+    return git(['worktree', 'list', '--porcelain'])
+      .split('\n')
+      .filter((line) => line.startsWith('worktree '))
+      .map((line) => resolve(line.slice('worktree '.length).trim()))
+  } catch {
+    return [ROOT]
+  }
 }
 
 // A matcher selects on tool NAME. A harness offering a second shell tool walks
@@ -662,14 +788,14 @@ const LAYERS = [
     covers:
       'an outward write from a repo that is not yours. Does not cover a process that never loaded it, a human at a terminal, or a write that arrives by some route other than git, gh or bd',
     skipped: (mode) => {
-      const copied = read(GUEST_GATE) !== null
+      const copied = readCommon(GUEST_GATE) !== null
       if (mode === OWNED) {
         return [
-          `not reported: ${MACHINE_RECORD} records this repository as owned, so the factory`,
+          `not reported: ${RECORD_AT} records this repository as owned, so the factory`,
           'may write outward and there is no boundary for a gate to hold. Every command it',
           'refuses is the workflow here. ADR 0029',
           ...(copied
-            ? [`but ${GUEST_GATE} exists anyway, in a repository recorded as owned. One of`,
+            ? [`but ${GATE_AT} exists anyway, in a repository recorded as owned. One of`,
                'those two facts is wrong and the file is the likelier one']
             : []),
         ]
@@ -679,51 +805,110 @@ const LAYERS = [
         'reported instead. If this repository is not yours, do not install those: record',
         'the boundary and install this gate, and the four above stay off for good.',
         ...(copied
-          ? [`Note that ${GUEST_GATE} is already here, which is what guest mode looks like`,
-             `with its record deleted. --install rewrites ${MACHINE_RECORD} without touching`,
+          ? [`Note that ${GATE_AT} is already here, which is what guest mode looks like`,
+             `with its record deleted. --install rewrites ${RECORD_AT} without touching`,
              'anything else']
           : []),
       ]
     },
-    fix: 'Run `node <this skill>/assets/guard-guest-writes.mjs --install` from the repo root, then restart the harness: settings are read at startup.',
+    fix: 'Run `node <this skill>/assets/guard-guest-writes.mjs --install` from the repo root, then restart the harness: settings are read at startup. Its output ends with the machine-wide block, which is the half that reaches a worktree.',
     run() {
-      if (read(GUEST_GATE) === null) {
+      if (readCommon(GUEST_GATE) === null) {
         return {
           status: MISSING,
           findings: [
-            `${MACHINE_RECORD} records this repository as guest and ${GUEST_GATE} is absent,`,
+            `${RECORD_AT} records this repository as guest and ${GATE_AT} is absent,`,
             "so nothing refuses a push, a pull request, or a comment on the host's tracker.",
             'This is the state where the boundary is a paragraph and not a control',
           ],
         }
       }
 
-      // Copied and unwired is MISSING here for the same reason it is on layer 2:
-      // a control nothing invokes is an instruction plus a file.
+      // Two registrations, covering different sessions, and a report that names
+      // only the first is the report #122 found lying in a worktree.
       const { wired, unparseable } = preToolUseHooks('guard-guest-writes')
+      const machine = machineWideHooks()
+      const scoped = machine.found.filter(
+        ({ scope }) => scope !== null && COMMON !== null && samePath(scope, COMMON),
+      )
+      const unscoped = machine.found.filter(({ scope }) => scope === null)
+
       if (unparseable) {
         return { status: MISSING, findings: [`${unparseable} is not valid JSON, so no hook loads`] }
       }
-      if (wired.length === 0) {
+
+      // Which sessions each registration reaches, said out loud, because "the
+      // gate is installed" was true for the whole run that produced #122 and
+      // covered none of the sessions doing the writing.
+      const all = checkouts()
+      const covered = all.filter((root) => preToolUseHooks('guard-guest-writes', root).wired.length > 0)
+      const bare = all.filter((root) => !covered.includes(root))
+
+      // MISSING is for a gate nothing anywhere invokes, which is layer 2's rule:
+      // a control nothing invokes is an instruction plus a file. A gate wired
+      // for some checkouts and not others is a different state and wants a
+      // different sentence, so it is PARTIAL and the finding names the gap.
+      if (covered.length === 0 && scoped.length === 0 && unscoped.length === 0) {
         return {
           status: MISSING,
           findings: [
-            `${GUEST_GATE} is here and no PreToolUse hook runs it, so nothing loads it.`,
-            '--install copies and wires in one step, so this is a half-done install or a',
-            'settings file that was edited afterwards',
+            `${GATE_AT} is here and no PreToolUse hook runs it, so nothing loads it.`,
+            "No checkout of this repository names it and neither does the operator's own",
+            'settings. --install copies and wires in one step, so this is a half-done install',
+            'or a settings file that was edited afterwards',
           ],
         }
       }
 
-      const findings = wiringProblems(wired[wired.length - 1])
+      const findings = []
+      for (const entry of [...wired, ...scoped.map((f) => ({ file: machine.file, entry: f.entry }))]) {
+        findings.push(...wiringProblems(entry))
+      }
+
+      if (scoped.length > 0) {
+        findings.push(
+          `note: registered machine-wide in ${machine.file}, scoped to this repository, so` +
+            ` every session inside any of its ${all.length} checkout(s) is covered`,
+        )
+      } else if (bare.length > 0) {
+        findings.push(
+          `the gate is wired per checkout, and ${bare.length} of this repository's ${all.length}` +
+            ' have no wiring, so a session started in one registers no hook at all:',
+          ...bare.map((root) => `  ${root}`),
+          'Those are where subagents run, and pushing a branch and opening a pull request is',
+          'what they do. Install the machine-wide block instead, which reaches every checkout',
+          'including ones that do not exist yet: `node ' + GATE_AT + ' --user-hook`',
+        )
+      } else if (all.length > 1) {
+        findings.push(
+          `note: wired separately in each of this repository's ${all.length} checkouts. A worktree` +
+            ' added later registers nothing until somebody installs into it; the machine-wide' +
+            ' block does not have that failure mode',
+        )
+      } else {
+        findings.push(
+          'note: wired in this checkout only, which is every checkout this repository has today.' +
+            ' A worktree added later registers nothing. `node ' + GATE_AT + ' --user-hook`',
+        )
+      }
+
+      if (unscoped.length > 0) {
+        findings.push(
+          `${machine.file} runs this gate with no --scope, so it refuses outward writes in` +
+            ' every repository on this machine, including the operator\'s own. That is the false' +
+            ' positive by construction ADR 0029 refused a user-level hook over. Add --scope',
+        )
+      }
 
       // The boundary enforcing itself by breaking itself. Both halves of the
       // gate's promise are checkable and neither is visible in a file listing.
-      const seen = visibleToTheHostRepo(['.factory', LOCAL_SETTINGS, REPO_SETTINGS])
+      const seen = visibleToTheHostRepo([LEGACY_FACTORY, LOCAL_SETTINGS, REPO_SETTINGS])
       if (seen === null) {
         findings.push('note: `git` did not answer, so the "nothing tracked changed" half is unchecked')
       } else {
-        const committed = seen.tracked.filter((p) => p.startsWith('.factory/') || p === LOCAL_SETTINGS)
+        const committed = seen.tracked.filter(
+          (p) => p.startsWith(`${LEGACY_FACTORY}/`) || p === LOCAL_SETTINGS,
+        )
         if (committed.length > 0) {
           findings.push(
             `${committed.join(', ')} is tracked in this repository, so installing the gate` +
@@ -746,22 +931,36 @@ const LAYERS = [
         }
       }
 
+      if (read(`${LEGACY_FACTORY}/machine.md`) !== null) {
+        findings.push(
+          `note: ${LEGACY_FACTORY}/ is still here from an install before #122 and nothing reads` +
+            ' it now. Check what is in it, then remove it and its /.factory/ line from' +
+            ' .git/info/exclude',
+        )
+      }
+
       // Advisory, deliberately: the gate is correctly installed either way, and
       // --install writes this placeholder itself, so counting it would make a
       // clean install exit non-zero on its first run.
       if (/^Backlog:\s*\(/m.test(BOUNDARY.record ?? '')) {
         findings.push(
-          `note: the Backlog line in ${MACHINE_RECORD} is still the template's instruction` +
+          `note: the Backlog line in ${RECORD_AT} is still the template's instruction` +
             ' rather than a tool name, so nothing says where the factory\'s own issues live',
         )
       }
 
-      return { status: findings.some((f) => !f.startsWith('note:')) ? PARTIAL : OK, findings }
+      return { status: findings.some((f) => !f.startsWith('note:') && !f.startsWith('  ')) ? PARTIAL : OK, findings }
     },
   },
 ]
 
 console.log(`Enforcement layers in ${ROOT}`)
+// A repository is not one directory, and which one you are standing in changes
+// nothing about the answers below except how the paths are spelled. Printing
+// this is how the reader knows that.
+if (COMMON !== null && !samePath(COMMON, join(ROOT, '.git'))) {
+  console.log(`This is a linked worktree. The repository is ${dirname(COMMON)}`)
+}
 if (BOUNDARY.mode === UNRECORDED) {
   console.log('Write boundary: NOT RECORDED')
   console.log(`             ${BOUNDARY.why}, so nobody has said whether this factory may`)
@@ -769,7 +968,7 @@ if (BOUNDARY.mode === UNRECORDED) {
   console.log('             this repository skipped the question rather than answered it. That is a')
   console.log('             finding and not an error: the layers below are reported as if owned.')
 } else {
-  console.log(`Write boundary: ${BOUNDARY.mode}, recorded in ${MACHINE_RECORD}`)
+  console.log(`Write boundary: ${BOUNDARY.mode}, recorded in ${RECORD_AT}`)
 }
 if (CHECKLIST === OWNED) {
   console.log(
@@ -810,14 +1009,17 @@ for (const layer of LAYERS) {
 // had no probe, which meant the owned stack could report every layer `ok` with
 // no way to ask the one that matters whether it had loaded. That was the exact
 // state the two lost days above were spent in.
-const PROBE_TARGET = CHECKLIST === GUEST ? GUEST_GATE : MERGE_GUARD
+const PROBE_TARGET = CHECKLIST === GUEST ? GATE_AT : MERGE_GUARD
+const PROBE_EXISTS = CHECKLIST === GUEST ? readCommon(GUEST_GATE) !== null : read(MERGE_GUARD) !== null
 const PROBE = [
   'Wired is not loaded. Settings are read once at process start, so ask the gate',
   'itself and put its answer beside this output:',
   '',
-  `    node ${PROBE_TARGET} --probe`,
+  `    node "${PROBE_TARGET}" --probe`,
   '',
-  'Being refused is the answer you want.',
+  'Being refused is the answer you want. Ask it from the checkout the work is',
+  'actually happening in, because which sessions a hook is registered for is a',
+  'separate question from whether it is installed.',
 ]
 
 // A machine fact whichever way it comes out: ADR 0021 defines it as whether
@@ -832,9 +1034,10 @@ const PROBE = [
 // repository for a line nobody could produce, run after run, for ever.
 const UNRECORDED_REMINDER = [
   'Nobody has recorded the write boundary here. Record it before the loop starts.',
-  'It is a machine fact either way, about this operator on this checkout, so it is',
-  `never committed: one line in ${MACHINE_RECORD}, kept out of the tree through`,
-  '.git/info/exclude. Whichever answer is true here, one command writes it:',
+  'It is a machine fact either way, about this operator on this repository, so it is',
+  `never committed: one line in ${RECORD_AT}, inside the git common`,
+  'directory where every checkout reads it and no clone inherits it. Whichever',
+  'answer is true here, one command writes it:',
   '',
   '    node <skill>/assets/guard-guest-writes.mjs --install',
   '        not your repository: the gate, and the record as part of installing it',
@@ -862,10 +1065,14 @@ const until = unmet === 1 ? 'Until it is,' : 'Until they are,'
 
 console.error(`${subject} absent, unwired, or still unedited.`)
 if (CHECKLIST === GUEST) {
-  console.error(`${until} nothing refuses an outward write into a repository that is not`)
-  console.error('yours: a push, a pull request, a comment on their tracker, a `bd init` that')
-  console.error('commits nineteen files. Install the gate, restart the harness, then run the')
-  console.error('probe and paste both outputs into your first status update.')
+  console.error(`${until} some session working this repository refuses no outward write`)
+  console.error('into a repository that is not yours: a push, a pull request, a comment on')
+  console.error('their tracker, a `bd init` that commits nineteen files. Read the findings')
+  console.error('above rather than reinstalling by reflex — "the gate is missing" and "the')
+  console.error('gate is not registered for the sessions doing the writing" are different')
+  console.error('states and only one of them is fixed by installing it again. Then restart')
+  console.error('the harness, run the probe, and paste both outputs into your first status')
+  console.error('update.')
 } else {
   console.error(`${until} nothing here mechanically stops an agent landing code, and`)
   console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
@@ -875,6 +1082,6 @@ if (CHECKLIST === GUEST) {
 // Only when there is something to probe. A remedy that cannot run is the thing
 // ADR 0029 says gets a gate switched off, and `node` on an absent file fails in
 // a way that reads as the gate being broken rather than absent.
-if (read(PROBE_TARGET) !== null) for (const line of ['', ...PROBE]) console.error(line)
+if (PROBE_EXISTS) for (const line of ['', ...PROBE]) console.error(line)
 if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.error(line)
 process.exit(1)

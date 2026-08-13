@@ -585,30 +585,24 @@ if (failed.length > 0) {
 // repository you are a guest in there is no committable place to put one, and
 // adding `checks.sh` beside somebody's Makefile is imposing a convention on a
 // repository that has one (ADR 0022, issue #66). So the entry point is a
-// recorded line rather than a file added to their tree, and `.factory/` is
-// where the machine record already lives.
+// recorded line rather than a file added to their tree, and `factory/` inside
+// the git common directory is where the machine record already lives.
+//
+// It moved there with the machine record in ADR 0037, and the reason applies
+// here just as directly: the check entry point is a fact about the
+// *repository*, every checkout of it needs the answer, and a working-tree root
+// is per checkout. Left behind in `.factory/`, this record would have been
+// invisible from every worktree an agent actually works in.
 // ---------------------------------------------------------------------------
-const HOME = '.factory'
+const HOME = 'factory'
 const RECORD = `${HOME}/checks.md`
 
 function git(args) {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
 }
 
-// Spelled out here rather than imported from `guard-guest-writes.mjs`, for the
-// reason ADR 0029 gives for its command reader existing twice: an asset is
-// copied into a host repo on its own, and a two-file asset is a setup step that
-// gets half done. The gate excludes the whole of `.factory/`, so when it ran
-// first there is nothing left to do here and this says so.
-function excludeFactory() {
-  const common = resolve(ROOT, git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
-  const path = join(common, 'info', 'exclude')
-  const line = `/${HOME}/`
-  const existing = existsSync(path) ? readFileSync(path, 'utf8') : ''
-  if (existing.split(/\r?\n/).some((l) => l.trim() === line)) return false
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `${existing}${existing === '' || existing.endsWith('\n') ? '' : '\n'}${line}\n`)
-  return true
+function commonDir() {
+  return resolve(ROOT, git(['rev-parse', '--path-format=absolute', '--git-common-dir']))
 }
 
 const porcelain = () => {
@@ -620,7 +614,7 @@ const porcelain = () => {
 }
 
 const before = porcelain()
-const excluded = excludeFactory()
+const COMMON = commonDir()
 
 const when = new Date().toISOString()
 const body = `# The check entry point in this repository
@@ -648,18 +642,20 @@ goes stale the way any measurement does.
 
 ## Not committed, and not committable
 
-This is untracked, through \`.git/info/exclude\` rather than \`.gitignore\`,
-because editing a tracked ignore file is itself a change to a repository you are
-a guest in. ADR 0021.
+This is inside the git common directory rather than in the working tree, so no
+ignore rule has to hold it out of anybody's \`git status\` and every linked
+worktree of this repository reads the same copy. Editing a tracked ignore file
+is itself a change to a repository you are a guest in, and now nothing has to.
+ADR 0021, ADR 0037.
 `
 
-mkdirSync(join(ROOT, HOME), { recursive: true })
-writeFileSync(join(ROOT, RECORD), body)
+mkdirSync(join(COMMON, HOME), { recursive: true })
+writeFileSync(join(COMMON, RECORD), body)
 
 const after = porcelain()
-say(`Recorded in ${RECORD}.`)
-if (excluded) say(`  Added /${HOME}/ to .git/info/exclude.`)
-else say(`  /${HOME}/ was already in .git/info/exclude.`)
+say(`Recorded in ${join(COMMON, RECORD)}.`)
+say('  Inside the git common directory, so every checkout of this repository reads it')
+say('  and git cannot see it at all. No ignore rule was needed.')
 
 // The same promise the guest gate makes, checked here rather than asserted. A
 // record that shows up as somebody's uncommitted change has already broken the
@@ -672,7 +668,8 @@ if (before === null || after === null) {
   console.error('')
   console.error('This run changed what the host repository can see:')
   for (const line of after.split('\n').filter((l) => !before.split('\n').includes(l))) console.error(`  ${line}`)
-  console.error('That is the boundary breaking itself. Fix .git/info/exclude before you continue.')
+  console.error('That is the boundary breaking itself, and it should no longer be reachable: this')
+  console.error('writes only inside .git/. Something else added those.')
   process.exit(1)
 }
 

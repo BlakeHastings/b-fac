@@ -244,27 +244,43 @@ only one that protects the host repository from the rest of the sequence:
 node <this skill>/assets/guard-guest-writes.mjs --install
 ```
 
-It copies the gate to `.factory/`, writes `.factory/machine.md` with the write
-boundary and the backlog tool in it, wires `.claude/settings.local.json`, and
-appends both paths to `.git/info/exclude`. Nothing tracked changes and nothing
-outside the repository is touched. Check that rather than believing it:
+It copies the gate to `factory/` **inside the git common directory**, writes
+`factory/machine.md` there with the write boundary and the backlog tool in it,
+wires `.claude/settings.local.json` in the checkout you ran it from, and appends
+that one path to `.git/info/exclude`. Nothing tracked changes, nothing outside
+the repository is touched, and nothing but the wiring goes into the working tree
+at all. Check that rather than believing it:
 
 ```bash
 git status --porcelain -uall
 ```
+
+**Then read the last thing it printed, which is the half that is yours.** The
+wiring it just wrote covers sessions started in that one directory, because the
+harness reads project settings from the directory a session starts in and from
+nowhere else — measured, and true for a linked worktree nested inside the
+checkout as well as one beside it. Your subagents work in worktrees. So
+`--install` ends by printing a block for `~/.claude/settings.json`, carrying
+`--scope`, which reaches every session inside this repository and no session
+outside it. It prints it rather than writing it: somebody's home directory is
+theirs. Installing it and removing it are a deliberate pair, and the block says
+how to do both.
 
 Then **restart the harness**, because settings are read once at process start
 and the session that installs a hook runs unguarded to the end. Then ask the
 gate whether it is actually loaded, which a gate cannot tell you any other way:
 
 ```bash
-node .factory/guard-guest-writes.mjs --probe
+node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --probe
 ```
 
-Being refused is the answer you want. Put both outputs in your first status
-update, the same way the owned sequence keeps `check-setup.mjs`'s before and
-after: the difference between a copied control and an installed one is the only
-thing either pair of outputs is for.
+Being refused is the answer you want. **Ask it from a worktree too**, once you
+have one, because a probe run where the orchestrator is standing says nothing
+about the sessions that push branches, and that is precisely how the hole in
+#122 survived a run that reported the boundary enforced. Put both outputs in
+your first status update, the same way the owned sequence keeps
+`check-setup.mjs`'s before and after: the difference between a copied control
+and an installed one is the only thing either pair of outputs is for.
 
 `check-setup.mjs` is that same before-and-after here and is worth running in
 guest mode too, before and after the install. It reads the machine record, so it
@@ -273,6 +289,12 @@ reason, and it exits 0 once the gate is installed rather than demanding four
 layers that must never exist in somebody else's repo. Before the install it
 says the boundary has not been recorded, which is exactly the state you are in
 until you run it.
+
+**Run it from a worktree as well.** It reports which checkouts of the repository
+the gate is actually wired for and names the ones it is not, and until #122 it
+could not see the machine record from a worktree at all: it read the boundary as
+unrecorded, listed the four owned layers as MISSING, and told you to install a
+merge wrapper and a CI workflow into a repository you are a guest in.
 
 `references/enforcement.md` says what the gate covers, what it does not, and why
 it is not installed into your home directory.

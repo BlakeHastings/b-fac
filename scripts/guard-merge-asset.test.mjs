@@ -430,7 +430,7 @@ const CHECK_SETUP = readFileSync(
 test('the probe line check-setup.mjs prints is one this guard refuses', () => {
   const path = CHECK_SETUP.match(/^const MERGE_GUARD = ['"]([^'"]+)['"]/m)?.[1]
   assert.ok(path, 'check-setup.mjs declares no MERGE_GUARD, so the path it prints is a guess here')
-  const flag = /node \$\{PROBE_TARGET\} (--[\w-]+)/.exec(CHECK_SETUP)?.[1]
+  const flag = /node "\$\{PROBE_TARGET\}" (--[\w-]+)/.exec(CHECK_SETUP)?.[1]
   assert.equal(flag, '--probe', 'check-setup.mjs prints a flag this guard does not answer to')
   assert.equal(
     run(`node ${path} ${flag}`).denied,

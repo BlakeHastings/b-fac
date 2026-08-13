@@ -15,6 +15,32 @@
 // `git config --global` or `--system` write to the operator's home directory,
 // and the two beads commands that write tracked files into a host repo.
 //
+// WHERE IT HAS TO BE REGISTERED, WHICH IS THE HALF THAT WAS WRONG
+// Measured on Claude Code 2.1.228, because the first real guest run found this
+// and no test did: **the harness reads project settings from the directory the
+// session started in and from nowhere else.** Not the parent directory, not the
+// repository, not `.git/`. A session started in a linked worktree therefore
+// registers no hook from the main checkout, and the sibling and nested worktree
+// cases behave identically. `$CLAUDE_PROJECT_DIR` is that same starting
+// directory, so in a worktree session it is the worktree.
+//
+// The subagents that push branches, open pull requests and comment on the
+// host's tracker are exactly the sessions that start in worktrees, so until #122
+// the boundary reached every session except the ones doing the writing.
+//
+// So there are two registrations and they cover different sessions:
+//
+//   .claude/settings.local.json in one checkout   sessions started in that
+//                                                 directory, and nothing else
+//   ~/.claude/settings.json, with --scope         every session on this machine
+//                                                 whose repository is the one
+//                                                 named, worktrees included
+//
+// `--install` writes the first and **prints** the second. Installing under
+// somebody's home directory is theirs to do (ADR 0029, and it still holds), and
+// printing a block is not installing it. `--scope` is what makes the second one
+// safe to accept: see below.
+//
 // WHAT THIS DOES NOT COVER
 // Any process the harness did not load it into at startup, and everything that
 // process spawns for as long as it lives. A human at a terminal. Reads and
@@ -50,6 +76,16 @@
 //
 // That is the two-shell recursion limit in `judge`, not a reading failure.
 //
+// One more that only exists once the gate is registered machine-wide with
+// `--scope`, and it is the price of that scope rather than an oversight:
+//
+//   (from a repository that is not the scoped one) cd guest-repo && git push   ALLOWED
+//
+// The scope is decided from where the session is standing, and a `cd` in the
+// command has not happened yet. That is the same seam as `sudo` and `env`
+// above, drawn in a different place, and it fails toward allowing rather than
+// toward a false positive on purpose: see --scope below.
+//
 // Shell syntax an ordinary command *can* contain is otherwise covered: the
 // reserved words and grouping that introduce a command, and the `VAR=value`
 // prefix that binds a variable for one. See LEADING_WORDS and ASSIGNMENT.
@@ -77,33 +113,72 @@
 // markdown table. In guest mode the same failure is likelier, not less likely,
 // because the local store's review records describe what the factory did not do.
 //
-// It reads the command text and nothing else. No branch, no working directory,
-// no mode file on disk. A PreToolUse hook runs *before* the command, so a `cd`
-// in that command has not happened yet and anything read from the filesystem
-// may not describe where the command will land. The mode is declared by
-// installing this file, not by a fact it goes and looks up:
+// **Every verdict is read out of the command text and nothing else.** No
+// branch, no working directory, no mode file on disk. A PreToolUse hook runs
+// *before* the command, so a `cd` in that command has not happened yet and
+// anything read from the filesystem may not describe where the command will
+// land. The mode is declared by installing this file, not by a fact it goes and
+// looks up:
 //
 //   node <this skill>/assets/guard-guest-writes.mjs --install
 //
-// which writes nothing outside the repository it is run in, and nothing tracked
-// inside it. See --install below, and references/enforcement.md.
+// which writes nothing outside the repository it is run in, and nothing into
+// its working tree at all. See --install below, and references/enforcement.md.
 //
-//   node <path>/guard-guest-writes.mjs --probe     # refused when it is loaded
-//   node <path>/guard-guest-writes.mjs --install   # install into this repo
+// `--scope` is the one thing that is not a verdict, and the distinction is the
+// whole argument for it. It does not decide *what a command means*; it decides
+// *whether this gate is about this repository at all*, which is a fact about
+// the session rather than about the command. The clause ADR 0029 killed was the
+// merge guard's `git rev-parse --abbrev-ref HEAD`, and what made it unsound was
+// that its answer **differed between checkouts of one repository**: a worktree
+// allowed a command the main checkout denied. `--git-common-dir` is the git
+// fact with the opposite property, measured from a main checkout and from a
+// sibling and a nested linked worktree of it:
+//
+//   --show-toplevel     three different answers
+//   --git-dir           three different answers
+//   --git-common-dir    one answer, byte for byte
+//
+// That is the property a scope needs and the one that clause lacked. The mode
+// is still declared by the wiring: the scope is a literal written into the hook
+// when the operator installed it, not a mode read off disk.
+//
+//   node <path>/guard-guest-writes.mjs --probe       # refused when it is loaded
+//   node <path>/guard-guest-writes.mjs --install     # install into this repo
+//   node <path>/guard-guest-writes.mjs --user-hook   # print the machine-wide block
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Where the guard and the machine facts live in a repository that is not yours.
-// One excluded directory: ADR 0021 keeps machine facts out of the tree through
-// `.git/info/exclude` rather than `.gitignore`, because editing a tracked
+// Where the guard and the machine facts live in a repository that is not yours:
+// **inside the git common directory**, which every linked worktree of a
+// repository shares with the main checkout.
+//
+// ADR 0021 put them in `.factory/` at the working-tree root and kept them out
+// of the tree with `.git/info/exclude`, on the grounds that editing a tracked
 // ignore file to hide your own scratch state is itself a change to somebody
-// else's repository.
-const HOME = '.factory'
+// else's repository. That reasoning was right and the location was one step
+// short of it. A working-tree root is per *checkout*, so a linked worktree had
+// none of this — and `info/exclude` was already being resolved through
+// `--git-common-dir` right here, for exactly the reason that applies to all
+// three files. The reasoning was in the file and had been applied to one file
+// out of three.
+//
+// So there is nothing in the working tree to exclude any more, and "nothing
+// tracked changed" stops resting on an exclude line taking effect: git cannot
+// see inside `.git/` at all. Only the hook wiring is still written into a
+// checkout, because that is the one file the harness reads from there.
+const HOME = 'factory'
 const GUARD = `${HOME}/guard-guest-writes.mjs`
 const RECORD = `${HOME}/machine.md`
 const SETTINGS = '.claude/settings.local.json'
+
+// Where an install from before #122 put the same two files. Reported rather
+// than migrated: the operator can see both and decide, and a guess that deletes
+// somebody's file in a repository that is not ours is the wrong way round.
+const LEGACY_HOME = '.factory'
 
 // Every shell-capable tool the harness offers. A PreToolUse matcher selects on
 // tool NAME, so one that names a single tool is walked straight past by the
@@ -564,6 +639,54 @@ function isLivenessProbe(tokens) {
   return script !== undefined && commandName(script) === 'guard-guest-writes.mjs'
 }
 
+// ---------------------------------------------------------------------------
+// --scope, which is what makes a machine-wide registration acceptable
+//
+// ADR 0029 refused a user-level hook for two reasons. The first still holds and
+// is about what an installer may do unasked, so `--install` prints the block and
+// never writes it. The second was the real objection: a user-level hook follows
+// the operator into every other repository on the machine, where every command
+// it refuses is a false positive by construction, and this repository has
+// written down three times what happens to a guard that cries wolf.
+//
+// So the block carries the repository it was installed for, and the gate exits
+// without judging anything anywhere else. Read the note under HOW IT READS A
+// COMMAND for why this is not the filesystem-reading gate ADR 0029 refused: the
+// scope is a literal in the wiring, and the one git fact consulted is the only
+// one that is identical from every checkout of a repository.
+//
+// **It fails toward allowing, and that is deliberate.** A scope that cannot be
+// resolved — no git, not a repository — means this is not the repository the
+// hook was installed for, so the gate stands aside. The other direction would
+// have a machine-wide hook denying `git push` in every directory on the machine
+// where git happens not to answer, which is the false positive that gets the
+// whole thing uninstalled by Tuesday.
+const scopeAt = process.argv.indexOf('--scope')
+const SCOPE = scopeAt === -1 ? null : (process.argv[scopeAt + 1] ?? null)
+
+// Windows answers the same path in more than one spelling, and the two sides of
+// this comparison come from different places: one from `git rev-parse`, one
+// from a JSON string the operator pasted.
+function samePath(a, b) {
+  const normalise = (path) => resolve(path).replace(/[\\/]+$/, '')
+  return process.platform === 'win32'
+    ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
+    : normalise(a) === normalise(b)
+}
+
+function commonDir(from) {
+  return resolve(from, git(from, ['rev-parse', '--path-format=absolute', '--git-common-dir']))
+}
+
+function inScope() {
+  if (SCOPE === null) return true
+  try {
+    return samePath(commonDir(process.cwd()), SCOPE)
+  } catch {
+    return false
+  }
+}
+
 function judge(line, depth) {
   for (const tokens of segmentsOf(line)) {
     if (isLivenessProbe(tokens)) {
@@ -640,17 +763,17 @@ function judge(line, depth) {
 }
 
 // ---------------------------------------------------------------------------
-// --install, and --probe
+// --install, --user-hook, and --probe
 // ---------------------------------------------------------------------------
 
-const MACHINE_RECORD = `# Machine facts
+const machineRecord = (common) => `# Machine facts
 
 Not committed, and not committable. ADR 0021 splits the initialisation answers
 by who they are about: repo facts are true for anyone who clones and belong in
-\`AGENTS.md\`, and machine facts are about *this* operator on *this* checkout.
-This file is the second kind, kept out of the tree through
-\`.git/info/exclude\`, because editing a tracked ignore file to hide your own
-scratch state is itself a change to a repository you are a guest in.
+\`AGENTS.md\`, and machine facts are about *this* operator on *this*
+repository. This file is the second kind, and it is inside the git common
+directory rather than in the working tree, so no ignore rule has to hold it out
+of anybody's \`git status\` and every linked worktree reads the same copy.
 
 Write boundary: guest
 
@@ -660,13 +783,66 @@ Every outward write waits for the one publish step the owner asks for.
 Backlog: (name the tool that provides the seven verbs here — beads, driven by
 \`bd\`, is the default. references/backlog-port.md)
 
-Enforced by \`${GUARD}\`, wired as a PreToolUse hook in \`${SETTINGS}\`. That is
-a gate, so it is silent when it is loaded and silent when it is not; ask it:
+Enforced by \`${join(common, GUARD)}\`. That is a gate, so it is silent when it
+is loaded and silent when it is not; ask it, from inside this repository:
 
-    node ${GUARD} --probe
+    node "${join(common, GUARD)}" --probe
 
-Being refused is the answer you want.
+Being refused is the answer you want. Which sessions it is registered for is a
+separate question from whether it is installed, and \`check-setup.mjs\` answers
+it: a wiring in one checkout's \`${SETTINGS}\` covers sessions started in that
+directory only, and the machine-wide block covers every session inside this
+repository. ADR 0037.
 `
+
+// The block the operator installs themselves, and the only thing that reaches a
+// session started in a worktree. Printed, never written: ADR 0029's first
+// refusal is about what an installer does unasked and it survives #122 intact.
+function userHookBlock(common) {
+  return JSON.stringify(
+    {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: MATCHER,
+            hooks: [
+              {
+                type: 'command',
+                command: `node "${join(common, GUARD).replace(/\\/g, '/')}" --scope "${common.replace(/\\/g, '/')}"`,
+                timeout: 15,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  )
+}
+
+const userSettingsPath = () =>
+  join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
+
+function printUserHook(common) {
+  console.log(`Paste this into ${userSettingsPath()}, merging with whatever is`)
+  console.log('already there rather than replacing it:\n')
+  for (const line of userHookBlock(common).split('\n')) console.log(`    ${line}`)
+  console.log(`
+Then restart the harness. This is the registration that reaches a session
+started in a linked worktree, and those are the sessions that push branches and
+open pull requests.
+
+\`--scope\` is what keeps it out of every other repository on this machine. The
+gate asks git for the common directory of wherever the session is standing and
+stands aside unless it is the one named above, so a refusal cannot happen in a
+repository this was not installed for. ADR 0029 refused a user-level hook partly
+because it would follow you everywhere; the scope is the answer to that, and ADR
+0037 has the argument and the measurement.
+
+To remove it, delete that block and restart. Installing and removing it are a
+deliberate pair, and nothing here will do either for you.`)
+}
 
 function git(root, args) {
   return execFileSync('git', args, {
@@ -688,11 +864,9 @@ function repoRoot() {
 
 // The exclude file lives in the common directory, so a linked worktree and its
 // main checkout share one. That is the right scope: the boundary is a fact
-// about this operator and this repository, not about which branch is out.
-function excludeFile(root) {
-  const common = resolve(root, git(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']))
-  return join(common, 'info', 'exclude')
-}
+// about this operator and this repository, not about which branch is out. It is
+// also where the gate and the machine record now live, for the same reason.
+const excludeFile = (common) => join(common, 'info', 'exclude')
 
 function appendMissingLines(path, lines) {
   mkdirSync(dirname(path), { recursive: true })
@@ -708,7 +882,12 @@ function appendMissingLines(path, lines) {
 // Merge into whatever is there. A host repo may already have local settings,
 // and replacing somebody's file is the class of thing this whole mode exists to
 // avoid — `bd setup` clobbering two tracked files is the worked example.
-function wireHook(path) {
+// The script path is absolute rather than `$CLAUDE_PROJECT_DIR`-relative,
+// because that variable is the directory the session started in — measured, and
+// in a worktree session it is the worktree, which has no copy of anything. One
+// gate in the common directory, named absolutely, is the same file from every
+// checkout.
+function wireHook(path, common) {
   let settings = {}
   if (existsSync(path)) {
     try {
@@ -727,7 +906,13 @@ function wireHook(path) {
   if (already) return false
   settings.hooks.PreToolUse.push({
     matcher: MATCHER,
-    hooks: [{ type: 'command', command: `node "$CLAUDE_PROJECT_DIR/${GUARD}"`, timeout: 15 }],
+    hooks: [
+      {
+        type: 'command',
+        command: `node "${join(common, GUARD).replace(/\\/g, '/')}"`,
+        timeout: 15,
+      },
+    ],
   })
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`)
@@ -736,51 +921,83 @@ function wireHook(path) {
 
 function install() {
   const root = repoRoot()
+  const common = commonDir(root)
   const done = []
 
-  mkdirSync(join(root, HOME), { recursive: true })
+  mkdirSync(join(common, HOME), { recursive: true })
   const self = fileURLToPath(import.meta.url)
-  const destination = join(root, GUARD)
+  const destination = join(common, GUARD)
   if (resolve(self) !== resolve(destination)) {
     copyFileSync(self, destination)
-    done.push(`copied the gate to ${GUARD}`)
+    done.push(`copied the gate to ${destination}`)
   }
 
-  if (existsSync(join(root, RECORD))) {
-    done.push(`left ${RECORD} alone, because it already exists`)
+  if (existsSync(join(common, RECORD))) {
+    done.push(`left ${join(common, RECORD)} alone, because it already exists`)
   } else {
-    writeFileSync(join(root, RECORD), MACHINE_RECORD)
-    done.push(`wrote ${RECORD}, the machine facts ADR 0021 asks for`)
+    writeFileSync(join(common, RECORD), machineRecord(common))
+    done.push(`wrote ${join(common, RECORD)}, the machine facts ADR 0021 asks for`)
   }
 
-  const excluded = appendMissingLines(excludeFile(root), [`/${HOME}/`, `/${SETTINGS}`])
+  // Only the wiring is in the working tree now, so only the wiring needs
+  // hiding. `/.factory/` is deliberately not appended any more: a repository
+  // installed before #122 keeps its line, and a fresh one never gains one.
+  const excluded = appendMissingLines(excludeFile(common), [`/${SETTINGS}`])
   done.push(
     excluded.length === 0
-      ? 'found both paths already in .git/info/exclude'
+      ? `found ${SETTINGS} already in .git/info/exclude`
       : `excluded ${excluded.join(' and ')} through .git/info/exclude`,
   )
 
   done.push(
-    wireHook(join(root, SETTINGS))
+    wireHook(join(root, SETTINGS), common)
       ? `wired the gate into ${SETTINGS} for ${MATCHER}`
       : `found the gate already wired in ${SETTINGS}`,
   )
 
+  if (existsSync(join(root, LEGACY_HOME))) {
+    done.push(
+      `note: ${LEGACY_HOME}/ is still here from an install before #122. Nothing reads it` +
+        ' now. Check what is in it, then remove it and its /.factory/ line in' +
+        ' .git/info/exclude',
+    )
+  }
+
   console.log(`Guest mode installed in ${root}\n`)
   for (const line of done) console.log(`  - ${line}`)
   console.log(`
-Nothing outside this repository was written, and nothing tracked inside it was.
-Confirm that yourself rather than believing this line:
+Nothing outside this repository was written, and nothing was written into its
+working tree except the wiring. Confirm that yourself rather than believing it:
 
     git status --porcelain -uall
 
 Hooks are read once, at process start, so **this session is not protected**.
 Restart the harness, then ask the gate whether it is loaded:
 
-    node ${GUARD} --probe
+    node "${join(common, GUARD)}" --probe
 
 Being refused is the answer you want. If it prints instead, the gate is not in
-this process and the fix is another restart, not another install.`)
+this process and the fix is another restart, not another install.
+
+WHICH SESSIONS THIS COVERS, WHICH IS NOT ALL OF THEM
+The wiring above is in one checkout, and Claude Code reads project settings from
+the directory a session starts in and from nowhere else — measured, on 2.1.228,
+for a sibling worktree and for one nested inside this checkout. So it covers
+sessions started in
+
+    ${root}
+
+and no others. **A linked worktree registers nothing**, and the subagents that
+push branches, open pull requests and comment on the host's tracker are exactly
+the sessions that start in worktrees. Two ways to close that, and they are not
+equally good:
+
+  - Run this install again from inside each worktree. Sound, and it only ever
+    covers the worktrees somebody remembered.
+  - Install the machine-wide block below once. It reaches every session inside
+    this repository, including worktrees that do not exist yet.
+`)
+  printUserHook(common)
 }
 
 function probe() {
@@ -807,7 +1024,7 @@ function probe() {
   // under WHAT THIS DOES NOT COVER.
   if (process.env.npm_lifecycle_event) {
     console.error('Run this directly, not through a package script:\n')
-    console.error(`  node ${GUARD} --probe\n`)
+    console.error(`  node ${fileURLToPath(import.meta.url)} --probe\n`)
     console.error('npm, pnpm and yarn all hide the file name from the hook, so the gate cannot')
     console.error('refuse this, and it would then call the write boundary unenforced in a session')
     console.error('where it is holding. In a repository that is not yours, that is the answer')
@@ -817,20 +1034,35 @@ function probe() {
 
   console.error('The guest-mode gate is NOT loaded in this process.')
   console.error('')
-  console.error('This probe exists in order to be refused. It ran, so nothing intercepted it:')
-  console.error(`either ${SETTINGS} has no hook running`)
-  console.error(`${GUARD}, or this process started before the hook was`)
-  console.error('written. Settings are read once, at process start.')
+  console.error('This probe exists in order to be refused. It ran, so nothing intercepted it.')
+  console.error('Three states produce that, and they want different things done next:')
   console.error('')
-  console.error('Nothing is enforcing the write boundary in this session. Restart the harness')
-  console.error('and ask again.')
+  console.error(`  - No hook. Nothing in this session's ${SETTINGS}`)
+  console.error('    and nothing machine-wide runs this file. Install one.')
+  console.error('  - A hook this process predates. Settings are read once, at process start.')
+  console.error('    Restart the harness. Another install fixes nothing.')
+  console.error('  - **A session started somewhere the gate is not registered for.** A wiring')
+  console.error('    in one checkout covers sessions started in that directory only, and a')
+  console.error('    machine-wide block covers the one repository its --scope names. A linked')
+  console.error('    worktree is the case that catches people: run this from inside the')
+  console.error('    session that is actually doing the work, not from the main checkout.')
+  console.error('')
+  console.error('Nothing is enforcing the write boundary in this session.')
   process.exit(1)
 }
 
 if (process.argv.includes('--install')) {
   install()
+} else if (process.argv.includes('--user-hook')) {
+  printUserHook(commonDir(repoRoot()))
 } else if (process.argv.includes('--probe')) {
   probe()
+} else if (!inScope()) {
+  // A machine-wide registration standing aside in a repository it was not
+  // installed for. Silence is right here: this gate has nothing to say about
+  // somebody's own repositories, which is the whole reason ADR 0029 refused a
+  // user-level hook without one.
+  process.exit(0)
 } else {
   let payload = ''
   for await (const chunk of process.stdin) payload += chunk

@@ -184,3 +184,39 @@ first still has: a closing `)` with no `$(` open is a subshell's, and
 the bare form is denied. Filed rather than fixed in passing, because the merge
 guard is the layer this repository's own merge discipline rests on and it
 deserves a change of its own.
+
+## Correction, recorded rather than edited away
+
+**"It is installed into untracked project-local files" put the gate in the one
+place the sessions doing the writing could not see it.** Untracked files do not
+exist in a linked worktree, so a worktree registered no hook at all, and the
+subagents that push branches and open pull requests are exactly the sessions
+that run in worktrees. Found by the owner on a work repository in the first real
+guest run, in #122, and fixed in ADR 0037. Everything above about *not writing a
+tracked file* was right; the location that followed from it was one step short
+of the reasoning already in the same file, which resolved `.git/info/exclude`
+through `--git-common-dir` and said in a comment that a linked worktree and its
+main checkout sharing one "is the right scope".
+
+**The two refusals of a user-level hook come out differently, and only one of
+them was waived.**
+
+- *Writing to the owner's home directory is theirs and not ours.* **Unchanged.**
+  `--install` still writes nothing there. It prints the block, which this ADR
+  already contemplated ("an operator who wants it there can lift the same
+  JSON block"), and #122's evidence is that the owner did exactly that
+  unprompted, before anybody wrote it down as an option.
+- *A user-level hook follows the operator into every other repository, where
+  every refusal is a false positive by construction.* **Answered rather than
+  waived.** The printed block carries `--scope <git common dir>`, and the gate
+  stands aside outside the repository it names. ADR 0037 has the argument for
+  why that is not this ADR's other refusal in disguise: the scope is a literal
+  in the wiring rather than a mode read off disk, it decides whether the gate
+  participates rather than what a command means, and the git fact it consults is
+  the only one that answers identically from every checkout — measured, against
+  the very worktree case that broke the clause this ADR cites.
+
+**"The gate has never been observed denying anything in a live session" ended,
+and what it found was this.** The consequence above was accurate and it was the
+sentence that mattered most: the first real run is where somebody watches it
+fire, and the first real run is what produced #122. It stays as written.
