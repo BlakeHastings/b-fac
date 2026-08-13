@@ -32,6 +32,8 @@ the defect nobody knew about.
   the open question nobody has answered, not the artifact that contradicts your
   brief, which stops. Say which of the two you mean.
 - **The report contract**: which decisions to report back, not a narrative.
+  Include "say whether your context was compacted during the run", for the
+  reason two sections below.
 
 Traps that each caught a real defect, as examples of the register:
 
@@ -207,6 +209,40 @@ or you get the change you asked for whether or not it was still needed.
 
 **Read the file before you brief from it.** Briefing from memory of the repo is
 where the wrong counts come from.
+
+## The brief has to survive the agent's own compaction
+
+A dispatch message is said once. An agent that works for an hour fills its
+context, the harness replaces the conversation with a summary, and **the
+summariser keeps the shape of the brief and loses the specifics**: the evidence
+bar, the files it was told not to touch, the artefact it was told to check. The
+agent carries on. It reports confidently. What you get back is a good-faith
+answer to a slightly different question, and it reads like an agent that did not
+read carefully.
+
+Nothing carries a brief across that boundary. What does reach a compacted agent
+is whatever the `SessionStart` hook prints, and the block this skill ships uses
+it to say "your brief is the issue, re-read it" (`references/continuity.md`,
+measured). That is a pointer, not the brief. **It only works if the brief is
+somewhere to point at**, which costs three lines and no machinery.
+
+- **Put the durable half in the issue**, not in the dispatch message, and name
+  the issue in the brief as the thing to re-read. This is the same move as
+  "pass artifacts by path", applied to the brief itself. An agent that can
+  re-read the issue recovers the scope, the traps and the bar; one holding them
+  only in a compacted context cannot.
+- **Say what a continuation summary obliges.** The agent can tell this happened:
+  the summary it is holding opens with "This session is being continued from a
+  previous conversation that ran out of context". Tell it that finding those
+  words means re-reading the issue and the named artefacts **before** it reports,
+  and that doing so is expected rather than an admission.
+- **Ask for it in the report.** One line: did your context compact. It is a
+  cross-check, not the detection, because the report is the artefact under
+  suspicion. The detection is the transcript, and it is the reviewer's.
+
+Scope is the other half of this, and it belongs in the dispatch decision rather
+than in the brief: an agent given twelve files to read and a narrow question is
+a compaction waiting to happen. `references/parallelism.md`.
 
 ## The contract underneath
 

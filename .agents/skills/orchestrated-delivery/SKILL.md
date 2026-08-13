@@ -368,8 +368,14 @@ reconstruct.
 prints the file into the resumed context afterwards. **After any compaction,
 look for that injected block** — it is either in this context or it is not, so
 unlike every other layer here, asking whether it is loaded costs nothing.
-`references/continuity.md`, including what a subagent that compacts mid-run
-loses and why nothing can currently carry it.
+**Implementation agents compact too, and nothing tells you.** An agent that lost
+its brief reports confidently and the report is your only signal. Two things
+follow. The injected block **also lands in a compacting subagent's context**, so
+it is written for both readers and points a dispatched agent back at its issue,
+which only works if the brief is in the issue rather than in the dispatch
+message. And the compaction is written into that agent's own transcript, so you
+can **check whether a long agent compacted before reviewing its PR**.
+`references/continuity.md` for both, `references/briefing.md` for the brief.
 
 ## Three shapes of agent
 

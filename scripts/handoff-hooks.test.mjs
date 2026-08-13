@@ -196,6 +196,31 @@ test('SessionStart says so rather than injecting nothing when there is no handof
   assert.match(result.out, /Re-read the backlog/)
 })
 
+test('SessionStart addresses a dispatched agent, because it may be one reading', () => {
+  // This event fires after a subagent's compaction too, and the stdout lands in
+  // that subagent's context. Measured, and the payload carries nothing to tell
+  // the two readers apart. An implementation agent handed the orchestrator's
+  // handoff as its own state starts doing the orchestrator's next steps, so
+  // both branches say who the file belongs to before printing any of it.
+  const withFile = repo({ handoffAgeHours: 2 })
+  const without = repo({ handoff: null })
+  const present = run(withFile, sessionStart(withFile))
+  const absent = run(without, sessionStart(without))
+
+  for (const result of [present, absent]) {
+    assert.match(result.out, /IF YOU WERE DISPATCHED AS AN IMPLEMENTATION AGENT/)
+    assert.match(result.out, /re-read the issue\s+you were dispatched against/)
+    assert.match(result.out, /IF YOU ARE THE ORCHESTRATOR/)
+  }
+
+  // Addressed before the handoff, not after it: the reader who must not act on
+  // the file has to be told before they have read it.
+  assert.ok(
+    present.out.indexOf('IF YOU WERE DISPATCHED') < present.out.indexOf('----- docs/process'),
+    'the addressing comes before the file',
+  )
+})
+
 test('SessionStart carries the decay note, not just the file', () => {
   const root = repo({ handoffAgeHours: 30, commits: 3 })
   const result = run(root, sessionStart(root))

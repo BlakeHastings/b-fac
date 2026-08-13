@@ -156,6 +156,16 @@ result: HANDOFF-END MARKER-OMEGA-000690
 `sessionstart-compact.log`'s last entry was from 03:19, three minutes earlier:
 **no `SessionStart` fired for the subagent's compaction.**
 
+*Corrected 2026-08-13, and this one was wrong rather than incomplete.
+`SessionStart` does fire after a subagent's compaction and its stdout reaches
+that subagent. It did not fire here because **this compaction never completed**:
+agent `a267f6c157b3becc8`'s transcript, still on disk, has no `compact_boundary`
+in it and ends `Prompt is too long`. The `SubagentStart` at 03:22:39 is not that
+agent continuing, it is `a9923f06d14b39837`, a fresh agent, and it is the one
+that returned the marker. See
+[2026-08-13-subagent-compaction-detection.md](2026-08-13-subagent-compaction-detection.md)
+finding 8 and ADR 0041.*
+
 With `auto` exiting 2, the same run:
 
 ```
@@ -167,6 +177,11 @@ Error: "Agent terminated early due to an API error: Prompt is too long"
 The parent session was untouched and reported the error. So `PreCompact` fires
 for a subagent, cannot be told apart from the orchestrator's own, kills the
 subagent if refused, and is not followed by any injection.
+
+*Refined 2026-08-13: the refusal is sufficient and not necessary. The same twelve
+files killed three subagents with every hook exiting 0, because a single tool
+result crossed the ceiling in one step and the compaction fired in the same
+second as the failure. Nothing about the unconditional `auto` rule changes.*
 
 ### Nothing exposes context usage
 
@@ -184,7 +199,11 @@ figure, and no hook event fires on a context threshold. The documented fields on
 - **That the second `SubagentStart` is the compacted subagent continuing.** The
   timing says so — it lands 3 seconds after the compaction and 15 seconds after
   the first, which is not enough time to read twelve files — and the parent
-  received one result. Not confirmed from the transcript.
+  received one result. Not confirmed from the transcript. *Wrong, 2026-08-13,
+  and confirmed from the transcript this time: it is a second agent,
+  `a9923f06d14b39837`, dispatched after the first died. That inference is what
+  made the `SessionStart` row above look like a fired-and-nothing-followed rather
+  than a compaction that never happened.*
 - **That the same shapes hold in an interactive session.** Everything here was
   driven through `-p` / `-c -p`. The hooks are process-level and the compaction
   is the harness's, so there is no obvious reason for a difference, and no
@@ -200,6 +219,12 @@ figure, and no hook event fires on a context threshold. The documented fields on
   `PreCompact` payload distinguishes it. A hook could in principle correlate
   against `SubagentStart` by `session_id`, but every subagent shares the parent's
   `session_id`, so that identifies concurrency and not ownership. Not pursued.
+  *Corrected 2026-08-13: it can, from the record rather than from the hook. A
+  subagent's compaction writes a `compact_boundary` entry into that subagent's
+  own transcript file. `PreCompact` is still no help, and `prompt_id` on it turns
+  out to be the parent turn's, shared by everything dispatched in that turn. See
+  [2026-08-13-subagent-compaction-detection.md](2026-08-13-subagent-compaction-detection.md)
+  and ADR 0041.*
 - **The real auto-compact threshold as a fraction of the window.** Auto-compact
   first fired at turn 4 of ~15K tokens each, which is consistent with anything
   from 40% to 70% of 100K. The number is not documented and was not narrowed.
@@ -234,7 +259,10 @@ trusting the asymmetry for a new major version.
 **The subagent findings are next**, because they are entirely undocumented and
 therefore unpromised. An `agent_id` appearing on the `PreCompact` payload would
 make the hole addressable; a `SessionStart` firing after a subagent's compaction
-would close it outright.
+would close it outright. *That second one was not a future release. It was
+already true and this survey had it backwards, for the reason recorded above.
+The prediction was right about which row would move first and wrong about which
+direction it would move from.*
 
 **The size result is the most durable** and also the least likely to be leaned
 on: no handoff is going to approach 1 MB, and the finding's only job is to

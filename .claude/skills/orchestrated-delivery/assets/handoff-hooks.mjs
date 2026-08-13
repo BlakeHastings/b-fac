@@ -58,7 +58,9 @@
 // Measured, with the auto rule set to exit 2: a `general-purpose` subagent
 // reading twelve files died with `Agent terminated early due to an API error:
 // Prompt is too long`, while the parent session was untouched and reported the
-// error. With the auto rule exiting 0 the same subagent compacted and finished.
+// error. (A subagent can die of that with nothing refusing anything, when one
+// tool result crosses the ceiling in a single step and the compaction fires too
+// late to help. Refusing is sufficient to kill one, not necessary.)
 //
 // So a blocking `auto` rule does not merely risk wedging the orchestrator. It
 // kills long-running implementation agents, in a repository whose hook settings
@@ -66,12 +68,25 @@
 // distinguish that case, which is the second independent reason the rule below
 // is unconditional rather than careful.
 //
+// AND THE FAR SIDE REACHES THEM, WHICH IS WHY THE INJECTED BLOCK IS ADDRESSED
+// A subagent's compaction fires `SessionStart` with `source: "compact"` like
+// any other, and the stdout lands in *that subagent's* resumed context.
+// Measured: three subagent compactions, three injections 0.3s later, in a
+// session whose own context never compacted, and the marker came back in the
+// agent's report. #124's survey recorded the opposite; ADR 0041 has why, and it
+// comes down to a compaction that died before it completed.
+//
+// So this file talks to an implementation agent every time one compacts in a
+// repository where it is wired, and it cannot tell that is who it is talking
+// to. See the block above `sessionStart` below.
+//
 // WHAT THIS DOES NOT COVER
-// **The far side does not exist for subagents.** A subagent's compaction fires
-// `PreCompact` and then no `SessionStart` at all — measured, by timestamp,
-// against a log that recorded every one. An implementation agent that compacts
-// mid-run gets the summariser and nothing else, and neither it nor you is told.
-// Keep briefs self-contained and keep dispatches short enough not to find out.
+// **Telling you that an agent compacted.** Nothing reaches the orchestrator: no
+// event, nothing in your transcript, nothing on the Task result. It is on the
+// record afterwards, in the agent's own transcript rather than yours, and
+// `references/continuity.md` has the command. Keep briefs self-contained, put
+// their durable half in the issue so a compacted agent can re-read it, and keep
+// dispatches short enough not to find out.
 //
 // **A handoff nobody wrote.** This file checks a file's age and refuses one
 // command over it. Whether the words in it are worth carrying is not a thing a
@@ -228,23 +243,52 @@ function preCompact(payload) {
 // is on disk and can be read; after a compaction the model has a summary that
 // does not know the file exists, which is the case where injection is the only
 // thing that works.
+//
+// THE READER MIGHT NOT BE THE ORCHESTRATOR, AND THIS HOOK CANNOT TELL
+// This fires after a *subagent's* compaction too, and what it prints lands in
+// that subagent's resumed context. Measured: a marker printed here came back in
+// the report of an implementation agent that had compacted, in a session whose
+// own context never filled. The payload carries `source: "compact"` and no
+// `agent_id`, and its `transcript_path` is the parent's file either way, so
+// there is nothing here to branch on.
+//
+// The block is therefore addressed to both readers. Guessing wrong is the
+// expensive outcome: an implementation agent handed the orchestrator's handoff
+// as though it were its own state will start doing the orchestrator's next
+// steps, and it is the reader least able to notice, having just lost its brief.
+const WHOEVER_YOU_ARE =
+  'This hook cannot tell whose context was compacted, so read this part first.\n' +
+  '\n' +
+  'IF YOU WERE DISPATCHED AS AN IMPLEMENTATION AGENT: what follows is the\n' +
+  "orchestrator's handoff and not your work. Do not act on it, do not merge, and\n" +
+  'do not pick up work it describes. What you just lost is your own brief, whose\n' +
+  'specifics the summariser drops while keeping its shape, so re-read the issue\n' +
+  'you were dispatched against and the files it names before you continue, and\n' +
+  'say in your report that your context was compacted.\n' +
+  '\n' +
+  'IF YOU ARE THE ORCHESTRATOR:\n'
+
 function sessionStart(payload) {
   const state = readHandoff(payload.cwd ?? process.cwd())
 
   if (!state.present) {
     process.stdout.write(
-      `The context was just compacted. There is no handoff at ${HANDOFF}, so nothing\n` +
-        'was carried across besides the summary you are holding.\n' +
+      'The context was just compacted.\n' +
         '\n' +
-        'Re-read the backlog and the log before acting on anything you think you\n' +
-        'remember, and write the handoff as part of this pass so the next compaction\n' +
-        'costs less than this one did.\n',
+        WHOEVER_YOU_ARE +
+        `there is no handoff at ${HANDOFF}, so nothing was carried across besides the\n` +
+        'summary you are holding. Re-read the backlog and the log before acting on\n' +
+        'anything you think you remember, and write the handoff as part of this pass\n' +
+        'so the next compaction costs less than this one did.\n',
     )
     process.exit(0)
   }
 
   process.stdout.write(
-    `The context was just compacted. Below is ${HANDOFF} verbatim, ${age(state)}.\n` +
+    'The context was just compacted.\n' +
+      '\n' +
+      WHOEVER_YOU_ARE +
+      `below is ${HANDOFF} verbatim, ${age(state)}.\n` +
       '\n' +
       'It is a snapshot, not a source of truth. Where it disagrees with the\n' +
       'repository the repository is right, and the summary you are holding is lossy\n' +

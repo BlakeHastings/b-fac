@@ -169,31 +169,91 @@ any compaction, look for the injected block in your own context.** It is either
 in this compaction's context or it is not, and unlike a heartbeat file there is
 nothing there to go stale.
 
-## Subagents compact too, and the far side does not reach them
+## Subagents compact too, and the block you inject reaches them
 
 Established by measurement, because none of it is documented.
 
 - A subagent's context compacts **independently** of the orchestrator's.
-- `PreCompact` **does** fire for it, with `trigger: "auto"`.
-- The payload **does not say whose context it is**. No `agent_id`, no
-  `agent_type` — `SubagentStart` carries both, `PreCompact` carries neither. A
-  hook cannot tell an orchestrator's compaction from an implementation agent's.
-- `SessionStart` **does not fire** afterwards. A subagent that compacts gets the
-  summariser and nothing else.
+- `PreCompact` **does** fire for it, with `trigger: "auto"`, and the payload
+  **does not say whose context it is**. No `agent_id`, no `agent_type` —
+  `SubagentStart` carries both, `PreCompact` carries neither. Its `prompt_id` is
+  not the field either: that is the parent *turn's*, shared by everything
+  dispatched inside it, so it narrows a compaction to a wave and not to an agent.
+- `SessionStart` with `source: "compact"` **does** fire afterwards, and **its
+  stdout lands in the subagent's context, not yours.** Measured: three
+  compactions in one agent's transcript, three injections 0.4s later, in a
+  session whose own context never compacted, and the marker the hook printed came
+  back inside the agent's report. This payload names no agent either.
+- **You are told nothing.** No event, nothing in your own transcript, nothing on
+  the tool result. The agent knows, and the record knows.
 
-Two things follow. First, a blocking `auto` rule does not merely risk wedging
-your session: it kills implementation agents. Measured — a `general-purpose`
-subagent reading twelve files died with `Agent terminated early due to an API
-error: Prompt is too long` while the parent was untouched, and the same subagent
-finished normally once the rule allowed. That is a second, independent reason
-the rule is unconditional.
+So a blocking `auto` rule does not merely risk wedging your session: it kills
+implementation agents. Measured — a `general-purpose` subagent reading twelve
+files died with `Agent terminated early due to an API error: Prompt is too long`
+while the parent was untouched. That is a second, independent reason the rule is
+unconditional. (A subagent can die that way with nothing blocking anything, when
+one tool result crosses the ceiling in a single step. Refusing is sufficient to
+kill it, not necessary.)
 
-Second, **a long-running implementation agent can quietly lose its brief.**
-Nothing in this chapter fixes that, and nothing here can: the injection half of
-the mechanism does not exist for subagents. The available mitigations are the
-ordinary ones — a brief that is self-contained, an issue that carries the
-context rather than the dispatch message, and scopes small enough that a single
-agent does not fill a window.
+**This is why the injected block is addressed to two readers.** The asset cannot
+tell which one it is talking to, and the wrong guess is expensive in one
+direction: an implementation agent handed your handoff as though it were its own
+state will start doing your next steps, and it is the reader least able to
+notice, having just lost its brief. So the block says whose the file is before
+printing it, tells a dispatched agent not to act on it, and tells it what it
+actually lost: its brief, which is in the issue, which it can re-read.
+
+That is the whole recovery, and it is the only thing that arrives in time. Keep
+briefs recoverable so it has somewhere to point (`references/briefing.md`).
+
+*This corrects the earlier finding that `SessionStart` does not fire for a
+subagent. It came from a run in which the compaction never completed: the agent
+died of `Prompt is too long` and the `SubagentStart` seconds later was the
+parent's retry, not the same agent continuing. A compaction that fires and then
+kills the agent looks identical in a hook log and leaves no boundary in the
+transcript. ADR 0041.*
+
+## Finding out afterwards that an agent compacted
+
+**The transcript says so, and it says whose.** Each subagent gets a transcript
+file of its own beside the session's, and a compaction writes an entry into it:
+
+```
+~/.claude/projects/<slug>/<session_id>.jsonl              yours
+~/.claude/projects/<slug>/<session_id>/subagents/
+    agent-<agent_id>.jsonl                                one per subagent
+```
+
+```bash
+grep -c '"subtype":"compact_boundary"' \
+  ~/.claude/projects/<slug>/<session_id>/subagents/agent-*.jsonl
+```
+
+A non-zero count against an agent whose pull request you are about to review
+means that agent worked from a summary of its brief for part of the run. Your
+own compactions land in the session file instead, with `"isSidechain": false`
+and no `agentId`, so the two never mix. The entry carries `compactMetadata` with
+the trigger and the token count that was discarded.
+
+**This is a check and not a gate.** It reports; nothing refuses. Weigh it as
+`references/reviewing.md` says: it does not make the work wrong, it makes the
+report's silences worth less.
+
+**No hook is wired to it, deliberately.** `SubagentStop` carries `agent_id`,
+`agent_type` and an `agent_transcript_path` pointing at exactly that file, so
+one is easy to write, and the measurements say not to. Its stdout does not reach
+you, so it could only write a file you must remember to read, which is what the
+command above already is. Its exit 2 *does* reach the agent and the agent obeys,
+which makes it a gate on the report rather than a check, arriving after the work
+instead of during it. And it never fires for the case that matters most: an
+agent that dies of `Prompt is too long` produces no `SubagentStop` at all, while
+its transcript is still on disk. ADR 0041.
+
+**Ask in the report contract as well.** The agent can tell: the summary it is
+holding opens with "This session is being continued from a previous conversation
+that ran out of context". Treat its answer as a cross-check against the
+transcript rather than as the detection, because the report is the artefact
+under suspicion.
 
 ## Where the file lives, in a repo that is not yours
 
