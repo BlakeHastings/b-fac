@@ -17,7 +17,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -372,6 +372,30 @@ test('the refusal log holds the head of the command and not its arguments', () =
     assert.match(log, /\tgh pr create\t/)
     assert.doesNotMatch(log, /ghp_notarealsecret/)
     assert.doesNotMatch(log, /a very long body/)
+  } finally {
+    cleanup(repo)
+  }
+})
+
+test('a gate that is not installed anywhere writes no log anywhere', () => {
+  const repo = hosted()
+  try {
+    // The gate straight out of `assets/`, with a real repository as its working
+    // directory. This is what the test suites do, and the first version of the
+    // log resolved the common directory of the working directory, so running
+    // the suite wrote seventeen hundred refusals into the developer's own
+    // `.git/`. An uninstalled gate is about no repository and must write
+    // nothing, which is also the state `check-setup.mjs` calls copied rather
+    // than installed.
+    const before = readdirSync(ASSETS)
+    execFileSync('node', [GATE], {
+      cwd: repo.root,
+      input: JSON.stringify({ tool_input: { command: 'git push origin HEAD' } }),
+      encoding: 'utf8',
+    })
+
+    assert.equal(existsSync(join(repo.root, '.git/factory/refusals.log')), false)
+    assert.deepEqual(readdirSync(ASSETS), before, 'the skill directory gained a file')
   } finally {
     cleanup(repo)
   }

@@ -161,7 +161,7 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Where the guard and the machine facts live in a repository that is not yours:
@@ -218,19 +218,35 @@ const MATCHER = 'Bash|PowerShell'
 // a token) into a file on disk, and a boundary that leaks what it refused to
 // protect is a poor trade for a longer log line.
 //
-// It writes into the git common directory beside the machine record, so it is
-// invisible to the host repository's `git status` by construction and readable
-// from every linked worktree. ADR 0037.
+// **The log goes beside this file, and only when this file is the installed
+// copy.** `--install` puts the gate at `<git common dir>/factory/`, so an
+// installed gate writes into the git common directory, where the host
+// repository's `git status` cannot see it and every linked worktree reads the
+// same one. ADR 0037.
+//
+// Deriving that from this file's own path rather than from the working
+// directory is a correction rather than a convenience, and it was earned: the
+// first version resolved the common directory of `process.cwd()`, and the test
+// suite, which runs the gate straight out of `assets/` with the repository as
+// its working directory, wrote seventeen hundred refusals into the developer's
+// own `.git/`. A gate invoked out of the skill directory is not installed
+// anywhere, so it has no repository to be about and writes nothing. That state
+// is what `check-setup.mjs` already reports as copied rather than installed.
+//
+// It also removes a `git rev-parse` per refusal, and with it the question of
+// which repository a refusal belongs to when the answer came from a cwd.
+const SELF_DIRECTORY = dirname(fileURLToPath(import.meta.url))
+const LOG = basename(SELF_DIRECTORY) === HOME ? join(SELF_DIRECTORY, 'refusals.log') : null
+
 function record(rule, tokens) {
+  if (LOG === null) return
   try {
-    const common = SCOPE ?? commonDir(process.cwd())
     const head = tokens
       .slice(0, 3)
       .map((token) => (token.length > 40 ? `${token.slice(0, 39)}...` : token))
       .join(' ')
       .replace(/[\t\r\n]/g, ' ')
-    mkdirSync(join(common, HOME), { recursive: true })
-    appendFileSync(join(common, REFUSALS), `${new Date().toISOString()}\t${head}\t${rule}\n`)
+    appendFileSync(LOG, `${new Date().toISOString()}\t${head}\t${rule}\n`)
   } catch {
     // A gate that fails to refuse because it could not write a log would be
     // worse than one that keeps no log at all. The verdict is already on stdout

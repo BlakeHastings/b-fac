@@ -111,8 +111,16 @@ would need the same pre-execution surface and would inherit every line of WHAT
 THIS DOES NOT COVER, for no coverage the gate does not already have. That is ADR
 0029's finding about a portable check, arrived at again from the other side.
 
-Three details of it are decisions rather than details.
+Four details of it are decisions rather than details.
 
+- **The log goes beside the gate, and only when the gate is the installed
+  copy.** `--install` puts the gate inside the git common directory, so an
+  installed gate writes there and an uninstalled one, run out of the skill's
+  `assets/`, is about no repository and writes nothing. Deriving that from the
+  file's own path rather than from the working directory is what stops a
+  refusal landing in whichever repository the process happened to be standing
+  in, and it removes a `git rev-parse` per refusal. See the consequence below
+  for how it was found.
 - **The command line is not written down.** Three tokens of the refused
   segment, truncated, is enough to tell a push from a `gh pr create` and enough
   to prove the gate fired. A full line would put an agent's arbitrary text into
@@ -198,8 +206,22 @@ every window comparison was therefore wrong in the direction of hiding a push.
 `--date=unix` puts the entry's own time into the selector. There is a test that
 backdates a commit by a year.
 
-**The suite was not trusted for passing.** Twenty mutations were applied to the
-two implementations one at a time: every reflog entry read as a push and none of
+**The second bug was found by looking at the developer's own repository, and it
+is the one worth remembering.** The refusal log first resolved the git common
+directory of `process.cwd()`, which is right for a hook (it runs in the guest
+repository) and wrong for everything else. The existing test suite runs the gate
+straight out of `assets/` with this repository as its working directory, so
+running `npm test` wrote seventeen hundred refusals into
+`b-fac/.git/factory/refusals.log`. **No test failed and nothing said so**; it was
+found by listing `.git/` for an unrelated reason at the end of the work. A file
+in the git common directory is invisible to `git status` by construction, which
+is the property ADR 0037 chose it for, and the same property means a mistake
+there leaves no trace anybody trips over. The gate now derives the path from its
+own location, an uninstalled gate writes nowhere, and there is a test asserting
+that the skill directory and the repository both gain nothing.
+
+**The suite was not trusted for passing.** Twenty-two mutations were applied to
+the two implementations one at a time: every reflog entry read as a push and none of
 them read as a push, a fetch counted as ours, `update by push` swallowed by the
 not-ours list, an unclassified message treated as harmless, reflogs never
 considered switched off, the entry time back to the commit time, the mode pinned
@@ -207,9 +229,17 @@ each way, the marker hiding what is below it and the marker ignored entirely,
 local branch reflogs counted as pushes, UNCHECKED exiting 0, an unreachable
 remote read as no branches, a branch on the remote made fatal, the facts read
 from the checkout instead of the repository, the probe recorded, the whole
-command line logged, a failed log stopping the refusal, and nothing recorded at
-all. **Every one was caught**, by between one and nine tests. No mutation
+command line logged, a failed log stopping the refusal, nothing recorded at all,
+the log following the working directory again, and an installed gate recording
+nothing. **Every one was caught**, by between one and nine tests. No mutation
 survived.
+
+Two of those are worth naming as method rather than as results. A mutation that
+breaks the syntax proves nothing, and the first attempt at "a failed log stops
+the refusal" did exactly that, so it was rewritten to rethrow from the catch.
+And a mutation has to be faithful to the bug it stands for: the first attempt at
+"the log follows the working directory" dropped the `mkdir` the real bug had, so
+it wrote nothing and survived for a reason that had nothing to do with the test.
 
 **What is still only somebody's word is written down as that.** The publish step
 gained two commands and lost most of a sentence, and the sentence that remains
