@@ -512,6 +512,148 @@ test('a copied-in check-setup names itself by the path you would type', () => {
 })
 
 // ---------------------------------------------------------------------------
+// The record left where installs before #122 put it
+//
+// The gap that let #131 ship. Every case above covers the record being present
+// or absent in the place it lives now; nothing covered it being present in the
+// old place, so the branch that handles that ran on every one of this
+// repository's own runs and was exercised by no test at all. It named
+// `guard-guest-writes.mjs --install` whatever the legacy record said, and in an
+// owned repository that command installs a gate refusing every push.
+//
+// So each case here asserts the remedy the other answer would have got is
+// **absent**, not merely that the right one is present. A branch that prints
+// both commands passes an assertion that only looks for one.
+// ---------------------------------------------------------------------------
+
+const LEGACY = '.factory'
+
+// The remedy for each answer, as the operator would copy it. `--install` is the
+// dangerous one to print in an owned repository and `--record-owned` is the
+// dangerous one to print over a guest declaration, so both are asserted absent
+// somewhere.
+const INSTALL = /guard-guest-writes\.mjs --install/
+const RECORD_OWNED = /check-setup\.mjs --record-owned/
+
+test('a legacy record saying owned is told to record owned, and never to install the gate', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, '# Machine facts\n\nWrite boundary: owned\n')
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, 'an unrecorded boundary was treated as a failure')
+    assert.match(out, /Write boundary: NOT RECORDED/)
+    assert.match(out, /\.factory\/machine\.md is here from an install before #122/)
+    assert.match(out, /it says\n\s+"Write boundary: owned"/, 'the legacy record was never read')
+    assert.match(out, RECORD_OWNED, 'the owned answer was not offered its own writer')
+    // The defect. This is a repository the operator owns and is supposed to push
+    // to, and that command leaves a gate behind refusing every push.
+    assert.doesNotMatch(out, INSTALL, 'an owned repository was told to install the guest gate')
+  })
+})
+
+test('a legacy record saying guest is told to install, and never to record owned', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, '# Machine facts\n\nWrite boundary: guest\n')
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+
+    assert.equal(code, 0)
+    assert.match(out, /it says\n\s+"Write boundary: guest"/)
+    // The direction that was accidentally right before, and has to stay right.
+    assert.match(out, INSTALL, 'a guest repository lost the command that installs its gate')
+    assert.doesNotMatch(out, RECORD_OWNED, 'a repository recorded guest was offered the owned writer')
+    // The four owned layers are still reported, because the boundary is still
+    // unrecorded for the repository. Saying so is the difference between that
+    // and telling a guest to install them.
+    assert.match(out, /This record says guest, so do not install them/)
+  })
+})
+
+test('a legacy record answering neither is the unrecorded case, and gets both writers', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, '# Machine facts\n\nBacklog: beads\n')
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+
+    assert.equal(code, 0)
+    assert.match(out, /answers neither\n\s+owned nor guest/)
+    assert.match(out, INSTALL)
+    assert.match(out, RECORD_OWNED)
+    assert.match(out, /Nobody has recorded the write boundary here/)
+  })
+})
+
+// The second defect, and the reason it is measured on the rendered line rather
+// than on a string in the source: the legacy clause and the generic sentence
+// were written apart and joined by concatenation, so each read fine alone and
+// the run-on only existed in the output.
+test('the legacy paragraph does not claim nobody answered, about a record that did', () => {
+  withRepo((root) => {
+    for (const said of ['owned', 'guest']) {
+      write(root, `${LEGACY}/machine.md`, `Write boundary: ${said}\n`)
+      const { out } = check(root)
+      assert.doesNotMatch(out, /so nobody has said whether this/, `the ${said} record was contradicted`)
+      assert.doesNotMatch(out, /skipped the question rather than answered it/)
+    }
+    // And it is still said where it is true.
+    rmSync(join(root, LEGACY), { recursive: true })
+    assert.match(check(root).out, /so nobody has said whether this/)
+  })
+})
+
+// The remedy has to end somewhere, and where it ends is this reader agreeing.
+test('following the legacy owned remedy leaves the reader reporting owned', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, 'Write boundary: owned\n')
+    assert.equal(recordOwned(root).code, 0, 'the remedy the report prints does not run')
+
+    const { out } = check(root)
+    assert.match(out, /Write boundary: owned, recorded in \.git\/factory\/machine\.md/)
+    assert.doesNotMatch(out, /NOT RECORDED/)
+    // Reported, never removed. ADR 0037 keeps that decision with the operator.
+    assert.equal(existsSync(join(root, `${LEGACY}/machine.md`)), true)
+  })
+})
+
+// The same blindness as the reported defect, in the writer instead of the
+// reader: both of `--record-owned`'s refusals read the location the record lives
+// in now and neither read the one it used to. Measured before it was fixed: this
+// wrote `Write boundary: owned` beside a legacy guest declaration and exited 0.
+test('--record-owned refuses over a legacy record that says guest', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, 'Write boundary: guest\n')
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 1, 'owned was recorded over a guest declaration')
+    assert.match(out, /declares this repository a guest/)
+    assert.equal(existsSync(join(root, `${FACTORY}/machine.md`)), false, 'it wrote the record anyway')
+  })
+})
+
+test('--record-owned refuses where the legacy gate is installed and its record is gone', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/guard-guest-writes.mjs`, '// installed before #122\n')
+    const { code, out } = recordOwned(root)
+
+    assert.equal(code, 1, 'a repository with the guest gate installed was recorded as owned')
+    assert.match(out, /guard-guest-writes\.mjs is here from an install before #122/)
+    assert.equal(existsSync(join(root, `${FACTORY}/machine.md`)), false)
+  })
+})
+
+// The asymmetry that keeps the remedy runnable. Refusing every legacy record
+// would make the command the report now prints for an owned one exit 1, which is
+// the signpost pointing nowhere ADR 0029 says gets a layer switched off.
+test('--record-owned is not refused by a legacy record that already says owned', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, 'Write boundary: owned\n')
+    assert.equal(recordOwned(root).code, 0, 'the remedy for a legacy owned record refuses itself')
+    assert.match(readFileSync(join(root, `${FACTORY}/machine.md`), 'utf8'), /^Write boundary: owned$/m)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // A repository is not one directory
 //
 // #122, found by the owner on a real work repository in the first guest run and
@@ -646,6 +788,29 @@ test('--record-owned cannot write owned from a worktree of a repository recorded
     assert.match(out, /already exists|installing that gate is the guest/)
     assert.equal(existsSync(join(worktree, '.factory/machine.md')), false)
     assert.match(readFileSync(join(root, `${FACTORY}/machine.md`), 'utf8'), /^Write boundary: guest$/m)
+  })
+})
+
+// The claim the legacy paragraph makes, measured rather than asserted in prose.
+// This is why a legacy record is reported as NOT RECORDED instead of being
+// adopted as the repository's answer: adopting it would give one repository as
+// many answers as it has checkouts, which is the state ADR 0037 ended.
+test('a legacy record is invisible from a worktree, which is why it is not the answer', () => {
+  withRepo((root) => {
+    write(root, '.factory/machine.md', 'Write boundary: owned\n')
+    const worktree = worktreeOf(root)
+
+    assert.match(check(root).out, /\.factory\/machine\.md is here from an install before #122/)
+    // Same repository, same instant, and the file simply is not there.
+    assert.equal(existsSync(join(worktree, '.factory/machine.md')), false)
+    const { out } = check(worktree)
+    assert.doesNotMatch(out, /before #122/, "a worktree read the main checkout's legacy record")
+    assert.match(out, /machine\.md does not exist/)
+
+    // And the remedy closes that gap rather than restating it: recorded once
+    // from the main checkout, the answer is the repository's from both.
+    assert.equal(recordOwned(root).code, 0)
+    assert.match(check(worktree).out, /Write boundary: owned, recorded in/)
   })
 })
 
