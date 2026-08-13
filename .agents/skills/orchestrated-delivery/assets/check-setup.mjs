@@ -163,8 +163,18 @@ const GUEST_GATE = 'factory/guard-guest-writes.mjs'
 const LOCAL_SETTINGS = '.claude/settings.local.json'
 const REPO_SETTINGS = '.claude/settings.json'
 
-// Where an install from before #122 put the first two. Reported, never removed.
+// Where an install from before #122 put the first two. Reported, never removed:
+// `guard-guest-writes.mjs` says the same thing next to its own copy of these
+// constants, and ADR 0037 decided it there. The operator can see both and
+// decide, and a guess that deletes somebody's file in a repository that is not
+// ours is the wrong way round.
+//
+// These are relative to the checkout, not to the common directory, and that is
+// the whole finding: `.factory/` is in the working tree, so it is per-checkout
+// and a linked worktree cannot see the main checkout's copy.
 const LEGACY_FACTORY = '.factory'
+const LEGACY_RECORD = `${LEGACY_FACTORY}/machine.md`
+const LEGACY_GATE = `${LEGACY_FACTORY}/guard-guest-writes.mjs`
 
 const RECORD_AT = COMMON === null ? `<git common dir>/${MACHINE_RECORD}` : show(join(COMMON, MACHINE_RECORD))
 const GATE_AT = COMMON === null ? `<git common dir>/${GUEST_GATE}` : show(join(COMMON, GUEST_GATE))
@@ -175,22 +185,87 @@ const GATE_AT = COMMON === null ? `<git common dir>/${GUEST_GATE}` : show(join(C
 // line printed below, and asserts the shipped guard refuses it.
 const MERGE_GUARD = 'scripts/guard-merge.mjs'
 
+// The one line a reader and a writer of the machine record have to agree about,
+// asked in one place so they cannot drift apart. `undefined` means the file has
+// no such line at all, which is a different finding from a line saying something
+// unusable.
+const declaredIn = (record) => /^Write boundary:\s*(\S+)/m.exec(record)?.[1].toLowerCase()
+
+// The paragraph for a boundary nobody answered. `found` is what this run saw, as
+// however many lines it takes to say; everything after it is the same sentence
+// every time. Kept whole here rather than concatenated at the console: the legacy
+// branch below has a different thing to say, and splicing its clause into the
+// middle of this one produced a run-on that told an operator nobody had answered,
+// about a file that had (#131).
+const nobodyAnswered = (...found) => [
+  ...found.slice(0, -1),
+  `${found[found.length - 1]}, so nobody has said whether this`,
+  'factory may write outward. ADR 0021 has that asked out loud at initialisation, so',
+  'this repository skipped the question rather than answered it. That is a finding and',
+  'not an error: the layers below are reported as if owned.',
+]
+
+// Why a legacy record is not the repository's answer even when it is a perfectly
+// good one. This is ADR 0037 in four lines, and it is the reason this branch
+// reports NOT RECORDED rather than adopting what it just read: a per-checkout
+// answer gives one repository as many answers as it has checkouts, which is the
+// state that ADR ended.
+const PER_CHECKOUT = [
+  `${LEGACY_FACTORY}/ is in the working tree, so that answer is this checkout's and no`,
+  'other checkout of this repository can read it. ADR 0037 moved the record inside the',
+  'git common directory, which every checkout shares, and it has to be written there',
+  'before it is the repository that has answered rather than this directory.',
+]
+
+// A record left where installs before #122 put it. **What it says decides the
+// remedy**, which is the defect #131 measured: this branch used to name
+// `guard-guest-writes.mjs --install` whatever it found, and in a repository
+// recorded owned that command installs a gate refusing every push, and every
+// command it refuses is the workflow there. So the answer is read out, and
+// `unrecordedRemedy()` below prints the one command that writes it.
+function legacyBoundary(legacy) {
+  const said = declaredIn(legacy)
+  if (said !== OWNED && said !== GUEST) {
+    return {
+      mode: UNRECORDED,
+      legacy: null,
+      why: nobodyAnswered(
+        `${LEGACY_RECORD} is here from an install before #122 and answers neither`,
+        `owned nor guest, and ${RECORD_AT} does not exist`,
+      ),
+    }
+  }
+  return {
+    mode: UNRECORDED,
+    legacy: said,
+    why: [
+      `${LEGACY_RECORD} is here from an install before #122, it says`,
+      `"Write boundary: ${said}", and ${RECORD_AT} does not exist.`,
+      ...PER_CHECKOUT,
+      ...(said === OWNED
+        ? [
+            'The layers below are reported as if owned, which is what an unrecorded boundary',
+            'has always done here, and the remedy under them writes this same answer where the',
+            'whole repository can read it.',
+          ]
+        : [
+            'The layers below are reported as if owned, which is what an unrecorded boundary',
+            'has always done here. This record says guest, so do not install them: every one',
+            'is a change to a repository somebody has written down that they are a guest in.',
+          ]),
+    ],
+  }
+}
+
 function writeBoundary() {
   const record = readCommon(MACHINE_RECORD)
   if (record === null) {
-    const legacy = read(`${LEGACY_FACTORY}/machine.md`)
-    if (legacy !== null) {
-      return {
-        mode: UNRECORDED,
-        why:
-          `${LEGACY_FACTORY}/machine.md is here from an install before #122 and ${RECORD_AT} is not.` +
-          ' Re-run the gate\'s --install to move the record where every worktree can read it',
-      }
-    }
-    return { mode: UNRECORDED, why: `${RECORD_AT} does not exist` }
+    const legacy = read(LEGACY_RECORD)
+    if (legacy !== null) return legacyBoundary(legacy)
+    return { mode: UNRECORDED, why: nobodyAnswered(`${RECORD_AT} does not exist`) }
   }
 
-  const declared = /^Write boundary:\s*(\S+)/m.exec(record)?.[1].toLowerCase()
+  const declared = declaredIn(record)
   if (declared === OWNED || declared === GUEST) {
     return { mode: declared, record }
   }
@@ -199,10 +274,11 @@ function writeBoundary() {
   return {
     mode: UNRECORDED,
     record,
-    why:
+    why: nobodyAnswered(
       declared === undefined
         ? `${RECORD_AT} exists and has no "Write boundary:" line`
         : `${RECORD_AT} says "Write boundary: ${declared}", which is neither owned nor guest`,
+    ),
   }
 }
 
@@ -404,6 +480,38 @@ function recordOwned() {
       'reports rather than a state to write on purpose.',
       '',
       'If this repository really is yours, remove the gate and its wiring first.',
+    ])
+  }
+
+  // The same refusal against the paths installs used before #122, which both of
+  // the checks above read straight past. Measured while fixing #131: in a
+  // repository whose `.factory/` held a guest gate and a record saying guest,
+  // this wrote `Write boundary: owned` into the common directory and exited 0,
+  // leaving the repository holding two records contradicting each other. That is
+  // the state ADR 0039 built these refusals to prevent and ADR 0037 found being
+  // manufactured from a worktree, and it is the same blindness #131 reported in
+  // the reader: this file knew the legacy location existed and never read what
+  // was in it.
+  //
+  // **The record half is asymmetric on purpose.** A legacy record saying `owned`
+  // is not refused, because the report now sends exactly that case here: writing
+  // the answer it already gives, somewhere every checkout can read it, is the
+  // whole remedy. What is refused is writing an answer that contradicts one
+  // somebody declared.
+  const legacyGate = read(LEGACY_GATE) !== null
+  const legacyRecord = read(LEGACY_RECORD)
+  if (legacyGate || (legacyRecord !== null && declaredIn(legacyRecord) === GUEST)) {
+    refuse([
+      `${legacyGate ? LEGACY_GATE : LEGACY_RECORD} is here from an install before #122 and`,
+      'declares this repository a guest. Recording it as owned would leave the repository',
+      'holding two records that contradict each other, and the older one is the harder to',
+      'notice, because nothing reads it any more.',
+      '',
+      'A legacy record answering owned is a different case and is not refused: writing',
+      'that same answer where every checkout can read it is what the report asks for.',
+      '',
+      `If this repository really is yours, remove ${LEGACY_FACTORY}/ and any wiring that`,
+      'names it first, and then this has nothing to contradict.',
     ])
   }
 
@@ -931,7 +1039,7 @@ const LAYERS = [
         }
       }
 
-      if (read(`${LEGACY_FACTORY}/machine.md`) !== null) {
+      if (read(LEGACY_RECORD) !== null) {
         findings.push(
           `note: ${LEGACY_FACTORY}/ is still here from an install before #122 and nothing reads` +
             ' it now. Check what is in it, then remove it and its /.factory/ line from' +
@@ -963,10 +1071,7 @@ if (COMMON !== null && !samePath(COMMON, join(ROOT, '.git'))) {
 }
 if (BOUNDARY.mode === UNRECORDED) {
   console.log('Write boundary: NOT RECORDED')
-  console.log(`             ${BOUNDARY.why}, so nobody has said whether this factory may`)
-  console.log('             write outward. ADR 0021 has that asked out loud at initialisation, so')
-  console.log('             this repository skipped the question rather than answered it. That is a')
-  console.log('             finding and not an error: the layers below are reported as if owned.')
+  for (const line of BOUNDARY.why) console.log(`             ${line}`)
 } else {
   console.log(`Write boundary: ${BOUNDARY.mode}, recorded in ${RECORD_AT}`)
 }
@@ -1032,18 +1137,67 @@ const PROBE = [
 // declaration; the owned one is written here, because owned mode has no gate to
 // declare it with. Naming only the first is what made this block ask an owned
 // repository for a line nobody could produce, run after run, for ever.
-const UNRECORDED_REMINDER = [
-  'Nobody has recorded the write boundary here. Record it before the loop starts.',
-  'It is a machine fact either way, about this operator on this repository, so it is',
-  `never committed: one line in ${RECORD_AT}, inside the git common`,
-  'directory where every checkout reads it and no clone inherits it. Whichever',
-  'answer is true here, one command writes it:',
+//
+// **A legacy record already carries the answer, so it gets one command and not a
+// pair.** ADR 0029's rule that a refusal owes a remedy that works has a second
+// half #131 measured the cost of: a remedy that runs and does the wrong thing is
+// worse than one that cannot run. `--install` in a repository recorded owned
+// leaves behind a gate refusing every push, in a repository the operator owns and
+// is supposed to push to, and it is the operator who then has to work out that
+// the report sent them there. Choosing between two commands is a step that can be
+// got wrong, so where the answer is already on disk this does not offer the
+// choice.
+const GUEST_WRITER = '    node <skill>/assets/guard-guest-writes.mjs --install'
+const OWNED_WRITER = `    node ${SELF} --record-owned`
+
+// Following either remedy leaves the old directory behind, because neither
+// writer removes it and neither should: ADR 0037 keeps that decision with the
+// operator, who can see what is in there.
+const LEGACY_LEFTOVERS = [
   '',
-  '    node <skill>/assets/guard-guest-writes.mjs --install',
-  '        not your repository: the gate, and the record as part of installing it',
-  `    node ${SELF} --record-owned`,
-  '        yours: the record, and nothing else',
+  `Afterwards, look at what else is in ${LEGACY_FACTORY}/ and remove it along with its`,
+  '/.factory/ line in .git/info/exclude. Nothing reads that directory now.',
 ]
+
+function unrecordedRemedy() {
+  if (BOUNDARY.legacy === OWNED) {
+    return [
+      `${LEGACY_RECORD} already answers this question, and the answer is owned. Write`,
+      'that same answer where every checkout of this repository can read it. It records',
+      'and does nothing else: owned mode has no gate, so there is nothing to install.',
+      '',
+      OWNED_WRITER,
+      ...LEGACY_LEFTOVERS,
+    ]
+  }
+  if (BOUNDARY.legacy === GUEST) {
+    return [
+      `${LEGACY_RECORD} already answers this question, and the answer is guest. Do not`,
+      'move that file: in guest mode the record is a byproduct of installing the gate,',
+      'and a guest record with no gate behind it is a declaration and not a control.',
+      'Re-run the install, which writes the gate, the record and the wiring where every',
+      'checkout of this repository reads them:',
+      '',
+      GUEST_WRITER,
+      ...LEGACY_LEFTOVERS,
+    ]
+  }
+  return [
+    'Nobody has recorded the write boundary here. Record it before the loop starts.',
+    'It is a machine fact either way, about this operator on this repository, so it is',
+    `never committed: one line in ${RECORD_AT}, inside the git common`,
+    'directory where every checkout reads it and no clone inherits it. Whichever',
+    'answer is true here, one command writes it:',
+    '',
+    GUEST_WRITER,
+    '        not your repository: the gate, and the record as part of installing it',
+    OWNED_WRITER,
+    '        yours: the record, and nothing else',
+    ...(BOUNDARY.legacy === undefined ? [] : LEGACY_LEFTOVERS),
+  ]
+}
+
+const UNRECORDED_REMINDER = unrecordedRemedy()
 
 if (unmet === 0) {
   console.log(
