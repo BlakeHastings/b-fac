@@ -129,7 +129,8 @@ is itself a change to a repo you are a guest in.
    owner and mining the record are safe. Editing is not.
 6. Review. `references/reviewing.md`.
 7. Post what you independently verified, then merge or send it back.
-8. File what surfaced and could not be fixed there.
+8. File what surfaced and could not be fixed there, and top up the handoff with
+   whatever this pass changed about where the work stands.
 9. Go to 1. The loop has no step that ends it, and reporting is not one. See
    "Before you stop".
 
@@ -331,6 +332,38 @@ yours under Escalation. The clause manufactures a decision point, and a
 manufactured one stops the loop exactly as hard as a real one. Strike it and
 dispatch.
 
+## Surviving your own compaction
+
+When the context window fills, the harness replaces the conversation with a
+summary. Nothing errors and the loop carries on, which is what makes this the
+one failure the loop cannot notice. What is gone is the specifics: which agent
+is on which issue, what the owner said an hour ago and in what words, which
+assumption a brief was written under.
+
+**Keep a handoff file, and top it up as part of the loop rather than at the
+boundary.** A handoff written when the context is nearly full is written by the
+most degraded version of you, about work you can barely still see; the worked
+example this skill came from was written at a *calm* moment and was wrong about
+its largest claim within the hour. The boundary cannot be gated anyway.
+**Automatic compaction must never be refused** — a refused one cannot be
+satisfied, because the session then fails every request and the hook goes on
+refusing, and the same rule fires for a subagent's context and kills the agent.
+
+It is a snapshot with a decay note, not a source of truth, and where it
+disagrees with the repository the repository is right. **Do not invent a
+document type for it.** The backlog, the decision records, `orchestrating.md`
+and the review record on each PR already carry everything durable; the handoff
+is only where the work stopped and what a successor would otherwise have to
+reconstruct.
+
+`assets/handoff-hooks.mjs` is the mechanical half: it refuses a manual
+`/compact` when the handoff has aged out, never refuses an automatic one, and
+prints the file into the resumed context afterwards. **After any compaction,
+look for that injected block** — it is either in this context or it is not, so
+unlike every other layer here, asking whether it is loaded costs nothing.
+`references/continuity.md`, including what a subagent that compacts mid-run
+loses and why nothing can currently carry it.
+
 ## Three shapes of agent
 
 **The builder.** One issue, one branch, one PR. The default.
@@ -400,6 +433,7 @@ is silent, and one repository spent two days that way.
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
 | `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
+| `handoff-hooks.mjs` | `scripts/`, wired to `PreCompact` and `SessionStart` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
 
@@ -415,6 +449,7 @@ in the order its commits show rather than the order listed here.
 | `references/reviewing.md` | A PR is waiting |
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
+| `references/continuity.md` | Wiring the compaction hooks, or the context is filling |
 | `references/host-checks.md` | Working out what a repo you did not create actually runs |
 | `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
