@@ -190,10 +190,22 @@ however well chosen would have covered it. #123 should close into this for the
 state and stay open for nothing, or be reopened for a question that is actually
 about a store — surviving a re-clone, which this does not.
 
-**The suite was not trusted for passing.** Nine mutations were applied to the
-implementation one at a time: the record written to the checkout instead of the
-common directory, the scope comparison always true, always false, case-sensitive
-on Windows, the scope never parsed out of the printed block, the block written
-to the home directory instead of printed, layer G ignoring the machine-wide
-registration, layer G counting an out-of-scope registration, and `--record-owned`
-reading the checkout again. Every one was caught.
+**The suite was not trusted for passing, and one mutation survived the first
+pass.** Eleven were applied to the implementation one at a time: the machine
+record written to the checkout instead of the common directory, the scope
+comparison always true, always false, and case-sensitive on Windows, the printed
+block carrying no `--scope`, that block written to the home directory instead of
+printed, layer G ignoring the machine-wide registration, layer G counting an
+out-of-scope one, layer G no longer enumerating the other checkouts,
+`--record-owned` reading the checkout again, and the discovered check command
+going back to the working-tree root. Ten were caught, by between one and
+twenty-four tests each.
+
+The survivor is worth naming because of which direction it fails in. **Nothing
+asserted that the scope comparison is case-insensitive on Windows.** The two
+sides come from different places — one from `git rev-parse`, one from a JSON
+string the operator pasted — and on Windows they can spell the same path two
+ways. A case-sensitive compare makes the gate stand aside *inside* the
+repository it was installed for, silently, in the allowing direction: the same
+shape of hole as the one this issue is about, reintroduced by the fix for it.
+There is a test now.

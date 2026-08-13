@@ -574,6 +574,35 @@ test('--scope denies inside the repository it names, from a worktree as well as 
   }
 })
 
+// The two sides of the comparison come from different places: one from `git
+// rev-parse`, one from a JSON string the operator pasted, quite possibly out of
+// a terminal that spelled the drive letter the other way. On Windows those are
+// the same path and a case-sensitive compare makes the gate stand aside inside
+// the repository it was installed for — silently, in the allowing direction,
+// which is the shape of hole this whole issue was about.
+test(
+  'on Windows the scope survives a path spelled in a different case',
+  { skip: process.platform !== 'win32' && 'paths are case-sensitive off Windows' },
+  () => {
+    const root = scratchRepo()
+    try {
+      install(root)
+      const common = commonDirOf(root)
+      const gate = join(common, 'factory/guard-guest-writes.mjs')
+
+      for (const spelling of [common.toUpperCase(), common.toLowerCase()]) {
+        assert.equal(
+          scoped(gate, spelling, 'git push origin HEAD', root),
+          true,
+          `a push was allowed inside the scoped repository, spelled ${spelling}`,
+        )
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
 test('--scope stands aside everywhere else, which is the whole reason it exists', () => {
   const root = scratchRepo()
   const elsewhere = scratchRepo()

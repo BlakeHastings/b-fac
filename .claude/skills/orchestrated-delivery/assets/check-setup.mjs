@@ -1065,10 +1065,14 @@ const until = unmet === 1 ? 'Until it is,' : 'Until they are,'
 
 console.error(`${subject} absent, unwired, or still unedited.`)
 if (CHECKLIST === GUEST) {
-  console.error(`${until} nothing refuses an outward write into a repository that is not`)
-  console.error('yours: a push, a pull request, a comment on their tracker, a `bd init` that')
-  console.error('commits nineteen files. Install the gate, restart the harness, then run the')
-  console.error('probe and paste both outputs into your first status update.')
+  console.error(`${until} some session working this repository refuses no outward write`)
+  console.error('into a repository that is not yours: a push, a pull request, a comment on')
+  console.error('their tracker, a `bd init` that commits nineteen files. Read the findings')
+  console.error('above rather than reinstalling by reflex — "the gate is missing" and "the')
+  console.error('gate is not registered for the sessions doing the writing" are different')
+  console.error('states and only one of them is fixed by installing it again. Then restart')
+  console.error('the harness, run the probe, and paste both outputs into your first status')
+  console.error('update.')
 } else {
   console.error(`${until} nothing here mechanically stops an agent landing code, and`)
   console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
