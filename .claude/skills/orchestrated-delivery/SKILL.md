@@ -460,7 +460,7 @@ in the order its commits show rather than the order listed here.
 | --- | --- |
 | `references/briefing.md` | Writing a brief or an issue |
 | `references/refinement.md` | Work is too underdetermined to brief, or the owner wants a spec |
-| `references/reviewing.md` | A PR is waiting |
+| `references/reviewing.md` | A PR is waiting, or a stack of them is |
 | `references/parallelism.md` | Running more than one agent |
 | `references/enforcement.md` | Installing the controls, or one misfired |
 | `references/continuity.md` | Wiring the compaction hooks, or the context is filling |

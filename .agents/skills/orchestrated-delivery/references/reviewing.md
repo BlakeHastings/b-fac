@@ -115,6 +115,120 @@ nothing had tested the combination either, and that combination is what ships.
 If end-to-end tests do not run on pull requests, a green CI is not evidence the
 default branch stays green. Run them yourself before merging.
 
+## The lenses are about one change
+
+Everything above judges one returned claim on one branch, and so do the three
+lenses. Two passes run when a queue emptied found defects that no reviewer of a
+single pull request was in a position to reach.
+
+> A stack is not the sum of its PRs, and nobody is assigned to the union.
+
+`references/parallelism.md` reasons about collision surface *before* dispatch.
+This is the same concern afterwards, and only one of the two was written down.
+
+### The adversarial pass
+
+Every implementing agent had proved its own change worked. Nobody had tried to
+break one. "Does it do what it says" and "what does it now permit" are different
+questions, and only the first has an owner: the author asks it, the reviewer
+asks it again, and the answer is yes both times.
+
+Told to construct specific failures rather than to review, one pass built three,
+including a sequence nobody had reasoned about: a recovery guard counting one
+thing while the catalogue counted another, so a particular order of grants and
+deactivations satisfied the guard and locked every user out.
+
+**What it reaches that the lenses do not is the path nobody chose to walk.** The
+lenses follow the change: its diff, its tests, its journey. An attack starts
+from the state you want to reach and works backwards to whether the code will
+let you get there, across branches, files and features that no diff puts next to
+each other. Brief it as attacks to construct rather than as a review, or you get
+taste. `references/briefing.md` has the shape.
+
+### The union pass
+
+Merge every open branch into a scratch worktree, reconcile the conflicts by
+hand, run the suite. Seven pull requests, each written by an agent that could
+see only its own branch, produced two branches whose convention documents are
+each wrong about the other, a test invariant one branch disproves that two
+others assert, and a deploy that silently revokes access.
+
+**None of those exists on any branch.** Each is a property of the combination,
+so none was available to a reviewer of any single PR, however careful. That is
+the justification, and it is not that the union is a better review: it is the
+only review with the defect inside its field of view. It boots things, so it
+gets a worktree like anything else that does.
+
+**The reconciliation is the pass. The suite run is not.** A union pass that ends
+"the suite is green" has done the half CI already does, one branch at a time, on
+every merge commit. The findings above came out of resolving a conflict and
+asking what each side believed: two documents describing one convention
+differently is not a test failure, because nothing reads either of them. Report
+which branches disagreed and about what. If the only thing you can say is the
+exit code, the pass has not happened yet.
+
+### When to budget them
+
+The field trigger was "there is nothing else to dispatch". Keep it as a floor
+rather than the rule: it fires on the state of your queue, and the defect is in
+the stack.
+
+Above the floor, count the stack. **Branches say what it costs; shared surface
+says whether it is needed**, and the second is the trigger. Seven branches in
+seven directories is a merge. Two branches editing one convention is a union
+pass, whatever else is dispatchable.
+
+```bash
+gh pr list --json number --jq '.[].number' | while read -r p; do
+  gh pr diff "$p" --name-only | sed "s|^|#$p |"
+done | sort -k2 | uniq -f1 -D
+```
+
+That prints every file touched by more than one open pull request, grouped, with
+the PRs touching it. Any output at all is a stack with a union in it. **What it
+cannot see is the case that produced the findings above**: branches that share
+no file and disagree about a claim. So read it beside two questions it does not
+answer, and treat either as the same trigger.
+
+- Do two open branches state a convention, each in its own file? Two documents
+  can both be edited without either being the same document.
+- Does an open branch touch deployment, permissions or access? Those are
+  single-copy surfaces where the last branch to land writes for everybody, which
+  is what "a deploy that silently revokes access" was.
+
+### What the union pass costs
+
+About one agent run, and the cost sits in the reconciliation rather than in the
+branches: seven that merge cleanly is minutes, two that both rewrote one file is
+the whole run. It also **competes with dispatch**, since the hour spent
+reconciling is an hour not spent briefing, and unlike a builder it produces
+nothing that lands.
+
+Every resolution made in the scratch worktree is thrown away deliberately.
+Nothing is pushed, nothing merges out of it, and the fix belongs to the agent
+that owns the branch, because resolving a conflict on a change you are about to
+review is authoring it (`references/parallelism.md`). Budget the same conflict
+being resolved twice, once to find out and once for real.
+
+Skip it when there is nothing to reconcile. Disjoint branches degenerate the
+pass into a suite run CI has already done. Where the ruleset requires branches
+to be up to date, the union assembles itself as each merge forces the next
+rebase; that is cheaper and it is not the same thing, because it gets the text
+merged without anyone asking what each side believed. A stack landing within the
+hour can wait for that. A stack that will take two days cannot.
+
+### Both are read-only, which is when they are worth most
+
+Neither writes to a branch. The adversarial pass changes nothing and reports.
+The union pass writes only into a worktree it deletes.
+
+So they are the work when the environment is broken. One night, container
+exhaustion made every browser check impossible and nothing needing a running app
+could be verified or dispatched. These two passes were the only useful work
+available and they returned more than the blocked checks would have.
+**Analysis is not filler.** A broken environment is a reason to change the unit
+of review, not a reason to stop.
+
 ## Read for what is missing
 
 The strongest reviews find the absence. A confirmation page the user can

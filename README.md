@@ -130,7 +130,7 @@ demand rather than all at once:
 | --- |
 | `references/briefing.md` — writing a brief or an issue |
 | `references/refinement.md` — work is too underdetermined to brief, or the owner wants a spec |
-| `references/reviewing.md` — a PR is waiting |
+| `references/reviewing.md` — a PR is waiting, or a stack of them is |
 | `references/parallelism.md` — running more than one agent |
 | `references/enforcement.md` — installing the controls, or one misfired |
 | `references/continuity.md` — wiring the compaction hooks, or the context is filling |
