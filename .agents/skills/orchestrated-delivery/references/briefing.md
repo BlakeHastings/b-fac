@@ -199,6 +199,18 @@ name: say where the claim came from and make checking it the agent's first task.
 That is not a licence to skip reading it, and it still beats a general
 invitation to disagree, because it points at something.
 
+**The same rule, for an adversarial brief: name the failure to construct, not
+the disposition to adopt.** "Assume this is wrong and find problems" is an
+invitation, and invitations get you taste. "Construct a lockout using role
+deactivation, bundles, or a split key set" names an artifact the agent either
+produces or reports it could not. It is the rule above with the claim inverted:
+not "confirm this count", but "build this failure". One such brief named six
+specific attacks; the agent built three, one of them a sequence nobody had
+reasoned about. Name more attacks than you expect to land, and say that "I tried
+to build this and could not, and here is what stopped me" is a result. Without
+that, an agent who fails to construct yours goes looking for something else to
+call a finding. `references/reviewing.md` has what the pass is for.
+
 Two more that have not been measured separately:
 
 **The issue might be stale.** An issue is a claim made at a moment, and the
