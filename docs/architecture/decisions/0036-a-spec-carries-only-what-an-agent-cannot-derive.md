@@ -129,6 +129,13 @@ is worse than no pointer. The overlap is also smaller than it looks: both
 skills are about extracting from a corpus, and refinement is about extracting
 from a person, which is the one source that answers back.
 
+**The rule's edge was tested against `references/briefing.md` and holds there
+as a boundary rather than as an extension.** Issue #116 asked whether the same
+rule sharpens what a brief carries. It does not: a brief keeps its derivable
+elements because its writer has already paid for them and its reader has not.
+ADR 0046 records that, and the sentence saying so is now in
+`references/refinement.md` and in `references/briefing.md`.
+
 **The threshold is the part most likely to be wrong in practice**, in both
 directions. Whether it catches every bug fix, or nothing at all, is a property
 of a queue that has not run yet. Measuring it is a follow-up rather than a guess

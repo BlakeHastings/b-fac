@@ -247,3 +247,13 @@ need a spec and what makes it hard to parallelise. That was withdrawn, and the
 withdrawal is the clearest illustration of the rule at the top of this file: an
 agent reads the repository and works out what touches what, so putting it in the
 spec spends the scarcest hour of the day on the cheapest question.
+
+**The rule stops at the spec, and `briefing.md` is not an exception to it.** A
+brief carries reading order and the files that already exist, both derivable and
+both kept, because the two documents have different writers and different
+readers. A spec is written by the owner, whose hour is the scarce thing, for an
+orchestrator with the repository already open. A brief is written by that
+orchestrator, who has already read it, for an agent whose context is the scarce
+thing and whose context running out is what silently rewrites the brief. Same
+rule; different scarce resource. ADR 0046 has the evidence, including why the
+traps were never the exception they look like.
