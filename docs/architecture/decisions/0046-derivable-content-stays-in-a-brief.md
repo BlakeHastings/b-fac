@@ -13,11 +13,40 @@ sharpens `references/briefing.md`, and filed the question rather than the change
 because that file holds the only measured claims in the skill and should not be
 edited on a hunch.
 
-The eight-element "What a brief carries" list predates the rule and was derived a
-different way, from what worked across 240 subagent transcripts. Run the rule
-over it and the elements do not sort cleanly. Four are plainly not derivable and
-the rule agrees they belong. Three look derivable and the measurements say
-include them anyway: reading order, what already exists by name, and the traps.
+The "What a brief carries" list predates the rule and was derived a different
+way, from what worked across 240 subagent transcripts. It has **ten** elements,
+and running the rule over them sorts three ways rather than two.
+
+- **Four are facts about the repository that an agent cannot derive**, so the
+  rule agrees they belong: why it matters, the steer labelled as a steer, what
+  proof would convince you, and what is out of scope.
+- **Three are derivable, and the measurements say carry them anyway**: reading
+  order, what already exists by name, and the traps. This is the group #116
+  filed its question about, and the decision below is about these three.
+- **Three are not facts at all**, so the rule never reaches them. *Do not merge*,
+  *what to do with a question* and *the report contract* tell the agent how to
+  behave; they make no claim about the repository that could be derived from it
+  or checked against it. **The rule sorts facts.** Their being unsorted is a
+  property of what the rule is for, not a gap in it, and saying so is what makes
+  the classification complete rather than partial.
+
+**#116 said eight, and the arithmetic that followed it was short twice over.**
+Four plus three is seven, which was already one shy of the eight it was offered
+against and is three shy of the ten there are. The number came from the issue,
+was repeated in the brief without being checked, and was repeated here. It
+survived until a reviewer ran the count:
+
+```bash
+sed -n '/^## What a brief carries/,/^Traps that each/p' \
+  .agents/skills/orchestrated-delivery/references/briefing.md | grep -c '^- \*\*'
+```
+
+That answers 10. **This is the pull request's own third refinement failing on the
+pull request that added it**: a count quoted from a source rather than re-derived
+with the command about to be written down. It is recorded here rather than
+quietly corrected, because a rule earns more from a live failure than from the
+anecdote it shipped with, and because the three elements the wrong count hid are
+the ones that complete the classification.
 
 ## What the evidence says
 
