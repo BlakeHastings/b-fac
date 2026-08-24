@@ -12,9 +12,9 @@ repository, the repository is right.
 
 ## Where things stand
 
-`main` is at `1a01485`, version 0.38.0, and `npm run check` is green on it.
-**No pull requests were open when this session started**, and the last commit
-before it was 2026-08-18. The repository sat still for six days.
+This session opened at `1a01485`, version 0.38.0, with `npm run check` green,
+**no pull requests open**, and the last commit six days behind it on 2026-08-18.
+`main` has since moved to 0.39.0.
 
 Epic progress, counted from the **sub-issue edge**:
 
@@ -60,24 +60,35 @@ Two of them carry a warning that generalises past their own scope:
 
 ## In flight right now
 
-Three agents, dispatched in one wave at the start of this session. **Each brief
-is a comment on its issue rather than in the dispatch message**, so an agent that
-compacts can recover it with `gh issue view <n> --comments`.
+**Each brief is a comment on its issue rather than in the dispatch message**, so
+an agent that compacts can recover it with `gh issue view <n> --comments`. That
+convention paid for itself this session for a reason nobody planned: see the
+`@-` trap below.
 
-- **#135** the command-substitution probe hole. Foundation bug, and the one I
-  would land first.
-- **#138 batched with #116**, both in `references/briefing.md`. Batched because
-  #138 says so itself, and two agents in that file is a rebase somebody chose.
-- **#137** fan-out resume state, in `references/parallelism.md`.
+**Landed:** #137, as PR #142. `main` now ships **0.39.0**. It added a fan-out
+resume record and ADR 0044, and it was sent back once for carrying two
+contradicting ordinals for one object — a filename saying *fifth*, a heading
+saying *fourth*, and an H1 that had already found the right answer by dropping
+the number.
 
-All three change the payload, so all three bump `.claude-plugin/plugin.json`,
-and each was told to re-read `origin/main` at push time rather than guess a
-number. **Expect a rebase chain**: the ruleset requires branches to be up to
-date, so the first merge puts the other two `BEHIND`. That is the known price,
-and `orchestrating.md` says not to relax the ruleset to avoid it.
+**Open, in the order I would land them:**
 
-A fourth branch, `docs/handoff-2026-08-24`, is this file. Docs are not payload,
-so it does not bump the version. Merge it last.
+- **#144** (#138 batched with #116), `references/briefing.md`. Sent back: ADR
+  0046 says "eight-element list" and there are ten. The count came from #116 and
+  I repeated it in the brief without checking, which is the same failure the PR
+  itself adds a rule against.
+- **#146** (#128, `SessionStart` half). Reviewed and approved on content, waiting
+  only on a rebase behind #142.
+- **#135** the command-substitution probe hole, and **#143** the empty-body
+  mechanism, both still running.
+- `docs/handoff-2026-08-24`, this file. Docs are not payload, so no version bump.
+  Merge it last.
+
+**Expect a rebase chain.** The ruleset requires branches to be up to date, so
+each merge puts every other open PR `BEHIND` and `merge-pr.mjs` refuses it by
+design. Rebases belong to the branch owner, not the reviewer. #144 and #142 both
+took 0.39.0 independently and did not conflict, which is #105 exactly: the more
+disciplined the agents, the more identical the edit.
 
 ## What needs the owner
 
@@ -86,17 +97,19 @@ marketplace listing, **#28** the shape of the visibility surface, **#57** paying
 for usage testing, **#87** the `Parent: #N` line, which now has a measurement
 under it rather than a preference.
 
-**One question is asked and is not on an issue of its own**: whether the
-`PreCompact` refusal from `assets/handoff-hooks.mjs` should be wired into this
-repository's tracked `.claude/settings.json`. It is written up inside #128, it
-changes the owner's own live sessions, and #128 says explicitly to get their
-answer rather than infer it. The `SessionStart` half needs no answer and can go
-in without it.
+**#141** is the live one: whether the `PreCompact` refusal should be wired into
+this repository's tracked `.claude/settings.json`, which would refuse the owner's
+own manual `/compact` when the handoff is stale. Split out of #128 so that
+issue's safe half stayed dispatchable. My recommendation is yes, revised to
+*settle #145 first*, because the staleness it refuses on rests on a measure now
+known to be unsound where it ships. Both the recommendation and the revision are
+on the issue.
 
 ## Dispatchable now, in the order I would take them
 
-**#128** (the `SessionStart` half only), **#134**, **#130**, **#105**, **#112**,
-**#114**, **#93**, **#91**, **#64**, **#7**.
+**#145** (the mtime staleness measure, filed this session and unassigned),
+**#134** (briefed already, on the issue), **#130**, **#105**, **#112**, **#114**,
+**#93**, **#91**, **#64**, **#7**.
 
 **#134** is the sharpest of these, and the shape of the answer is the work: what
 should a report do when it holds a strong hint it cannot trust? Its own lean is
@@ -108,6 +121,24 @@ mode. That inversion is what ADR 0037 exists to prevent.
 factory state lives.
 
 ## Traps that cost something in this session
+
+- **`gh --body @-` writes the literal string `@-`.** It is a `curl` convention;
+  `gh` takes `--body-file -`. The call exits 0 and prints a URL, and
+  `gh issue view --comments` renders the stored body as `@-` with no sign
+  anything is wrong. **Seven artifacts were written empty this way in one
+  session** — four agent briefs, a measurement, a pull request body, and the body
+  of an issue escalating a question to the owner. Three agents were dispatched at
+  briefs that did not exist, and two of them worked their issues anyway from the
+  issue bodies. The worst of the seven was the escalation, because nobody was
+  waiting on it to notice. `references/reviewing.md:274` already said to use
+  `--body-file`, and already carried its own note that it had been walked into
+  once before, which makes this the third occurrence and a mechanism problem
+  rather than a typo. #143. **Read a body back after posting it.**
+- **The handoff's staleness is mtime, and every worktree resets it.** A twelve-day
+  old file reads as under an hour old in a fresh worktree, and `mergesSince`
+  counts from the same reset value, so both clocks say fresh at once. Measured,
+  not reasoned about: #145. Consequence for anyone wiring the `PreCompact` half —
+  it would refuse in the main checkout and never in a worktree.
 
 - **`gh issue list --jq` is gh's own jq and does not accept `--arg`.** It also
   reads `\b` in a bash single-quoted expression as a backspace, so a `test()`
