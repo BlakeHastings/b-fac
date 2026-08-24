@@ -14,7 +14,7 @@ repository, the repository is right.
 
 This session opened at `1a01485`, version 0.38.0, with `npm run check` green,
 **no pull requests open**, and the last commit six days behind it on 2026-08-18.
-`main` has since moved to 0.39.0.
+`main` has since moved to 0.41.0 across four merges.
 
 Epic progress, counted from the **sub-issue edge**:
 
@@ -65,22 +65,28 @@ an agent that compacts can recover it with `gh issue view <n> --comments`. That
 convention paid for itself this session for a reason nobody planned: see the
 `@-` trap below.
 
-**Landed:** #137, as PR #142. `main` now ships **0.39.0**. It added a fan-out
-resume record and ADR 0044, and it was sent back once for carrying two
-contradicting ordinals for one object — a filename saying *fifth*, a heading
-saying *fourth*, and an H1 that had already found the right answer by dropping
-the number.
+**Landed this session**, in merge order, taking `main` from 0.38.0 to **0.41.0**:
 
-**Open, in the order I would land them:**
+- **#142** (#137), fan-out resume records and ADR 0044. Sent back once for
+  carrying two contradicting ordinals for one object: a filename saying *fifth*,
+  a heading saying *fourth*, and an H1 that had already found the right answer by
+  dropping the number.
+- **#144** (#138 with #116), `references/briefing.md` and ADR 0046. Sent back
+  once: the ADR said "eight-element list" and there are ten. The count came from
+  #116 and I repeated it in the brief without checking, which is the failure the
+  same pull request adds a rule against. It is recorded inside ADR 0046 as
+  exactly that, rather than quietly corrected.
+- **#146** (#128), the `SessionStart` half. **This repo now runs the compaction
+  hook it publishes**, with a test asserting `scripts/handoff-hooks.mjs` stays
+  byte-identical to the asset. Mirror that copy on any change to the asset.
+- **#148** (#143), `scripts/post-body.mjs` and ADR 0049. Posts a body from a
+  file, reads the artifact back, and fails when they differ. **Use it.** It
+  replaced the note at `reviewing.md:274` rather than joining it.
 
-- **#144** (#138 batched with #116), `references/briefing.md`. Sent back: ADR
-  0046 says "eight-element list" and there are ten. The count came from #116 and
-  I repeated it in the brief without checking, which is the same failure the PR
-  itself adds a rule against.
-- **#146** (#128, `SessionStart` half). Reviewed and approved on content, waiting
-  only on a rebase behind #142.
-- **#135** the command-substitution probe hole, and **#143** the empty-body
-  mechanism, both still running.
+**Open:**
+
+- **#147** (#135), the command-substitution probe hole.
+- **#134**, **#145**, **#105**, all dispatched with briefs on their issues.
 - `docs/handoff-2026-08-24`, this file. Docs are not payload, so no version bump.
   Merge it last.
 
@@ -107,9 +113,12 @@ on the issue.
 
 ## Dispatchable now, in the order I would take them
 
-**#145** (the mtime staleness measure, filed this session and unassigned),
-**#134** (briefed already, on the issue), **#130**, **#105**, **#112**, **#114**,
+**#149** (issue creation is the one body-carrying call `post-body.mjs` does not
+cover, and it is where the worst artifact died), **#130**, **#112**, **#114**,
 **#93**, **#91**, **#64**, **#7**.
+
+#134, #145 and #105 are dispatched rather than waiting, and each has its brief as
+a comment on the issue.
 
 **#134** is the sharpest of these, and the shape of the answer is the work: what
 should a report do when it holds a strong hint it cannot trust? Its own lean is
@@ -126,18 +135,20 @@ factory state lives.
   `gh` takes `--body-file -`. The call exits 0 and prints a URL, and
   `gh issue view --comments` renders the stored body as `@-` with no sign
   anything is wrong. **Seven artifacts were written empty this way in one
-  session** — four agent briefs, a measurement, a pull request body, and the body
+  session**: four agent briefs, a measurement, a pull request body, and the body
   of an issue escalating a question to the owner. Three agents were dispatched at
   briefs that did not exist, and two of them worked their issues anyway from the
   issue bodies. The worst of the seven was the escalation, because nobody was
   waiting on it to notice. `references/reviewing.md:274` already said to use
   `--body-file`, and already carried its own note that it had been walked into
   once before, which makes this the third occurrence and a mechanism problem
-  rather than a typo. #143. **Read a body back after posting it.**
+  rather than a typo. Fixed in #148: **post through `scripts/post-body.mjs`**,
+  which reads the artifact back and fails when it differs. ADR 0049. Creation is
+  the one call it does not cover, which is #149.
 - **The handoff's staleness is mtime, and every worktree resets it.** A twelve-day
   old file reads as under an hour old in a fresh worktree, and `mergesSince`
   counts from the same reset value, so both clocks say fresh at once. Measured,
-  not reasoned about: #145. Consequence for anyone wiring the `PreCompact` half —
+  not reasoned about: #145. Consequence for anyone wiring the `PreCompact` half:
   it would refuse in the main checkout and never in a worktree.
 
 - **`gh issue list --jq` is gh's own jq and does not accept `--arg`.** It also
