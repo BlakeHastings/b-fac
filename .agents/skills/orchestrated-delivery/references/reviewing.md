@@ -271,7 +271,20 @@ Post the outcome before merging, in the same three headings the PR uses, plus a
 verdict of ship / ship with follow-ups (linked) / needs work. Say what you
 independently verified rather than what you accepted, and be specific about how.
 
-**Use `--body-file` with a quoted heredoc.** Backticks inside a double-quoted
-`--body` run as command substitution and silently eat filenames. This was
-documented and then walked into again within the hour, which is the general
-lesson: where you can, replace the note with a mechanism.
+**Post it through something that reads the artifact back**, rather than through
+a `gh` call you assembled. Here that is
+`node scripts/post-body.mjs <kind>:<number> <file>`, which writes the body from
+a file, reads the artifact back and exits non-zero when what is stored is not
+what was sent.
+
+The read-back is the whole of it, because this failure is silent in both
+directions: a body-carrying `gh` call prints a URL and exits 0 having stored
+something else, and `gh issue view --comments` then renders the wrong thing
+without complaint. It has gone wrong three times here. Backticks inside a
+double-quoted `--body` ran as command substitution and ate filenames, then that
+again within the hour, then `--body @-`, a `curl` convention `gh` stores as two
+literal characters, which blanked seven artifacts in one session
+including an escalation issue whose only job was to carry a question to the
+owner and which nobody was waiting on. This paragraph used to be the remedy, and
+being correct did not make it work. Where you have no such script, build the
+read-back; do not write the note again. ADR 0049.
