@@ -48,6 +48,24 @@ Traps that each caught a real defect, as examples of the register:
 
 Say where the landmine is even when you are not sure it is there.
 
+**Part of that list is derivable, and it stays anyway.** A spec is governed by
+one rule, and reading order and what already exists by name plainly fail it: can
+an agent derive this from the repository and its history, and if so, leave it out
+(`references/refinement.md`). The rule holds. What changes is who pays. A spec is
+written by the owner, whose hour is the scarce thing and whose reader is an
+orchestrator with the repository open. A brief is written by an orchestrator who
+has already read the repository, for an agent whose context is the scarce thing
+and whose context running out is the failure three sections below. Pre-deriving
+moves work off the budget that fails onto one that has already been spent.
+
+**The traps never met that rule in the first place.** All four above turn on what
+something outside the repository does: a viewer with an unset flag, a scanner
+with a link, a framework with a loader's return value, a spreadsheet with a
+leading `=`. No amount of reading the repository produces any of them. So the two
+documents disagree about file names and reading order and about nothing else, and
+what carrying those costs is never redundancy. It is being wrong about them,
+which is the last rule in "Name what would prove you wrong".
+
 ## A real brief, annotated
 
 Abridged, with the section each part demonstrates.
@@ -146,6 +164,15 @@ So a bar carries two things and not one:
   step of it need something on that list? The bounds are worth exactly what
   asking this is worth, and asking it takes a minute.
 
+**Walk it as far as the data, not just the environment.** A bar naming something
+on a screen quietly also requires whatever rows make that thing appear, and "the
+app is running" does not imply "the row exists". One bar asked for proof that a
+particular column of the permit queue rendered its status badge. The column reads
+from a store no environment reachable from a worktree has rows in, so the queue
+came up empty and the cell template never ran. The property was true and was in
+fact proven, at a site the agent found for itself. **Name the property, not the
+site**, and the data condition stops being part of the ask.
+
 Both, in one bar:
 
 - "Prove the intake API refuses a permit number that already exists. Build the
@@ -168,6 +195,18 @@ would have sailed straight past: a parser dropping a field it should have kept,
 and a force-push leaving the merge state blocked against a check rollup that was
 already stale. When the proof genuinely needs a live gate, say so, say who sets
 it up, and say what comes down afterwards. Bounded is not the same as small.
+
+**A mutation proof shows a check has teeth today; a scan-integrity test keeps it
+having teeth.** Ask for both whenever you are commissioning a check that works by
+scanning rather than by compiling. The first is the familiar one: break the thing
+on purpose, watch the check go red, fix it, watch it go green. The second pins the
+scan itself, that it sees a known-present case, does not see a known-absent one,
+and reaches more than N sites. It guards a failure this skill's own repository has
+shipped, where a check passed while scanning none of the files it existed to
+protect, because the list it built had quietly stopped including them. A check
+asserting over an empty set passes for ever and proves nothing, and a mutation
+proof taken on the day it was written does not catch it. One agent added the
+second half unasked; it is cheaper to ask.
 
 ## Name what would prove you wrong
 
@@ -219,8 +258,17 @@ time anyone worked it the premise was false in two independent ways, and the
 right outcome was to close it. Say that checking the premise is part of the job,
 or you get the change you asked for whether or not it was still needed.
 
-**Read the file before you brief from it.** Briefing from memory of the repo is
-where the wrong counts come from.
+**Read the file before you brief from it, and re-derive a count with the command
+you are about to write down.** Briefing from memory of the repo is where the wrong
+counts come from, and having read the file is not enough on its own. One brief
+asserted 14 call sites; there were 15. Both numbers came out of the same terminal
+minutes apart, from two variants of one question: the per-file breakdown had
+covered two file extensions and the total that reached the brief had covered one.
+Nothing was broken and the check answered exactly what it was asked. The defect
+was that two variants were live in a single investigation and the narrower answer
+got quoted as the broader one, which put the extra site in the excluded extension
+where no later sweep of the narrower kind could ever have found it. Scrolling up
+to a number is not re-deriving it.
 
 ## The brief has to survive the agent's own compaction
 
