@@ -105,6 +105,25 @@ accurate until the other PR made it false, and a paragraph re-indented under the
 wrong heading so it read as part of another subject. None of that is caught by
 CI, by a test, or by reading the diff of your own change.
 
+**The version line does not conflict when both branches guess the same number.**
+Two payload branches here started from the same commit at `0.38.0`, both wrote
+`0.39.0`, and the rebase resolved silently because nothing disagreed. The second
+then claimed a version the default branch had already released, and git had
+nothing to say about it. A conflict does happen when the numbers differ, so
+"expect a one-line conflict in the manifest" is not simply wrong, only wrong in
+the case parallel work makes likely: the more disciplined the agents, the more
+identical the edit.
+
+**So brief the number rather than the conflict, and brief one that survives
+either merge order** instead of the next free one. An agent did that on its own
+initiative, taking `0.17.0` while another open branch still held `0.16.0`, and
+its branch merged with nothing to change. The net is the check, not the merge:
+`check-version-bump.mjs` reads the released version from **the tip of the
+default branch** and not from the merge base, precisely so a branch cannot
+inherit someone else's bump and call it its own. Do not hand version numbers out
+the way you hand out ADR numbers, though. A version is compared against a branch
+that moves, and that comparison is already the control.
+
 ## Orchestrator hygiene while agents run
 
 Touch nothing they touch. Reviewing, filing issues, answering the owner and
