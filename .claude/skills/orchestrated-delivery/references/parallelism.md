@@ -269,7 +269,7 @@ artifact you know is good before trusting a check that says the batch is bad**,
 and satisfy yourself that the check can still disagree with itself. That holds
 for any after-the-fact sweep over a batch, not only this one.
 
-### It is a fourth record, and it is deliberate
+### It is a separate record, and that is deliberate
 
 `references/continuity.md` says not to invent a document type, and this is one,
 so the boundary is stated here rather than left to be found later. **The resume
