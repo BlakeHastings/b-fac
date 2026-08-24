@@ -270,8 +270,12 @@ covered two file extensions and the total that reached the brief had covered one
 Nothing was broken and the check answered exactly what it was asked. The defect
 was that two variants were live in a single investigation and the narrower answer
 got quoted as the broader one, which put the extra site in the excluded extension
-where no later sweep of the narrower kind could ever have found it. Scrolling up
-to a number is not re-deriving it.
+where no later sweep of the narrower kind could ever have found it. It has since
+happened again, to an orchestrator counting this project's own epics: 7 of 13 off
+the `Parent: #N` lines in the bodies, 24 of 30 off the sub-issue edges, one
+minute apart in one terminal. Twice is a property of the system. **Scrolling up
+to a number is not re-deriving it**, and neither is asking the question a second
+way.
 
 ## The brief has to survive the agent's own compaction
 

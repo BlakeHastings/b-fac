@@ -133,7 +133,7 @@ from a person, which is the one source that answers back.
 as a boundary rather than as an extension.** Issue #116 asked whether the same
 rule sharpens what a brief carries. It does not: a brief keeps its derivable
 elements because its writer has already paid for them and its reader has not.
-ADR 0043 records that, and the sentence saying so is now in
+ADR 0046 records that, and the sentence saying so is now in
 `references/refinement.md` and in `references/briefing.md`.
 
 **The threshold is the part most likely to be wrong in practice**, in both

@@ -1,4 +1,4 @@
-# 0043. Derivable content stays in a brief, because its writer has already paid for it
+# 0046. Derivable content stays in a brief, because its writer has already paid for it
 
 Status: accepted
 

@@ -255,5 +255,5 @@ readers. A spec is written by the owner, whose hour is the scarce thing, for an
 orchestrator with the repository already open. A brief is written by that
 orchestrator, who has already read it, for an agent whose context is the scarce
 thing and whose context running out is what silently rewrites the brief. Same
-rule; different scarce resource. ADR 0043 has the evidence, including why the
+rule; different scarce resource. ADR 0046 has the evidence, including why the
 traps were never the exception they look like.
