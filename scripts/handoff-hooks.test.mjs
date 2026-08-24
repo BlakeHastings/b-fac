@@ -14,11 +14,14 @@
 // is below: an absent handoff, a current one, and a repository with no git in
 // it all have to pass through without refusing anything.
 //
+// The last section is about this repository rather than the asset: #128, and
+// enforcement.md's rule that a control nothing invokes is an instruction.
+//
 //   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -250,4 +253,53 @@ test('the probe does not refuse a repository with no handoff in it', () => {
   const result = run(repo({ handoff: null }), null, ['--probe'])
   assert.equal(result.code, 0)
   assert.match(result.out, /No handoff at/)
+})
+
+// --- the wiring in this repository ------------------------------------------
+//
+// Everything above is about the asset other repositories install. These three
+// are about this one, which shipped the asset uninstalled for two weeks (#128)
+// while publishing enforcement.md's rule that a control nothing invokes is an
+// instruction. They are cheap because the failure is silent: an unwired
+// SessionStart hook and a wired one that never has anything to say look
+// identical from inside a session.
+
+const SETTINGS = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../.claude/settings.json', import.meta.url)), 'utf8'),
+)
+const sessionStartEntries = (SETTINGS.hooks?.SessionStart ?? []).filter((entry) =>
+  (entry.hooks ?? []).some((hook) => (hook.command ?? '').includes('handoff-hooks.mjs')),
+)
+
+test('the compaction hooks are wired here, not only published', () => {
+  assert.equal(sessionStartEntries.length > 0, true, 'nothing invokes handoff-hooks.mjs')
+})
+
+test('SessionStart is wired to compact and to nothing else', () => {
+  // `startup` and `resume` are the cases where the file is on disk and can be
+  // read, so injecting it there buys nothing and costs a block of text that
+  // opens "The context was just compacted" in a session where it did not.
+  for (const entry of sessionStartEntries) {
+    const matches = (source) => new RegExp(`^(${entry.matcher})$`).test(source)
+    assert.equal(matches('compact'), true, 'the compaction case is not matched')
+    for (const source of ['startup', 'resume', 'clear']) {
+      assert.equal(matches(source), false, `${source} is matched, so the block fires uncompacted`)
+    }
+  }
+})
+
+// ADR 0040 says this asset is copied to `scripts/` and wired by hand, like
+// `guard-merge.mjs`. Unlike that one it is copied unchanged, so the cheapest
+// true thing to assert is that it stays that way: this repository is the place
+// the hooks are exercised daily, and that is only evidence about the published
+// asset while the two files are the same file. The remedy when this fails is a
+// copy, and the question it asks first is which of the two moved.
+test('the copy this repository runs is the asset it ships', () => {
+  const lf = (text) => text.replace(/\r\n/g, '\n')
+  const installed = fileURLToPath(new URL('./handoff-hooks.mjs', import.meta.url))
+  assert.equal(
+    lf(readFileSync(installed, 'utf8')),
+    lf(readFileSync(HOOKS, 'utf8')),
+    'scripts/handoff-hooks.mjs has drifted from the asset, so this repo runs something else',
+  )
 })

@@ -23,6 +23,22 @@ merges through `gh api`, and nothing else. There is no `Bash(git *)` clause in
 `.claude/settings.json`, because a hook that fires on every git command and
 never denies one is pure latency.
 
+**The compaction hooks run here, and only their `SessionStart` half.**
+`.claude/settings.json` registers matcher `compact` against
+`scripts/handoff-hooks.mjs`, an unchanged copy of the asset, so after any
+compaction — yours or a dispatched agent's — the resumed context opens with
+`docs/process/handoff.md` verbatim and a note of how old it is. Only `compact`:
+on `startup` and `resume` the file is on disk and can be read. The `PreCompact`
+refusal is deliberately **not** wired, because a hook that blocks the owner's own
+`/compact` in a tracked settings file is theirs to opt into rather than an
+agent's to install (#141). Two consequences worth having in advance: the
+injected block is addressed to both readers because nothing in the payload says
+whose context compacted (ADR 0042), and **the wiring was snapshotted at process
+start**, so the session that landed it did not have it. Restart, then look for
+the block after the next compaction. That is the only liveness answer these
+hooks have — `node scripts/handoff-hooks.mjs --probe` reports the rules, not
+whether they are loaded, and says so. ADRs 0038 and 0040.
+
 **Lens 1 is not "drive the running app".** There is no app. Driving the change
 here means loading the skill in a harness and using it —
 `claude --plugin-dir .` — and confirming the part you changed reads as intended
