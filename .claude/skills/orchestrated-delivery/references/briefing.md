@@ -55,8 +55,9 @@ an agent derive this from the repository and its history, and if so, leave it ou
 written by the owner, whose hour is the scarce thing and whose reader is an
 orchestrator with the repository open. A brief is written by an orchestrator who
 has already read the repository, for an agent whose context is the scarce thing
-and whose context running out is the failure three sections below. Pre-deriving
-moves work off the budget that fails onto one that has already been spent.
+and whose context running out is the failure "The brief has to survive the
+agent's own compaction" is about. Pre-deriving moves work off the budget whose
+failure destroys the brief onto one that has already been spent.
 
 **The traps never met that rule in the first place.** All four above turn on what
 something outside the repository does: a viewer with an unset flag, a scanner
