@@ -184,6 +184,104 @@ Tell a resumed agent to re-orient from the code:
 > reviewed and nothing was pushed. Run `git log -1` and `git show --stat HEAD`
 > and re-orient from the code rather than from memory.
 
+## When the whole fan-out dies at once
+
+A **fan-out** is many agents over one queue of like items: audit these ninety
+files, extract these forty records. It is not the wave of three builders on
+three issues that the rest of this file is about, and it fails differently. A
+wave loses one agent at a time, and the sweep above finds the worktree. A
+fan-out loses everything in the same instant, because whatever kills it sits
+upstream of all of it: a usage limit, an API outage, a closed terminal.
+
+One did. A usage limit ended an orchestrator and roughly eleven agents together,
+several of them one tool call from writing their output. It cost almost nothing,
+and neither reason has anything to do with the agents.
+
+### State lives in files, not in your context
+
+Before dispatching, write a **resume record**, and keep it current as the queue
+moves rather than at the end: the target, the concurrency ceiling you actually
+measured rather than the one you planned, the queue in order, and which
+candidates are reserved or already absorbed into another item. The
+orchestrator's death was survivable because none of that was only in its head.
+
+It goes where the handoff and the machine record go: `factory/` inside the git
+common directory, which is one path from the main checkout and from every linked
+worktree alike.
+
+```bash
+git rev-parse --path-format=absolute --git-common-dir
+```
+
+ADR 0037 settled that, and `references/continuity.md` has the reasoning. Do not
+invent a location for this one. The resumer is usually a fresh session standing
+in a different directory from the one that dispatched, which is the case the
+common directory exists for.
+
+The measured ceiling earns its line separately, because it is the item a resumer
+can recover from nowhere else. It was learned by running into it, and leaving it
+out means paying that discovery again on a session with less budget than the one
+that paid for it the first time.
+
+### The artifacts are the progress record, and a list is not
+
+**Name the output directory as authoritative, and mean it.** What is on disk is
+what got done. A progress list the orchestrator maintains is a second copy of a
+fact that already exists somewhere better, written by the process most likely to
+die before updating it, and it dies holding a count that was true a few minutes
+ago. Worse than absent: a resumer believes it.
+
+That is also what keeps the record small enough to be worth keeping current. It
+carries the queue and the parameters, which nothing else knows, and not the
+progress, which the output directory answers better. Same rule ADR 0036 gives
+for specs, pointed at a different reader: carry only what cannot be derived.
+
+### Give partial output a shape that reads as partial
+
+This is the load-bearing half, and it is the half that has to be decided before
+the first agent runs, because it is a property of what the agents write.
+
+Each item produced two files in a fixed order, `<item>.json` and then
+`<item>.notes.md`. So a `.json` with no `.notes.md` beside it means *died after
+writing the JSON: resume, do not re-run*. Eight of nine orphans needed only
+their notes. The ninth was truncated mid-array and had to be redone. Without the
+convention all nine would have been redone, and nothing in the directory would
+have said which.
+
+What generalises is not the two filenames. It is that **the last thing written
+is a separate artifact whose presence means complete**, so "never started" and
+"died halfway" are different on disk rather than different in somebody's memory.
+A single file appended to as the agent works gives you neither: every item looks
+like every other item, and the only way to sort them is to read all of them,
+which is the cost the convention exists to avoid.
+
+### A structural check against a field that does not exist agrees with you
+
+The resumer's first pass over those orphans reported `edges=0` for every
+artifact, uniformly and confidently, from a schema with no `edges` key at all.
+Nothing errored. A missing field does not fail a structural check, it reads as
+empty, and the check then says the same thing about every file it is handed.
+
+**A uniform answer across a batch is the signature**, and it is
+indistinguishable from a real finding that happens to be unanimous, which is
+what makes it expensive: it argues for redoing everything. So **read one
+artifact you know is good before trusting a check that says the batch is bad**,
+and satisfy yourself that the check can still disagree with itself. That holds
+for any after-the-fact sweep over a batch, not only this one.
+
+### It is a fourth record, and it is deliberate
+
+`references/continuity.md` says not to invent a document type, and this is one,
+so the boundary is stated here rather than left to be found later. **The resume
+record is per-fan-out and disposable; the handoff is per-session and durable.**
+A fan-out ends and its record is deleted, and deleting it is part of finishing.
+
+Anything in it that outlives the fan-out was never the record's to hold: it
+belongs in the handoff, the backlog or a decision record, like everything else
+durable. If you find yourself topping one up in a session with no fan-out
+running, you have grown a second handoff, and two of those disagree eventually.
+ADR 0044.
+
 ## After an agent finishes
 
 Stop its environment **by path**, remove the worktree, prune. Otherwise the

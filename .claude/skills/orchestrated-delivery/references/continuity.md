@@ -77,6 +77,15 @@ four properties that the worked example earned the hard way.
 No template, for the reason `references/refinement.md` gives about specs: a form
 with headings invites completion instead of thought.
 
+**One more record was added after this list, deliberately, and it is not this
+file's.** A fan-out keeps a resume record so its queue survives every agent
+dying in the same instant, and it lives in `factory/` beside the handoff. The
+line between them is that the resume record is per-fan-out and disposable, where
+the handoff is per-session and durable, so a resume record still being topped up
+after its fan-out ended has quietly become a second handoff.
+`references/parallelism.md` has what goes in it and what the artifacts answer
+instead; ADR 0044 has why it is separate rather than folded in here.
+
 ## The two hooks
 
 `assets/handoff-hooks.mjs` is one file wired to both events. It decides which it
