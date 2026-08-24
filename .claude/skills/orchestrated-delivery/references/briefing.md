@@ -169,9 +169,12 @@ on a screen quietly also requires whatever rows make that thing appear, and "the
 app is running" does not imply "the row exists". One bar asked for proof that a
 particular column of the permit queue rendered its status badge. The column reads
 from a store no environment reachable from a worktree has rows in, so the queue
-came up empty and the cell template never ran. The property was true and was in
-fact proven, at a site the agent found for itself. **Name the property, not the
-site**, and the data condition stops being part of the ask.
+came up empty and the cell template never ran. The property that mattered was
+*does the badge component render a status at all*; written as *does this column
+render one*, it additionally demanded a data condition nobody could reach. The
+property was provable and was in fact proven, at a site the agent picked for
+itself. **Name the property, not the site**, and the rows stop being part of the
+ask.
 
 Both, in one bar:
 
