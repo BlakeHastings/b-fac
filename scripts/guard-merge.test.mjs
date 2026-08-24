@@ -98,6 +98,31 @@ const DENIED = [
   'node scripts/check-guard-live.mjs && gh issue comment 82 --body "loaded"',
   'node scripts/check-guard-live.mjs || echo inert',
   'bash -c "git pull && node scripts/check-guard-live.mjs"',
+  // #135. ADR 0037 made command substitution the documented way to find a path
+  // that cannot be hard-coded, so the probe gets invoked in exactly the shape
+  // that used to walk past the rule: `$(` closed the outer command, `node`
+  // landed in one segment and the script name in the next, and the rule that
+  // needs both saw neither. Every line here ran, and reported the guard inert
+  // from inside a session where it was denying.
+  'node "$(git rev-parse --path-format=absolute --git-common-dir)/../scripts/check-guard-live.mjs"',
+  'node "$(cat pointer)/guard/check-guard-live.mjs"',
+  'node $(cat pointer)/guard/check-guard-live.mjs',
+  'GH_TOKEN=x node "$(cat pointer)/guard/check-guard-live.mjs"',
+  'bash -c "node \\"$(cat pointer)/guard/check-guard-live.mjs\\""',
+  // A `$(` that is never closed used to be covered by the outer command being
+  // closed at the `$(`. It is now covered by unwinding the frame instead, and
+  // this is the line that tells the two apart.
+  'gh pr merge $(cat',
+  'gh pr merge "$(echo 42',
+  // The deny direction, which is where a placeholder could narrow the guard
+  // rather than widen it. A `$(...)` can expand to nothing, so a word ending in
+  // one is still that word, and `$(true)` prints nothing.
+  'gh pr merge$(true)',
+  'gh "pr" merge$(x)',
+  'bash -c "gh pr merge$(x)"',
+  // Newly refused, and it was a working merge before: the endpoint was split at
+  // the `$(` and `apiEndpoint` never saw a path with `/merge` in it.
+  'gh api "repos/o/r/pulls/$(cat n)/merge" --method PUT',
 ]
 
 const ALLOWED = [
@@ -190,6 +215,23 @@ const ALLOWED = [
   'cat scripts/check-guard-live.mjs',
   'git add scripts/check-guard-live.mjs',
   'node scripts/check-collisions.mjs',
+
+  // #135's other direction, and the one the change is widest against. A
+  // substitution's result is an argument to the command it sits in, so the
+  // words after it are that argument's text and not a command. The field
+  // derivative that hit this bug fixed it by matching the raw line instead, and
+  // had the guard refusing a heredoc that merely documented the probe within a
+  // day. Every line here is the shape that would break under that fix.
+  'echo "$(cat x)/gh pr merge"',
+  'echo "$(cat pointer)/guard/check-guard-live.mjs"',
+  'gh issue comment 135 --body "$(cat note) and gh pr merge stays denied"',
+  'cat "$(git rev-parse --path-format=absolute --git-common-dir)/factory-home"',
+  'git add "$(git rev-parse --show-toplevel)/scripts/check-guard-live.mjs"',
+  // A subshell inside a substitution closes its own bracket, so the outer
+  // argument is not handed back a bracket early and the tail of it stays text.
+  'echo "$(cd repo && (pwd))/gh pr merge"',
+  // Single quotes do not expand a substitution, so there is no command in here.
+  "echo '$(gh pr merge 42)'",
 ]
 
 for (const command of DENIED) {
@@ -226,6 +268,13 @@ const ALONE = [
   'bash -c "node scripts/check-guard-live.mjs"',
   // Asking twice loses nothing either.
   'node scripts/check-guard-live.mjs && node scripts/check-guard-live.mjs',
+  // #135. The substitution names this command's own script; it is not a second
+  // thing the caller wanted done. Telling them here to run the rest on its own
+  // and then "ask the guard on its own" would send them in a circle, because
+  // the substitution is how the guard is asked at all when the probe is not in
+  // the working directory.
+  'node "$(git rev-parse --path-format=absolute --git-common-dir)/../scripts/check-guard-live.mjs"',
+  'node "$(cat pointer)/guard/check-guard-live.mjs"',
 ]
 
 const IN_COMPANY = [
@@ -241,6 +290,13 @@ const IN_COMPANY = [
   'git pull && bash -c "node scripts/check-guard-live.mjs"',
   'bash -c "git pull && node scripts/check-guard-live.mjs"',
   'bash -c "echo hi" && node scripts/check-guard-live.mjs',
+  // #135, the other way round. The probe sits *inside* the substitution here,
+  // so the command the line runs is the `gh issue comment`, and that comment
+  // really was thrown away. This is #82's opening loss written with a
+  // substitution instead of an `&&`.
+  'gh issue comment 82 --body "$(node scripts/check-guard-live.mjs)"',
+  // A substitution locating the probe still loses whatever is chained to it.
+  'git pull --ff-only && node "$(cat pointer)/guard/check-guard-live.mjs"',
 ]
 
 for (const command of ALONE) {

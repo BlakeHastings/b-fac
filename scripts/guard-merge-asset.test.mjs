@@ -98,6 +98,18 @@ const DENIED = [
   'node "scripts/guard-merge.mjs" --probe',
   'node .factory/guard-merge.mjs --probe',
   'bash -c "node scripts/guard-merge.mjs --probe"',
+  // #135. A substitution is how a command names a path it cannot hard-code, and
+  // a guard that lives outside the working tree cannot be named any other way.
+  // The `$(` used to close the outer command, so `node` landed in one segment
+  // and the file name in the next, and the rule that needs both saw neither.
+  'node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-merge.mjs" --probe',
+  'node $(cat pointer)/guard-merge.mjs --probe',
+  // A `$(` that is never closed must not swallow the command it interrupted.
+  'gh pr merge $(cat',
+  // The deny direction, which is where a placeholder could narrow the guard
+  // rather than widen it. A `$(...)` can expand to nothing, so a word ending in
+  // one is still that word, and `$(true)` prints nothing.
+  'gh pr merge$(true)',
   // git's own flags come before the subcommand, and some swallow a value.
   'git -C /work/repo push origin main',
   'git -c push.default=current push origin main',
@@ -255,6 +267,14 @@ const ALLOWED = [
   // script's business.
   'node scripts/merge-pr.mjs --probe',
   'node scripts/check-setup.mjs --probe',
+  // #135's other direction. A substitution's result is an argument to the
+  // command it sits in, so the words after it are that argument's text and not
+  // a command of their own. The field derivative that hit this bug reached for
+  // a raw-line match instead and had the guard refusing a heredoc that merely
+  // documented the probe within a day, which is #58 again.
+  'echo "$(cat x)/gh pr merge"',
+  'echo "$(cat pointer)/guard-merge.mjs --probe"',
+  'git add "$(git rev-parse --show-toplevel)/scripts/guard-merge.mjs"',
   // The four lines #104 measured, verbatim, and they stay allowed. They name
   // `check-guard-live.mjs`, which is ADR 0027's two-file probe and lives only in
   // the repository that ships this skill. `assets/` does not carry it, so an
