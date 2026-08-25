@@ -23,7 +23,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const GUARD = fileURLToPath(
@@ -434,29 +436,86 @@ test('the probe refuses to report at all when a package script is in the way', (
 
 const SOURCE = readFileSync(GUARD, 'utf8')
 
-// The second way `check-setup.mjs` depends on this file. Layer 2's report now
-// tells the reader to ask the guard whether it is loaded, which is a command
-// only this file can answer, and the two agree on a path and a flag and nothing
-// else, which is exactly the shape the DEFAULT_BRANCH pin below exists for. So
-// the line check-setup.mjs prints is rebuilt from its own source here and handed
-// to the guard, which has to refuse it.
-const CHECK_SETUP = readFileSync(
-  fileURLToPath(
-    new URL('../.agents/skills/orchestrated-delivery/assets/check-setup.mjs', import.meta.url),
-  ),
-  'utf8',
+// The second way `check-setup.mjs` depends on this file. Layer 2's report tells
+// the reader to ask the guard whether it is loaded, which is a command only this
+// file can answer.
+//
+// This used to be pinned by regex: the path came out of `MERGE_GUARD` and the
+// flag out of the literal the report printed. It passed while the report was
+// wrong, because both halves were fixed strings and the test read the same two
+// fixed strings (#153). So it is measured end to end instead. A repository is
+// stood up holding this guard, `check-setup.mjs` is run in it, the probe line is
+// read out of what it printed, and the guard is handed that line and has to
+// refuse it. Nothing in between is assumed.
+const CHECK_SETUP = fileURLToPath(
+  new URL('../.agents/skills/orchestrated-delivery/assets/check-setup.mjs', import.meta.url),
 )
 
+// The line the report prints under "ask the gate itself", exactly as printed.
+function probeLinePrintedIn(root) {
+  const options = {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, CLAUDE_CONFIG_DIR: join(root, '.no-such-config') },
+  }
+  // Exit 1 is the expected code here: only layer 2 is installed in these
+  // repositories, and the probe block prints either way. Reading the status
+  // rather than letting a throw decide is the same care ADR 0030's report is
+  // measured with elsewhere in this suite.
+  let out
+  try {
+    out = execFileSync('node', [CHECK_SETUP], options)
+  } catch (error) {
+    // The probe block is on stderr when the report fails and on stdout when it
+    // passes, and which stream it took is not what this test is about.
+    out = `${error.stdout}${error.stderr}`
+  }
+  const lines = out.split('\n')
+  // Taken from the block's own wording rather than by looking for a line that
+  // starts with `node`, because the unrecorded-boundary remedy prints two of
+  // those and this test must not be able to pick up one of them by accident.
+  const at = lines.findIndex((text) => text.includes('itself and put its answer beside this output'))
+  assert.notEqual(at, -1, `check-setup.mjs printed no probe block:\n${out}`)
+  return lines[at + 2].trim()
+}
+
 test('the probe line check-setup.mjs prints is one this guard refuses', () => {
-  const path = CHECK_SETUP.match(/^const MERGE_GUARD = ['"]([^'"]+)['"]/m)?.[1]
-  assert.ok(path, 'check-setup.mjs declares no MERGE_GUARD, so the path it prints is a guess here')
-  const flag = /node "\$\{PROBE_TARGET\}" (--[\w-]+)/.exec(CHECK_SETUP)?.[1]
-  assert.equal(flag, '--probe', 'check-setup.mjs prints a flag this guard does not answer to')
-  assert.equal(
-    run(`node ${path} ${flag}`).denied,
-    true,
-    'the guard does not refuse the line check-setup.mjs tells the reader to run',
-  )
+  const root = mkdtempSync(join(tmpdir(), 'probe-line-'))
+  try {
+    execFileSync('git', ['init', '--quiet', '--initial-branch=main'], { cwd: root })
+    mkdirSync(join(root, 'scripts'), { recursive: true })
+    // The real guard, at the path the report expects layer 2 to have been copied
+    // to. A stand-in would be this test agreeing with itself again.
+    copyFileSync(GUARD, join(root, 'scripts/guard-merge.mjs'))
+    assert.equal(
+      run(probeLinePrintedIn(root)).denied,
+      true,
+      'the guard does not refuse the line check-setup.mjs tells the reader to run',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// And the other repository the same report runs in: this one, where ADR 0033
+// keeps a guard that answers to a different probe. The report has to name that
+// one instead, so the assertion is that the line it prints is *not* the shipped
+// form. Without this, a fix that hard-codes the shipped form again passes the
+// test above and reintroduces #153 whole.
+test('in a repository whose guard answers elsewhere, the report follows the guard', () => {
+  const root = mkdtempSync(join(tmpdir(), 'probe-line-'))
+  try {
+    execFileSync('git', ['init', '--quiet', '--initial-branch=main'], { cwd: root })
+    mkdirSync(join(root, 'scripts'), { recursive: true })
+    copyFileSync(
+      fileURLToPath(new URL('./guard-merge.mjs', import.meta.url)),
+      join(root, 'scripts/guard-merge.mjs'),
+    )
+    assert.equal(probeLinePrintedIn(root), 'node "scripts/check-guard-live.mjs"')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // The knob and the check that reads it are two files agreeing on a shape.

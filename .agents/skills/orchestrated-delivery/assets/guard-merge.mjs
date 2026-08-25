@@ -144,10 +144,10 @@ const OPERATORS = new Set(['&', '|', ';', '\n', '\r', '(', '`'])
 const ESCAPABLE = new Set([...OPERATORS, ')', '"', "'", '\\', '$', ' ', '\t'])
 
 // What a `$(...)` leaves behind in the argument it interrupted, so that the
-// argument survives as one token. `node "$(cat pointer)/check-guard-live.mjs"`
-// reads as `node` `$()/check-guard-live.mjs`, and `commandName` still resolves
-// the script. Ending the outer command at the `$(` instead put `node` in one
-// segment and the script name in the next, where no rule needing both could
+// argument survives as one token. `node "$(cat pointer)/guard-merge.mjs" --probe`
+// reads as `node` `$()/guard-merge.mjs` `--probe`, and `commandName` still
+// resolves the script. Ending the outer command at the `$(` instead put `node`
+// in one segment and the script name in the next, where no rule needing both could
 // ever see them — and a substitution is how a command names a path it cannot
 // hard-code, which is the shape a liveness probe reaches for most.
 //
