@@ -86,11 +86,17 @@ jobs:
 
       # The script by name, where every other step in this repository's
       # workflows runs an npm script. `assets/check-setup.mjs` decides whether
-      # this layer is wired by looking for `check-main-provenance` in the text
-      # of a workflow, so naming the file is what makes the installation
-      # visible to the thing that reports on it, and it keeps the audit running
-      # if the npm alias is ever renamed. `npm run check:provenance` is the
-      # same command for a developer at a terminal.
+      # this layer is wired by looking for `check-main-provenance` in a `run:`
+      # value of a workflow, so naming the file in this line is what makes the
+      # installation visible to the thing that reports on it, and it keeps the
+      # audit running if the npm alias is ever renamed. `npm run
+      # check:provenance` is the same command for a developer at a terminal.
+      #
+      # It used to look in the whole file, comments included, which meant the
+      # two comments above that name the script counted as running it: delete
+      # this step and the report still said `ok`, about a repository whose only
+      # detective layer was a paragraph. #170 narrowed it to `run:` values, so
+      # this file is the fixture for that as well as for the `on:` block above.
       #
       # The range, not just the head. A push can add several commits and only
       # the last is in `github.sha`. `github.event.before` is the zero SHA on a
