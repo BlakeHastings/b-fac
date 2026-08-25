@@ -288,3 +288,63 @@ including an escalation issue whose only job was to carry a question to the
 owner and which nobody was waiting on. This paragraph used to be the remedy, and
 being correct did not make it work. Where you have no such script, build the
 read-back; do not write the note again. ADR 0049.
+
+### Creating an artifact, where the rule sits on the read-back and not on the form
+
+Everything above posts to an artifact that already exists, which is all a
+`<kind>:<number>` tool can do: the number is an input there and an output at
+creation. Creating an issue or a pull request stays `gh`'s, and there are two
+routes to it.
+
+```bash
+gh issue create --title "..." --body-file body.md           # prints the number
+node scripts/post-body.mjs issue-body:<n> body.md --check   # reads it back
+
+gh issue create --title "..." --body "placeholder"          # prints the number
+node scripts/post-body.mjs issue-body:<n> body.md           # posts and reads back
+```
+
+**Neither route can eat the body**, because neither puts it on a command line.
+The first hands `gh` a path, the second hands the script a path, and the only
+text typed by hand is the placeholder. So the failure this section is about is
+closed at creation by the flag, and what is left is not a destroyed body but an
+unverified or an unfinished one.
+
+**The first route is better, and the second is the one people reach for.** In
+one day here the placeholder route was used twelve times: eleven by the
+orchestrator who had written the argument against it that same week, and once by
+an agent that had read that argument. None of the twelve lost a body. The record
+is here rather than left out, because a form with a twelve-to-nothing record
+against it is not a rule, it is a preference, and restating a preference is the
+move that has already failed.
+
+**The window, stated rather than waved at.** Between its two commands the
+placeholder route leaves a live artifact carrying the word "placeholder". An
+agent that dies, is compacted, or is refused permission on the second command
+leaves that standing with no reader and no error anywhere, which is the property
+that made an escalation issue the most expensive of the seven blanked artifacts:
+a brief has an agent about to complain, a question to the owner has nobody. The
+first route's window holds the real body instead, merely unverified. The second
+is worse, and it is worse in the window rather than in the result.
+
+**What makes this different from the instruction that failed three times, and it
+is not that it is newer.** That instruction was a fact to recall while
+assembling a command, and forgetting it destroyed the body in silence in both
+directions: `gh` printed a URL and exited 0, and the rendered view showed the
+two characters it had stored and said nothing was wrong. This is a step to run,
+and skipping it leaves something a reader can read: a placeholder that announces
+itself in words, or a body nobody has compared against its file. **Its failure
+is legible where the other one was invisible**, and that is the whole of the
+difference.
+
+Which is why the rule is the read-back and not the form. **An artifact is not
+created until a read-back has passed against the file it was meant to carry**,
+by `--check` in the first route and by the ordinary post in the second, which
+reads back as it goes. That covers both routes, it is the same sentence this
+section already makes about posting, and it does not need to win an argument
+about form that has been lost twelve times.
+
+Know what nothing here finds. A scan of stored bodies catches the shapes a
+body-carrying call leaves behind when it eats one, and **a placeholder left
+standing is not one of those shapes**: it is a well-formed body that happens to
+be the wrong one. The only thing that closes it is running the second command.
