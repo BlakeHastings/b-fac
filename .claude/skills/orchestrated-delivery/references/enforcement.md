@@ -97,10 +97,12 @@ of the two it found.
 
 **It reports the layers that apply to the mode it is in**, which is the one
 place a report is allowed to read the write boundary off disk. It reads
-`.factory/machine.md`, and it prints one of three answers: owned, guest, or
-nobody having said. In guest mode the four layers above report `n/a` with the
-mode as the reason and the gate below is the only one judged; in owned mode the
-reverse. **An absent layer explained by the mode is not a failure and does not
+`factory/machine.md` inside the git common directory, which is where every
+checkout of a repository reads the same answer and a working-tree path does not
+(ADR 0037, and the guest gate's own section below). It prints one of three
+answers there: owned, guest, or nobody having said. In guest mode the four
+layers above report `n/a` with the mode as the reason and the gate below is the
+only one judged; in owned mode the reverse. **An absent layer explained by the mode is not a failure and does not
 move the exit code**, because a permanently red line and a guard that cries wolf
 get switched off the same way.
 
@@ -698,14 +700,63 @@ What has changed is that a new driver has arrived. A ruleset is GitHub's driver
 for a gate, and it covers part of what these layers cover and not the rest,
 which is why the answer has to be taken layer by layer.
 
-**Layer 3 goes.** With no bypass actors a commit cannot reach the default branch
-outside a pull request, so the audit that detects one can only ever pass.
+**Layer 3 is the one to think hardest about, and "it can only ever pass" is the
+wrong reason to delete it.** This chapter used to say the audit goes, on that
+argument: with no bypass actors a commit cannot reach the default branch outside
+a pull request, so the check that detects one has nothing to find. Half of that
+is true and stays true. A ruleset really does prevent the direct push, and while
+it is enforcing, the commit the audit looks for cannot arrive.
+
+The half it leaves out is that **a ruleset is not a property of the repository.**
+It is mutable configuration at the forge's end, invisible from every checkout,
+and a credential that can merge can also disable it, push, and set it back inside
+a minute, leaving nothing in any tree. That is a bypass of exactly the shape the
+fourth constraint is about, and the only difference from a hook that failed to
+load is which side of the network it sits on. Which side is not what decides
+whether detection is worth having. Whether the bypass leaves a trace is, and
+neither one does.
+
+So the arithmetic is not "a gate arrived, so the layers go". **A ruleset replaces
+the layers that prevent. It does not replace the layer that detects, because
+detection is the only layer that runs on the result**, and the result is the one
+thing a bypass cannot avoid producing. That is the fourth constraint applied to
+this trigger rather than only to the layers underneath it.
+
+That is an argument for deciding rather than a decision. The audit is a check, so
+what it buys is a failure that is loud, dated and attributable after the fact; it
+cannot see a ruleset that was disabled and restored, only a commit that arrived
+while it was; and it costs you a baseline commit to choose and, depending on that
+choice, a standing finding about history nobody is going to revert. Weigh that
+and pick. **What is not available is picking on the grounds that the audit can
+only ever pass**, because that sentence is about a configuration rather than
+about the repository, and it is most convincing to the reader who has just set a
+ruleset up and feels well defended.
+
+The repository this skill ships from wrote both answers, deleting the layer in
+its ADR 0001 and putting it back in **ADR 0051** after the argument above. Read
+0051 rather than this paragraph if you are about to delete the layer: the
+reasoning is three paragraphs long, it names what the audit still does not cover,
+and it took a reversal to arrive at. If you delete it anyway, declare it, which
+is the last paragraph of this chapter.
 
 **Layer 2 stays, narrowed** to the merge rules. A ruleset refuses a direct push,
 so the guard's push-to-default-branch cases become redundant and come out. It
 does not refuse an agent merging its own pull request: "nothing lands
 unreviewed" and "agents do not land code" are two constraints that only looked
 like one while a single layer happened to cover both.
+
+*That narrowing rests on the same configuration, so price it the same way and
+note that it prices lower.* While the ruleset is enforcing, the push cases are
+redundant. While it is disabled they are not, and they are the thing that would
+still have refused a push to the default branch inside an agent session. What you
+are trading there is one preventive layer for another that does the same job
+better, which is a smaller loss than trading away the only layer that runs on the
+result, and that difference is the whole reason these two paragraphs reach
+different answers. Take the narrowing on that basis rather than on redundancy,
+and notice what happens if you take it in the same pass as deleting layer 3:
+layer 2's own *does not cover* list names layer 3 as what covers the destinations
+it cannot read out of a command line, so you would be removing the cover and the
+thing it was covering for, in one edit, for one reason.
 
 **Layer 1 stays, demoted.** A convenience rather than a control: squash-always
 in one command, and a refusal that names *which* check is red where a merge
@@ -717,7 +768,10 @@ keeping red code out.
 Delete rather than keep out of sentiment. The justification for a layer is the
 absence of the thing that would otherwise do its job, and that absence goes away
 layer by layer rather than all at once, which is why "the branch is protected
-now" is the start of the arithmetic and not the end of it.
+now" is the start of the arithmetic and not the end of it. Read that sentence in
+both directions: **a layer whose job nothing else has taken over has not lost its
+justification**, however well defended the layer above it now is, and "we have a
+ruleset" is a statement about one job rather than about all four.
 
 **Whatever you delete, declare.** A layer you took out on this reasoning is
 otherwise indistinguishable from one nobody got round to, and `check-setup.mjs`
@@ -729,3 +783,12 @@ represent a decision eventually overturns it**, not by being right but by being
 louder than three paragraphs asking readers to ignore it. One line in `AGENTS.md`
 naming your record is what stops that, and the form is under "Installed is not a
 state you can assume" above.
+
+**And that repository then decided the layer should have been there all along**,
+which is the other half of the story and the more uncomfortable one. The
+declaration mechanism would have stopped the report arguing with the decision; it
+would not have made the decision right, and ADR 0051 reverses it on the merits as
+well as on the noise. So declare what you decide, and hold the decision itself
+open to being wrong: the record you point the line at is the thing somebody
+revisits, which is why the check insists there be one rather than accepting a
+sentence.

@@ -54,6 +54,14 @@ cannot stop an agent merging its own pull request. The merge wrapper stayed too,
 demoted from a control to a convenience, because its refusal says which check is
 red where a merge button does not.
 
+**Two of those three answers held, and the deletion did not.** ADR 0051 put the
+audit back: "with no bypass actors the commit cannot exist" is a claim about a
+ruleset's present configuration rather than about the repository, and a
+credential that can merge can disable that configuration, push, and restore it
+without leaving anything in a checkout. Take the worked example for the shape of
+the arithmetic and not for its layer-3 row, which `enforcement.md`'s revisit
+trigger now carries in full.
+
 Do that arithmetic in the first half hour, layer by layer rather than as one
 verdict on the set. Installing all three into a repo that needs two is the shape
 of setup nobody ever revisits, and every layer you keep is one more thing
