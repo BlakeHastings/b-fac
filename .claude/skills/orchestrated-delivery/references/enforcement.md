@@ -100,9 +100,9 @@ place a report is allowed to read the write boundary off disk. It reads
 `factory/machine.md` inside the git common directory, which is where every
 checkout of a repository reads the same answer and a working-tree path does not
 (ADR 0037, and the guest gate's own section below). It prints one of three
-answers there: owned, guest, or nobody having said. In guest mode the four layers above report `n/a` with the
-mode as the reason and the gate below is the only one judged; in owned mode the
-reverse. **An absent layer explained by the mode is not a failure and does not
+answers there: owned, guest, or nobody having said. In guest mode the four
+layers above report `n/a` with the mode as the reason and the gate below is the
+only one judged; in owned mode the reverse. **An absent layer explained by the mode is not a failure and does not
 move the exit code**, because a permanently red line and a guard that cries wolf
 get switched off the same way.
 
