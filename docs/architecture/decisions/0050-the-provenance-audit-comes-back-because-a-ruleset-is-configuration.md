@@ -123,11 +123,26 @@ repository's first twenty-four minutes, before the ruleset existed:
     No associated pull request.
 ```
 
-They are bootstrap, not bypass. The ruleset was created at 11:00:43 that morning
-and both predate it, as does the wiring of the guard hook in #1 at 11:03. The
-other 56 commits above the baseline each name a merged pull request into `main`.
-Neither commit is a candidate for reverting, and per the process doc the gap they
-came through was closed by the ruleset before the third one landed.
+They are bootstrap, not bypass, and the report is accurate rather than an
+artifact of how the audit reads history. `repos/{owner}/{repo}/commits/<sha>
+/pulls` returns an empty array for both, not an association the filter then
+discarded. The reason is in the timeline:
+
+| Local time, 9 August | |
+| --- | --- |
+| 10:35:58 | `f3b8a7a`, the baseline, exempt |
+| 10:47:16 | `2ff792e` reaches `main` |
+| 10:59:20 | `dadeae4` reaches `main` |
+| 11:00:43 | ruleset `main` created, active, no bypass actors |
+| 11:03:04 | pull request #1 opened, the first in this repository |
+| 11:03:34 | #1 merged as `e67a110` |
+
+No pull request existed here until four minutes after the second of them, so
+neither could have had one. Both are first-parent commits on `main` pushed
+directly by the owner while the repository was being set up. The other 56
+commits above the baseline each name a merged pull request into `main`. Neither
+commit is a candidate for reverting, and per the process doc the gap they came
+through was closed by the ruleset before the third one landed.
 
 **A full-history run is therefore red, and a run over a push is green.** The
 workflow passes `PROVENANCE_BEFORE` and `PROVENANCE_AFTER`, so it judges only the
