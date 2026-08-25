@@ -1192,3 +1192,260 @@ test('a remote does not make a repo owned, and neither does an installed gate', 
     assert.match(row(out, 'G'), /which is what guest mode looks like/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// A layer the repository decided against
+//
+// The defect: this report had `ok`, `MISSING` and `n/a`, so a layer a
+// repository had looked at and decided not to have landed in `MISSING` beside
+// genuine neglect, and its FIX line closed with a recipe for doing the thing
+// the repository decided not to do. This repository lived that: it declined
+// layer 3 under ADR 0001, wrote the instruction down three times, and reversed
+// the decision partly because the report kept arguing with it (#152, ADR 0051).
+//
+// So every case here asserts three things rather than one: the verdict, the
+// exit code, and **that no install recipe was printed**. The third is the one
+// the issue was filed about, and it is the one that would come back silently.
+//
+// The other half is that a `declined` anybody can set is worse than the red
+// line it replaces, so the cases below spend more assertions on the ways a
+// declaration is refused than on the way it is honoured.
+// ---------------------------------------------------------------------------
+
+const RECIPE = /Copy check-main-provenance\.mjs to scripts/
+const DECISION = 'docs/decisions/0004-no-provenance-audit.md'
+const DECISION_RE = new RegExp(DECISION.replaceAll('.', '\\.'))
+
+const gitIn = (root, ...args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' })
+const commitAll = (root, message = 'install') => {
+  gitIn(root, 'add', '-A')
+  gitIn(root, 'commit', '--quiet', '-m', message)
+}
+
+// Owned, recorded, layers 0 to 2 installed and layer 3 absent: the shape a
+// repository is in when it has decided against the audit. Everything is
+// committed, because a declaration that is not is refused, and that is its own
+// case below.
+function declinedRepo(root, declaration, { record = true } = {}) {
+  write(root, `${FACTORY}/machine.md`, '# Machine facts\n\nWrite boundary: owned\n')
+  installOwnedLayers(root)
+  rmSync(join(root, 'scripts/check-main-provenance.mjs'))
+  write(root, '.github/workflows/ci.yml', 'name: Checks\njobs:\n  build:\n    steps:\n      - run: npm test\n')
+  if (record) write(root, DECISION, '# 0004. Not installed here\n\nStatus: accepted\n')
+  write(root, 'AGENTS.md', `# AGENTS.md\n\n${declaration}\n`)
+  commitAll(root)
+}
+
+test('a declined layer is declined rather than missing, and the repo exits 0', () => {
+  withRepo((root) => {
+    declinedRepo(root, `- Enforcement layer 3: declined, recorded in ${DECISION}`)
+    const { code, out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'declined')
+    assert.equal(code, 0, `a repository that declined a layer and installed the rest must exit 0:\n${out}`)
+    // The decision and where it is recorded, which is what a declined row owes
+    // a reader in place of a verdict.
+    assert.match(row(out, '3'), /AGENTS\.md declares this layer declined/)
+    assert.match(row(out, '3'), DECISION_RE)
+    // And the whole point.
+    assert.doesNotMatch(out, RECIPE, 'a declined layer was still handed a recipe for installing it')
+    // Declined is not folded into "not applicable to this write boundary": the
+    // mode did not decide it and the summary must not say the mode did.
+    assert.match(out, /3 reported, 1 declined, 1 not applicable/)
+  })
+})
+
+test('the covers line survives, so a declined layer is quieter and not silent', () => {
+  withRepo((root) => {
+    declinedRepo(root, `- Enforcement layer 3: declined, recorded in ${DECISION}`)
+    const { out } = check(root)
+
+    // A row that stopped saying what is uncovered would be an allowlist. ADR
+    // 0053 refuses a knob that hides a finding; this hides a verdict and leaves
+    // the risk on the screen.
+    assert.match(row(out, '3'), /covers a commit that reached the default branch outside a PR/)
+    assert.match(out, /One layer is declined here rather than absent/)
+  })
+})
+
+test('a declared layer with no record is not declined, and still gets no recipe', () => {
+  withRepo((root) => {
+    declinedRepo(root, '- Enforcement layer 3: declined')
+    const { code, out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING', 'a bare assertion was accepted as a decision')
+    assert.equal(code, 1)
+    assert.match(row(out, '3'), /names no record, so this is an/)
+    // Once the word has been written about a layer, the recipe does not come
+    // back: somebody who typed it was not asking how to install it.
+    assert.doesNotMatch(out, RECIPE)
+    assert.match(row(out, '3'), /FIX: Fix the declaration in AGENTS\.md/)
+  })
+})
+
+test('a record that is not there is the same as no record', () => {
+  withRepo((root) => {
+    declinedRepo(root, '- Enforcement layer 3: declined, recorded in docs/decisions/0009-nothing.md', {
+      record: false,
+    })
+    const { code, out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.equal(code, 1)
+    assert.match(row(out, '3'), /where there is no such file/)
+    assert.doesNotMatch(out, RECIPE)
+  })
+})
+
+// #171's lesson arriving at a new fixed location: ask what happens in the
+// repository that cannot use it. A record outside the tree is one machine's,
+// which is the class of fact this design has just finished putting elsewhere.
+test('a record outside the repository is not the repository having decided', () => {
+  withRepo((root) => {
+    declinedRepo(root, '- Enforcement layer 3: declined, recorded in ../elsewhere/notes.md', {
+      record: false,
+    })
+    const { code, out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.equal(code, 1)
+    assert.match(row(out, '3'), /which is outside this repository/)
+  })
+})
+
+// The property the location was chosen for, measured rather than assumed. An
+// untracked declaration is in one working tree and in nobody's clone, which is
+// exactly what ruled out putting this in the git common directory.
+test('an untracked declaration is refused, because a clone would not have it', () => {
+  withRepo((root) => {
+    declinedRepo(root, `- Enforcement layer 3: declined, recorded in ${DECISION}`)
+    gitIn(root, 'rm', '--cached', '--quiet', 'AGENTS.md')
+    gitIn(root, 'commit', '--quiet', '-m', 'untrack the declaration')
+    const { code, out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.equal(code, 1)
+    assert.match(row(out, '3'), /not tracked here/)
+  })
+})
+
+test('an untracked record is refused too, not only the file naming it', () => {
+  withRepo((root) => {
+    declinedRepo(root, `- Enforcement layer 3: declined, recorded in ${DECISION}`)
+    gitIn(root, 'rm', '--cached', '--quiet', DECISION)
+    gitIn(root, 'commit', '--quiet', '-m', 'untrack the record')
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.match(row(out, '3'), DECISION_RE)
+  })
+})
+
+// The false `ok` #170 was, rebuilt on purpose and refused: a report must never
+// say a control is absent when it is there. What is on disk wins over what a
+// document says about it, and the stale declaration is the finding. That is
+// also what keeps the record from rotting after a reversal.
+test('a layer that is installed is reported as installed, whatever AGENTS.md says', () => {
+  withRepo((root) => {
+    declinedRepo(root, `- Enforcement layer 3: declined, recorded in ${DECISION}`)
+    write(root, 'scripts/check-main-provenance.mjs', "const BASELINE = 'a1b2c3d'\n")
+    write(
+      root,
+      '.github/workflows/provenance.yml',
+      'name: provenance\non:\n  push:\n    branches: [main]\njobs:\n  audit:\n    steps:\n      - run: node scripts/check-main-provenance.mjs\n',
+    )
+    commitAll(root, 'reverse the decision')
+    const { code, out } = check(root)
+
+    assert.notEqual(statusOf(out, '3'), 'declined', 'an installed layer was reported as declined')
+    assert.equal(code, 1)
+    assert.match(row(out, '3'), /the layer is installed here anyway/)
+  })
+})
+
+// Not reachable by accident is the requirement, so the wording is exact and
+// only the markdown around it is forgiven.
+test('a declaration survives the markdown a person would write it in', () => {
+  for (const declaration of [
+    `- Enforcement layer 3: declined, recorded in ${DECISION}`,
+    `**Enforcement layer 3**: declined, recorded in \`${DECISION}\``,
+    `Enforcement layer 3: declined, recorded in [ADR 0004](${DECISION}).`,
+  ]) {
+    withRepo((root) => {
+      declinedRepo(root, declaration)
+      assert.equal(statusOf(check(root).out, '3'), 'declined', `not recognised: ${declaration}`)
+    })
+  }
+})
+
+test('prose about having declined a layer is not a declaration', () => {
+  for (const prose of [
+    'We declined enforcement layer 3 in 2024 because the ruleset covers it.',
+    `Enforcement layer 3 is declined, recorded in ${DECISION}`,
+    'Enforcement layer 3: not installed, and that is deliberate.',
+  ]) {
+    withRepo((root) => {
+      declinedRepo(root, prose)
+      const { code, out } = check(root)
+      assert.equal(statusOf(out, '3'), 'MISSING', `prose was read as a declaration: ${prose}`)
+      assert.equal(code, 1)
+      // And where nothing claimed a decision, the recipe is exactly where it was.
+      assert.match(out, RECIPE)
+    })
+  }
+})
+
+// The location is wrong for guest mode and the mechanism says so rather than
+// half-working: AGENTS.md in a repository you are a guest in is the host's.
+test('gate G cannot be declined, and the line is refused out loud', () => {
+  withRepo((root) => {
+    install(root)
+    write(root, DECISION, '# 0004\n')
+    write(root, 'AGENTS.md', `# AGENTS.md\n\nEnforcement layer G: declined, recorded in ${DECISION}\n`)
+    commitAll(root, 'declare the gate declined')
+    const { code, out } = check(root)
+
+    assert.notEqual(statusOf(out, 'G'), 'declined', 'the gate was declined away')
+    assert.equal(code, 1, 'a refused declaration must not be silent')
+    assert.match(row(out, 'G'), /cannot be declined/)
+  })
+})
+
+// A host repository's own declaration, read from guest mode. It says nothing
+// about the layers the factory may install there, and the row says so instead
+// of quietly changing meaning.
+test("a host's declaration of an owned layer changes nothing in guest mode", () => {
+  withRepo((root) => {
+    install(root)
+    write(root, DECISION, '# 0004\n')
+    write(root, 'AGENTS.md', `# AGENTS.md\n\nEnforcement layer 3: declined, recorded in ${DECISION}\n`)
+    commitAll(root, 'the host declined its own audit')
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a correctly installed guest repo must still exit 0:\n${out}`)
+    assert.equal(statusOf(out, '3'), 'n/a')
+    assert.match(row(out, '3'), /which changes nothing here/)
+  })
+})
+
+// The ordinary report is what every repository installing this skill reads, and
+// a design about one repository's decision has no business editing it.
+test('a repository that declared nothing gets the report it got before', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, '# Machine facts\n\nWrite boundary: owned\n')
+    installOwnedLayers(root)
+    const complete = check(root)
+    assert.equal(complete.code, 0)
+    assert.match(complete.out, /Every layer that applies here is present and wired: 4 reported, 1 not applicable/)
+    assert.equal(statusOf(complete.out, '3'), 'ok')
+    // The status column keeps its width where nothing widens it, so somebody
+    // diffing two runs sees the change and not the padding.
+    assert.match(complete.out, /\[ ok {6}\] 3\./)
+
+    rmSync(join(root, 'scripts/check-main-provenance.mjs'))
+    const absent = check(root)
+    assert.equal(absent.code, 1)
+    assert.equal(statusOf(absent.out, '3'), 'MISSING')
+    assert.match(absent.out, RECIPE)
+  })
+})

@@ -38,6 +38,25 @@
 // skipped the step. That is worth printing, and it is not a reason to fail a
 // setup that is otherwise complete.
 //
+// A LAYER THE REPOSITORY DECIDED AGAINST IS NOT A LAYER IT NEGLECTED
+// The mode explains an absent layer that never applied. It says nothing about a
+// layer that applies and that the repository has looked at and decided not to
+// have. Until #156 there was no third answer, so such a layer landed in MISSING
+// beside genuine neglect and its FIX line closed with a recipe for doing the
+// thing the repository had decided not to do.
+//
+// That is not hypothetical and it is not survivable by writing it down. The
+// repository this file ships from declined layer 3, recorded the decision in an
+// ADR, in a process doc and in this header, and an orchestrator who had run this
+// tool that morning filed an issue asking for the layer to be installed anyway.
+// The decision was then reversed, partly on the grounds that the report kept
+// arguing with it. **A report that cannot represent a decision does not lose the
+// argument; it wins it, by being louder than the paragraph asking readers to
+// ignore it.** So the fourth status below is not a convenience.
+//
+// `declined` is read from a declared line in `AGENTS.md`, and that location is
+// the whole of the design. See the section on it below.
+//
 // This also writes the owned answer, with `--record-owned`, because until #100
 // nothing could: the guest record is written by installing the gate, and owned
 // has no gate to install. See that section below for why the reader of a fact
@@ -61,6 +80,11 @@ import { dirname, join, relative, resolve } from 'node:path'
 const OK = 'ok'
 const PARTIAL = 'PARTIAL'
 const MISSING = 'MISSING'
+// Lower case, with `ok` and `n/a` rather than with `PARTIAL` and `MISSING`.
+// The shouted two mean something is wrong here; these three mean there is
+// nothing to do, and which family a status is in should be readable down the
+// left-hand column without reading the word.
+const DECLINED = 'declined'
 
 // The repo root comes from the working directory, never from this file's own
 // location. That is what lets the first run happen from inside the installed
@@ -453,6 +477,209 @@ const BOUNDARY = writeBoundary()
 // checked, and the summary tells anyone in a repository that is not theirs to
 // install the guest gate instead of the four layers it just listed.
 const CHECKLIST = BOUNDARY.mode === GUEST ? GUEST : OWNED
+
+// ---------------------------------------------------------------------------
+// A layer the repository decided against, and why the record is in the tree
+//
+// **The location was the whole design question and it is not a coin toss.** The
+// two candidates were `AGENTS.md`, committed, and the machine record in the git
+// common directory, which this file already reads.
+//
+// ADR 0021 splits the initialisation answers by a test rather than by taste: a
+// repo fact is true for anyone who clones, a machine fact is about *this*
+// operator on *this* repository. `OWNED_RECORD` below states the split in its
+// own words and puts repo facts in `AGENTS.md`. **A declined layer passes that
+// test in one line.** Everybody who clones has declined it, because what
+// declined it is a decision record they clone too. The write boundary fails the
+// same test, which is why the two records are in different places rather than
+// in one place for tidiness.
+//
+// Three consequences settle it, and each is a failure the other location has.
+//
+// **A fresh clone would forget.** The whole defect is a repository being told to
+// install something it decided against. Put the record inside `.git/` and the
+// next clone is told exactly that, on its first run, with the decision sitting
+// in a tracked ADR two directories away. The record would be the one part of the
+// decision that did not travel with it.
+//
+// **A declaration nobody can review is one anybody can set.** This status is
+// reachable only by writing a sentence, so what stops it becoming a checklist
+// item is that the sentence is a tracked change somebody merged. A line inside
+// `.git/` appears in no diff, no review and no `git status`, which is the
+// property that makes it right for an operator fact and wrong for this.
+//
+// **ADR 0030 refused to build a reader for `AGENTS.md`, and its two reasons are
+// both about the boundary rather than about the file.** It refused because the
+// boundary is a machine fact by definition, and because the one `AGENTS.md` line
+// the skill asks for has no writer, so a reader would read an absent file for
+// ever. Neither reaches here. This fact is a repo fact by that ADR's own test,
+// and its writer is a person declining a layer, which is a deliberate act and
+// not a step somebody forgot. A repository that has declined nothing has no
+// line, and that is the ordinary case rather than a permanent absence.
+//
+// **What this costs, said out loud.** `AGENTS.md` is a fixed location, and #171
+// is what fixed locations do. The difference is the direction of the failure: a
+// repository with no `AGENTS.md`, or one keeping its conventions elsewhere, has
+// no declarations and gets exactly the report it gets today. A fixed guard path
+// produced a wrong verdict about a correct repository; a fixed declaration path
+// produces the pre-existing verdict and no new claim.
+//
+// **Guest mode cannot use this and must not.** `AGENTS.md` in a repository you
+// are a guest in is the host's, and writing it is the single thing guest mode
+// exists in order not to do. So only layers in the owned checklist are
+// declinable, gate G never is, and a line naming G is reported rather than
+// honoured. That is not a gap: in guest mode the four owned layers are already
+// `n/a` by mode, and the gate is the mode, so declining it is declining guest
+// mode rather than a layer of it.
+// ---------------------------------------------------------------------------
+const REPO_FACTS = 'AGENTS.md'
+
+// Deliberately hard to write by accident, which is #170's lesson arriving at a
+// louder status instead of a false `ok`: a report that says a layer is present
+// when it is not is a lie about a control, and a report that goes quiet about
+// one because of a stray line is the same lie in a different font. Formatting is
+// forgiven (a bullet, bold, backticks) because a person writes this in a
+// markdown document. The wording is not.
+const CLAIM = /^Enforcement layer\s+(\S+):\s*declined\b(.*)$/
+const RECORDED_IN = /^,?\s*recorded in\s+(.+?)\s*\.?$/
+const MARKDOWN_LINK = /^\[[^\]]*\]\(([^)\s]+)\)$/
+
+// **A pointer to a record, and not free text.** Free text was the other
+// candidate and it loses on both halves of what a reason is for. It cannot be
+// checked, so "not needed here" satisfies it and the status becomes the
+// checklist item this must not become. And it ages in place: the sentence is
+// written at the moment of declining and nothing ever revisits it, which is how
+// three copies of ADR 0001's instruction came to be arguing with a report.
+//
+// A path is checkable twice over without the tool forming any opinion about
+// prose. **This never opens the record.** Reading prose to discover whether a
+// decision exists fails silently the first time somebody words it differently,
+// and a check that is wrong about that is worse than no check, so the two
+// questions asked are the two a filesystem answers: is the record there, and is
+// it in the repository everyone clones.
+//
+// What is deliberately not required is that the path look like a decision
+// record. Insisting on `docs/architecture/decisions/` would impose a convention
+// rather than read one (ADR 0022), and a repository keeping its decisions in one
+// `DECISIONS.md`, or in a directory named for its own house style, would be
+// refused for spelling. What matters is that the argument is in the repository.
+function pointerIn(rest) {
+  const named = RECORDED_IN.exec(rest)
+  if (named === null) {
+    return {
+      problem: [
+        `${REPO_FACTS} declares this layer declined and names no record, so this is an`,
+        'assertion rather than a decision. A layer is declined once the argument is written',
+        'somewhere everyone who clones this repository gets it. Complete the line:',
+        `  Enforcement layer <n>: declined, recorded in <path in this repository>`,
+      ],
+    }
+  }
+  const raw = named[1].trim()
+  const path = (MARKDOWN_LINK.exec(raw)?.[1] ?? raw).replace(/^<|>$/g, '').replace(/\\/g, '/')
+  // A path leading out of the checkout is not a record this repository has. The
+  // absolute case is the one worth naming: it points at one machine's disk,
+  // which is the machine fact this design just finished refusing.
+  if (path.startsWith('/') || /^[A-Za-z]:/.test(path) || relative(ROOT, resolve(ROOT, path)).startsWith('..')) {
+    return {
+      problem: [
+        `${REPO_FACTS} declares this layer declined and records the decision at "${path}",`,
+        'which is outside this repository. A record only this machine can read is not the',
+        'repository having decided; it is somebody having decided. Move it into the tree',
+        'and name it by a path relative to the repository root.',
+      ],
+    }
+  }
+  if (!existsSync(join(ROOT, path))) {
+    return {
+      problem: [
+        `${REPO_FACTS} declares this layer declined and records the decision at "${path}",`,
+        'where there is no such file. A pointer to nothing is the same as no pointer, and',
+        'the layer is reported as absent until it resolves',
+      ],
+    }
+  }
+  return { path }
+}
+
+// Every declaration in `AGENTS.md`, by layer. A second line for one layer is
+// ignored rather than merged: two declarations disagreeing about the same layer
+// is a state with no right answer, and the first one is at least the one a
+// reader meets first.
+function claims() {
+  const text = read(REPO_FACTS)
+  if (text === null) return new Map()
+  const found = new Map()
+  for (const line of text.split('\n')) {
+    const bare = line.replace(/[*`]/g, '').replace(/^\s*[-+]\s+/, '').trim()
+    const claim = CLAIM.exec(bare)
+    if (claim === null || found.has(claim[1])) continue
+    found.set(claim[1], { layer: claim[1], ...pointerIn(claim[2]) })
+  }
+  return found
+}
+
+// **Tracked, not merely present.** This is the property the location was chosen
+// for, so it is measured rather than assumed: an untracked `AGENTS.md`, or a
+// record sitting in somebody's working tree and in nobody's clone, is exactly
+// the invisible declaration that ruled out the machine record. Where `git` does
+// not answer the check is skipped and the row says so, which is how this file
+// already treats its other two git comparisons.
+function trackedIn(paths) {
+  if (paths.length === 0) return new Set()
+  try {
+    return new Set(
+      git(['ls-files', '--', ...paths]).split('\n').filter(Boolean).map((p) => p.replace(/\\/g, '/')),
+    )
+  } catch {
+    return null
+  }
+}
+
+const CLAIMS = (() => {
+  const found = claims()
+  const paths = [REPO_FACTS, ...[...found.values()].map((c) => c.path).filter(Boolean)]
+  const tracked = trackedIn(paths)
+  if (tracked === null) {
+    for (const claim of found.values()) claim.unchecked = true
+    return found
+  }
+  for (const claim of found.values()) {
+    if (claim.problem !== undefined) continue
+    const untracked = [REPO_FACTS, claim.path].filter((p) => !tracked.has(p))
+    if (untracked.length > 0) {
+      claim.problem = [
+        `${untracked.join(' and ')}: not tracked here, so this declaration lives in one`,
+        "working tree and in nobody else's clone. A layer is declined by the repository or",
+        'not at all, so commit the record and the file that declares it, and the decision',
+        'arrives with the code it is about',
+      ]
+    }
+  }
+  return found
+})()
+
+// What a declined row says instead of a verdict and a recipe. The `covers` line
+// is still printed above it, which is the point: the risk stays on the screen
+// and only the argument about it stops.
+const declinedRow = (claim) => [
+  `${REPO_FACTS} declares this layer declined, and records the decision in`,
+  `  ${claim.path}`,
+  ...(claim.unchecked ? ['note: `git` did not answer, so whether both files are tracked is unchecked'] : []),
+  'Not counted, and not a finding. What the covers line above names is what this',
+  'repository has decided to do without; read the record before installing it anyway.',
+]
+
+// A refused declaration, printed where somebody wrote one for the gate. Refusing
+// out loud rather than ignoring it: a line that silently does nothing is how
+// somebody comes to believe a layer is declined when the report still judges it.
+const refusedClaim = [
+  `${REPO_FACTS} declares gate G declined. That declaration is not honoured and gate G`,
+  'cannot be declined. It is the one control guest mode has, and in a repository you are',
+  `a guest in ${REPO_FACTS} is the host's file rather than the factory's to write. Remove`,
+  'the line: declining the gate is declining guest mode, which is a boundary to record',
+  'rather than a layer to decline.',
+]
 
 // Every workflow file as one string. Substring questions only: "does any
 // workflow mention this name" is answerable without a YAML parser, and this
@@ -1432,25 +1659,101 @@ if (CHECKLIST === OWNED) {
 }
 console.log('')
 
+// ---------------------------------------------------------------------------
+// A declaration decides the wording before it decides the verdict
+//
+// **The FIX line is what this issue was filed about.** A layer the repository
+// decided against was landing in MISSING and closing with a recipe for doing the
+// thing it decided not to do. So the rule is stated once, here, and it is wider
+// than the new status: **once the repository has written the word "declined"
+// about a layer, this never prints an install recipe for it again**, whether or
+// not the declaration turned out to be usable. Somebody who typed that line was
+// not asking how to install it, and a repository whose declaration is broken
+// wants the declaration fixed, not the argument reopened. Removing the line is
+// what puts the recipe back, and the remedy says so rather than reprinting it.
+//
+// **A declaration is honoured only where the layer is genuinely absent.** Run
+// the layer first and let what is on disk win. A layer that is installed *and*
+// declared declined is a contradiction, and reporting `declined` over an
+// installed layer would be #170's false `ok` rebuilt on purpose: a report saying
+// a control is not there when it is. So the real verdict stands and the
+// contradiction is a finding, which is also what keeps the record from rotting.
+// The repository that reverses a decision and installs the layer is told its
+// declaration is now stale, on the next run, by the tool rather than by
+// somebody remembering.
+const contradicts = (claim) => [
+  `${REPO_FACTS} declares this layer declined${claim.path === undefined ? '' : `, recorded in ${claim.path}`},`,
+  'and the layer is installed here anyway. The declaration is the stale half: it describes',
+  'a decision this repository has since reversed. Remove the line, and say so in the record.',
+]
+
+const declaredButSkipped = [
+  `note: ${REPO_FACTS} declares this layer declined, which changes nothing here. The`,
+  'write boundary already excludes it, and a layer the mode excludes is not one this',
+  'repository had to decide about.',
+]
+
+const rows = []
 let unmet = 0
 let reported = 0
+let declined = 0
 for (const layer of LAYERS) {
   const applies = layer.modes.includes(CHECKLIST)
-  const { status, findings } = applies ? layer.run() : { status: 'n/a', findings: layer.skipped(BOUNDARY.mode) }
-  if (applies) {
+  // Only the owned checklist is declinable. Gate G is refused wherever it is
+  // claimed, for the reason beside `refusedClaim`.
+  const declinable = layer.modes.includes(OWNED)
+  const claim = CLAIMS.get(String(layer.n))
+  let { status, findings } = applies
+    ? layer.run()
+    : { status: 'n/a', findings: layer.skipped(BOUNDARY.mode) }
+  let fix = layer.fix
+
+  if (claim !== undefined && !declinable) {
+    findings = [...findings, ...refusedClaim]
+    // A refused claim in the mode that judges this layer is a real finding, not
+    // a note: somebody believes a control is switched off that is not.
+    if (applies && status === OK) status = PARTIAL
+  } else if (claim !== undefined && !applies) {
+    findings = [...findings, ...declaredButSkipped]
+  } else if (claim !== undefined && status === MISSING) {
+    // Never the install recipe again, per the rule above, and that holds for the
+    // unusable declaration too.
+    fix = `Fix the declaration in ${REPO_FACTS}, or delete the line if this layer is meant to be installed after all. This report prints the way to install it once nothing here claims it was declined.`
+    if (claim.problem === undefined) {
+      status = DECLINED
+      findings = declinedRow(claim)
+    } else {
+      findings = [...findings, ...claim.problem]
+    }
+  } else if (claim !== undefined) {
+    findings = [...findings, ...contradicts(claim)]
+    if (status === OK) status = PARTIAL
+  }
+
+  if (status === DECLINED) declined += 1
+  else if (applies) {
     reported += 1
     if (status !== OK) unmet += 1
   }
-  console.log(`[ ${status.padEnd(7)} ] ${layer.n}. ${layer.name}`)
+  rows.push({ layer, status, findings, fix })
+}
+
+// Measured rather than typed, so a run with no declined row prints the column
+// it has always printed and the widest status decides only when it is wider.
+const COLUMN = Math.max(MISSING.length, ...rows.map((r) => r.status.length))
+for (const { layer, status, findings, fix } of rows) {
+  console.log(`[ ${status.padEnd(COLUMN)} ] ${layer.n}. ${layer.name}`)
   console.log(`             covers ${layer.covers}`)
   for (const finding of findings) console.log(`             ${finding}`)
   // Only an absent layer needs the install line. A PARTIAL one is already
   // installed and its findings say what is left, so repeating "copy the file"
   // there would be the loudest and least useful thing on the screen. A layer
   // the mode excludes needs it least of all: installing it is the mistake.
-  if (status === MISSING) console.log(`             FIX: ${layer.fix}`)
+  if (status === MISSING) console.log(`             FIX: ${fix}`)
   console.log('')
 }
+
+const DECLINED_ROWS = rows.filter((r) => r.status === DECLINED)
 
 // The probe is the only way a session can tell a loaded gate from an inert one,
 // and this script cannot tell them apart either. Say so wherever it reports a
@@ -1554,11 +1857,33 @@ function unrecordedRemedy() {
 
 const UNRECORDED_REMINDER = unrecordedRemedy()
 
+// **The exit code follows the decision, which is the observable this is for.**
+// A repository that has declined a layer and installed the rest exits 0, in the
+// same way a guest repository with four `n/a` rows does. What it must not do is
+// exit 0 having said nothing: `declined` is subtracted from the "not applicable"
+// count rather than folded into it, and the layers are named again under the
+// summary, because the summary is the line an orchestrator quotes.
+//
+// The wording with no declined row is unchanged, deliberately and not by luck.
+// The ordinary report is what every repository installing this skill reads, and
+// a design about one repository's decision has no business editing it.
+const declinedSummary = [
+  `${declined === 1 ? 'One layer is' : `${declined} layers are`} declined here rather than absent:`,
+  ...DECLINED_ROWS.map(({ layer }) => `  ${layer.n}. ${layer.name}, in ${CLAIMS.get(String(layer.n)).path}`),
+  `Declared in ${REPO_FACTS} and argued in the records above. What each one leaves`,
+  'uncovered is on its row; a decision is not a mitigation.',
+]
+
 if (unmet === 0) {
   console.log(
-    `Every layer that applies here is present and wired: ${reported} reported, ` +
-      `${LAYERS.length - reported} not applicable to this write boundary. Any note above is advisory.`,
+    declined === 0
+      ? `Every layer that applies here is present and wired: ${reported} reported, ` +
+          `${LAYERS.length - reported} not applicable to this write boundary. Any note above is advisory.`
+      : `Every layer that applies here and was not declined is present and wired: ` +
+          `${reported} reported, ${declined} declined, ${LAYERS.length - reported - declined} not ` +
+          'applicable to this write boundary. Any note above is advisory.',
   )
+  if (declined > 0) for (const line of ['', ...declinedSummary]) console.log(line)
   for (const line of ['', ...PROBE]) console.log(line)
   if (BOUNDARY.mode === UNRECORDED) for (const line of ['', ...UNRECORDED_REMINDER]) console.log(line)
   process.exit(0)
@@ -1573,6 +1898,10 @@ const subject =
 const until = unmet === 1 ? 'Until it is,' : 'Until they are,'
 
 console.error(`${subject} absent, unwired, or still unedited.`)
+// Said here as well as in the rows, because the failing summary is the half an
+// orchestrator quotes, and "two of three" over a repository with four layers
+// reads as a miscount rather than as a decision.
+if (declined > 0) for (const line of declinedSummary) console.error(line)
 if (CHECKLIST === GUEST) {
   console.error(`${until} some session working this repository refuses no outward write`)
   console.error('into a repository that is not yours: a push, a pull request, a comment on')

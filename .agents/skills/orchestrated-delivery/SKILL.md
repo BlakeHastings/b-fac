@@ -423,6 +423,13 @@ guest repo with the gate installed exits 0. Where nobody recorded a boundary it
 says so and reports the owned set, which is a finding rather than a failure and
 a prompt to answer the question ADR 0021 asks at initialisation.
 
+**A layer you decided against is `declined`, not missing.** Record the decision,
+then say so in `AGENTS.md`: `Enforcement layer 3: declined, recorded in <path>`.
+The row keeps its *does not cover* line and stops moving the exit code. Without
+that, a deliberate absence reports MISSING with a recipe under it, and this repo
+proved where that ends: the decision was written down three times and the layer
+was installed anyway within a day. ADR 0054, `references/enforcement.md`.
+
 **Copying is not installing**, which is the half it exists to catch: a guard
 script no `settings.json` invokes, a `REQUIRED` list still holding its
 placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch
