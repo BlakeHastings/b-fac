@@ -98,6 +98,12 @@
 // branch, so it is a floor and never a ceiling: work that landed and has not
 // been pulled is invisible, and the handoff is staler than this says.
 //
+// **An age in a checkout git cannot be asked about.** Where there is no
+// repository to question, a file's own timestamp is the only clock and it is
+// not a sound one — see the block above `writtenAt`. Both hooks then say they
+// cannot tell, refuse nothing, and inject the handoff with that said in place
+// of a number.
+//
 // **Whether it is loaded.** See --probe.
 
 // ---------------------------------------------------------------------------
@@ -142,24 +148,98 @@ const resolveHandoff = (cwd) => (isAbsolute(HANDOFF) ? HANDOFF : join(cwd, HANDO
 // default branch under another name, would be indistinguishable to the reader
 // from the hook not being wired. Every failure to measure reports as "cannot
 // tell", and "cannot tell" never refuses.
-function mergesSince(cwd, when) {
+//
+// So git is asked through this, which never throws and hands back the exit code
+// beside the output. The code carries meaning below and is not merely a
+// success flag: `git diff --quiet` says "these bytes differ" by exiting 1, and
+// reading that 1 as "git could not be asked" would invert the answer.
+function git(cwd, args) {
   try {
-    const out = execFileSync(
-      'git',
-      [
-        'log',
-        '--first-parent',
-        '--format=%h',
-        `--since=${when.toISOString()}`,
-        DEFAULT_BRANCH,
-        '--',
-      ],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    )
-    return out.split('\n').filter((line) => line.trim() !== '').length
-  } catch {
-    return null
+    const out = execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return { code: 0, out }
+  } catch (error) {
+    return { code: typeof error.status === 'number' ? error.status : null, out: '' }
   }
+}
+
+// WHEN THE HANDOFF WAS WRITTEN, WHICH IS NOT WHAT mtime ANSWERS
+// `git worktree add`, `git clone` and any checkout that changes the file write
+// the committed bytes out with today's timestamp. Take the age from mtime alone
+// and every one of them reports a handoff written moments ago. Measured on a
+// twelve-day-old file: the main checkout said "288h old, 5 commits on main
+// since" and a worktree cut from it said "under an hour old, 0 commits" about
+// the same bytes. Both numbers reset together, because the count below is taken
+// *since that same instant*, so there is no second opinion built in. The reader
+// most likely to be in a worktree is a dispatched implementation agent, which is
+// the reader least equipped to notice.
+//
+// The answer is not a second clock bolted alongside the first. It is that git
+// already knows which of the two applies, and the question is one line long:
+// **could a checkout have written these bytes?**
+//
+//   not tracked here    No. A checkout only writes files git tracks. That is an
+//                       untracked file, and it is also the guest-mode handoff,
+//                       which lives outside the worktree entirely (ADR 0037) and
+//                       which no checkout of this repository ever touches.
+//                       mtime is a real write.
+//
+//   tracked, modified   No. A checkout writes the *committed* bytes and these
+//                       are not them, so someone wrote this here, after any
+//                       checkout. That is the mid-session top-up the loop asks
+//                       for continuously, which makes it the normal state rather
+//                       than the exception. mtime is a real write.
+//
+//   tracked, clean      Yes, and nothing on disk records whether it did. The
+//                       bytes are the commit's, so the commit is what dates
+//                       them, and mtime is evidence about the last checkout.
+//
+// This is why `git log -1 --format=%ct` was rejected on the issue and is used
+// here anyway. The objection was sound and it is about the uncommitted top-up,
+// where last-commit is not last-edit. That is precisely the case this never
+// reaches it in.
+//
+// Nothing to ask, and the answer is that this cannot be measured — not a
+// timestamp with a caveat attached, because the whole content of the caveat
+// would be that the number may be a checkout's, which is the false confidence
+// this exists to remove.
+//
+// It hands back which witness answered as well as when, because the count below
+// needs to know: a commit can be counted from exactly, where a timestamp can
+// only open a window.
+function writtenAt(cwd, path, stat) {
+  const onDisk = { at: stat.mtimeMs, commit: null }
+
+  if (git(cwd, ['rev-parse', '--git-dir']).code !== 0) return null
+  if (git(cwd, ['ls-files', '--error-unmatch', '--', path]).code !== 0) return onDisk
+
+  // Anything but a clean verdict is the file, including the 128 from a
+  // repository whose HEAD is unborn: with no commit, nothing has ever been
+  // checked out over this file either.
+  if (git(cwd, ['diff', '--quiet', 'HEAD', '--', path]).code !== 0) return onDisk
+
+  const dated = git(cwd, ['log', '-1', '--format=%ct %H', '--', path]).out.trim()
+  const [seconds, commit] = dated.split(' ')
+  const at = Number.parseInt(seconds, 10)
+  return Number.isFinite(at) && commit ? { at: at * 1000, commit } : null
+}
+
+// A commit range where there is a commit, and a date window otherwise. The
+// handoff's own commit is not a commit *since* the handoff, and a `--since`
+// window opened at that commit's own timestamp includes it — so a handoff
+// committed a minute ago would otherwise read as already one merge behind
+// itself, and the threshold would be reached a merge early for ever after.
+function mergesSince(cwd, written) {
+  const range = written.commit
+    ? [`${written.commit}..${DEFAULT_BRANCH}`]
+    : [`--since=${new Date(written.at).toISOString()}`, DEFAULT_BRANCH]
+
+  const result = git(cwd, ['log', '--first-parent', '--format=%h', ...range, '--'])
+  if (result.code !== 0) return null
+  return result.out.split('\n').filter((line) => line.trim() !== '').length
 }
 
 function readHandoff(cwd) {
@@ -171,19 +251,38 @@ function readHandoff(cwd) {
     return { path, present: false }
   }
 
-  const hours = (Date.now() - stat.mtimeMs) / 3_600_000
-  const merges = mergesSince(cwd, stat.mtime)
+  const text = () => readFileSync(path, 'utf8')
+  const written = writtenAt(cwd, path, stat)
+
+  // Cannot tell, so nothing is claimed and nothing is refused. The two numbers
+  // go together deliberately: the count is taken since the same instant, so an
+  // unknown instant makes the count unknown rather than zero, and zero is the
+  // reading that says "nothing has happened, carry on".
+  if (written === null) {
+    return { path, present: true, hours: null, merges: null, stale: false, text }
+  }
+
+  const hours = (Date.now() - written.at) / 3_600_000
+  const merges = mergesSince(cwd, written)
   return {
     path,
     present: true,
     hours,
     merges,
     stale: hours >= STALE_AFTER_HOURS || (merges !== null && merges >= STALE_AFTER_MERGES),
-    text: () => readFileSync(path, 'utf8'),
+    text,
   }
 }
 
 const age = (state) => {
+  if (state.hours === null) {
+    return (
+      'of an age nothing here can measure: git could not be asked to date its ' +
+      'contents, and a file timestamp alone cannot be told apart from a ' +
+      'checkout. Treat it as possibly very old'
+    )
+  }
+
   const hours = state.hours < 1 ? 'under an hour' : `${Math.round(state.hours)}h`
   const merges =
     state.merges === null
@@ -336,6 +435,11 @@ function probe() {
     console.log('Nothing is refused: the first compaction of a fresh session must not wedge,')
     console.log('and an absent file is not a stale one. SessionStart would inject a note')
     console.log('saying the summary is all there is.')
+  } else if (state.hours === null) {
+    console.log(`CANNOT TELL: ${state.path} is ${age(state)}.`)
+    console.log('')
+    console.log('Nothing is refused, because an age that cannot be measured is not a stale')
+    console.log('handoff. Reading it as fresh is the one answer this must not give.')
   } else if (state.stale) {
     console.log(`STALE: ${state.path} is ${age(state)}.`)
     console.log('')

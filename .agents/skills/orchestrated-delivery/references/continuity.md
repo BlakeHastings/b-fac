@@ -134,6 +134,46 @@ note that the *script* is read off disk every time, so a change to what it
 decides is live in every running session immediately. That asymmetry is
 `references/enforcement.md`'s and it applies here unchanged.
 
+## What "stale" is measured against, and why it is not the file's timestamp
+
+Two thresholds, either of which is enough: hours since the handoff was written,
+and commits on the default branch since. Both need one instant to count from,
+and the obvious one is wrong.
+
+**A checkout writes the committed bytes out with today's timestamp.** So
+`git worktree add`, `git clone` and any branch switch that changes the file
+reset its mtime without anybody touching it. Take the age from mtime and a
+twelve-day-old handoff reads as written minutes ago — measured, on the same
+bytes in two directories:
+
+```
+main checkout : below is docs/process/handoff.md verbatim, 288h old, 5 commits on main since.
+a worktree    : below is docs/process/handoff.md verbatim, under an hour old, 0 commits on main since.
+```
+
+Both numbers go fresh together, because the count is taken since that same
+instant. **The reader most likely to be in a worktree is a dispatched
+implementation agent**, which is the reader least able to check, and a fresh
+clone is the same defect on the first run for whoever just installed this.
+
+So the asset asks git which clock applies rather than picking one. A checkout
+only writes files git tracks, and only ever writes the committed content, so:
+a file git does not track here was written where it stands (that is guest mode,
+and an uncommitted first draft); a tracked file that differs from `HEAD` was
+written here too (that is the mid-session top-up, which is the normal state);
+and a tracked file identical to `HEAD` is dated by the commit that wrote it,
+because its timestamp is evidence about the last checkout instead.
+
+**Where git cannot be asked, both hooks say they cannot tell and refuse
+nothing.** Not a number with a caveat, because the caveat would be the whole of
+the answer. And **nothing is parsed out of the handoff's own prose** — a date in
+the text is a format the document has to satisfy, and it is written by the same
+hand the mechanism exists to check. ADR 0055, revising one sentence of ADR 0040.
+
+What none of this sees: a handoff topped up in the morning and merged in the
+evening is dated by the merge, in the commit and in the pull alike. The commit
+count is what is left to notice a busy day with.
+
 ## The asymmetry, which is the load-bearing part
 
 `PreCompact` exiting 2 blocks the compaction. Measured on Claude Code 2.1.228,
