@@ -42,6 +42,13 @@ detection because prevention can be silently bypassed; this prevention lives at
 GitHub's end rather than in a hook the session might not load, so there is no
 bypass for detection to catch.
 
+*This paragraph no longer holds and **ADR 0050 replaces it**. The ruleset's
+configuration is still exactly as described below, checked against the API, but
+it is configuration: an owner, or a token that can merge, can disable it, push,
+and restore it, leaving nothing in any checkout. That is a bypass, and which side
+of the network it lives on is not what makes detection worth having. The audit is
+installed. Read 0050 before acting on this paragraph or on the closing one.*
+
 ## Consequences
 
 The owner cannot push to `main` either. That is intended and is the difference
@@ -60,6 +67,16 @@ That distinction is the point: the plugin has to work for repos unlike this one.
 missing in this repository and that is the correct answer.** The asset checks
 what a private repo needs. Do not install the provenance audit here to make the
 output green.
+
+*Reversed by **ADR 0050**, in #152. Layer 3 is installed and
+`assets/check-setup.mjs` exits 0 here. The instruction above was written in this
+ADR, in `docs/process/handoff.md` and in the asset's own header, and was
+rediscovered as a defect anyway, which is its own argument: a standing red line
+that three documents ask readers to ignore is the ceremony `review.md` says to
+remove rather than restate. The baseline was set to the commit the asset's
+guidance names, not to the one that would have made the output green, so the
+audit reports two commits from this repository's first twenty-four minutes. They
+are in 0050.*
 
 ## Correction, recorded rather than edited away
 
