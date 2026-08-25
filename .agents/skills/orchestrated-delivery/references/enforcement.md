@@ -111,6 +111,42 @@ otherwise complete. Such a repo is reported against the owned checklist, and the
 output says so, because **if the repo is not yours those four layers are the
 wrong thing to install** and a silent default would be how that happens.
 
+**And it reports a layer you decided against as `declined` rather than as
+missing.** The revisit trigger at the end of this chapter tells you to delete
+layers as their drivers arrive, and until #156 the report had no way to say that:
+a deliberate absence landed in `MISSING` beside genuine neglect, and the `FIX:`
+line under it closed with a recipe for doing the thing you decided not to do.
+
+Record the decision, then declare it in `AGENTS.md`, one line per layer:
+
+```
+Enforcement layer 3: declined, recorded in docs/decisions/0004-no-audit.md
+```
+
+The layer then reports `declined`, is not counted, and does not move the exit
+code. Its *does not cover* line is still printed, because a decision is not a
+mitigation and the risk stays on the screen; only the argument about it stops.
+
+Four things about that line are worth knowing before you write one.
+
+- **A record, not a reason.** The path has to name a file in the repository and
+  that file has to exist and be tracked. Free text cannot be checked, so "not
+  needed here" would satisfy it, and the status would become a checkbox. The
+  check never opens the record: whether a decision is *good* is not a thing a
+  text scan can answer, and one that pretends to fails the moment somebody words
+  it differently.
+- **Committed, both files.** A declaration in one working tree and in nobody's
+  clone is refused. The whole reason this lives in the tree rather than beside
+  the machine record is that everyone who clones has declined the layer, because
+  they clone the decision too. ADR 0054.
+- **What is installed wins.** Install a layer you had declined and the report
+  says so and calls the declaration stale, rather than reporting `declined` over
+  a control that is there. So the record retires itself by being contradicted.
+- **The gate is not declinable, and neither is anything in guest mode.**
+  `AGENTS.md` in a repository you are a guest in is the host's file. The four
+  owned layers are already `n/a` there, and the gate is the mode rather than a
+  layer of it.
+
 That the *report* may read the mode and the *gate* may not is ADR 0030, and the
 difference is position in time rather than trust: a hook runs before its command
 and cannot know where that command will land, while a report runs where you are
@@ -682,3 +718,14 @@ Delete rather than keep out of sentiment. The justification for a layer is the
 absence of the thing that would otherwise do its job, and that absence goes away
 layer by layer rather than all at once, which is why "the branch is protected
 now" is the start of the arithmetic and not the end of it.
+
+**Whatever you delete, declare.** A layer you took out on this reasoning is
+otherwise indistinguishable from one nobody got round to, and `check-setup.mjs`
+will tell every clone to install it on every run. The repository this skill ships
+from decided exactly this about layer 3, wrote the instruction down in an ADR, a
+process doc and the asset's own header, and had the layer installed anyway inside
+a day by somebody who had run the tool that morning. **A report that cannot
+represent a decision eventually overturns it**, not by being right but by being
+louder than three paragraphs asking readers to ignore it. One line in `AGENTS.md`
+naming your record is what stops that, and the form is under "Installed is not a
+state you can assume" above.
