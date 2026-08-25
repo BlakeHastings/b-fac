@@ -169,6 +169,22 @@ them the check is the net, not the merge. An agent that took `0.17.0` while
 `main` was still at `0.15.0`, because that number survives either merge order,
 had the better idea and it did not come from these docs.
 
+**And when the numbers do differ, the branch has no CI at all.** The line
+conflicts, GitHub stops recomputing `refs/pull/<n>/merge` while it conflicts,
+and a `pull_request` run is dispatched against a merge ref it has just
+recomputed, so nothing starts. Not stale, not red, absent. PR #147 sat there
+across five pushes, three of them empty commits added to nudge a run that could
+not start. Two of those nudges did produce a run, which is why it read as
+flakiness, and both ran only because `main` had meanwhile released the number
+the branch was holding: `0.40.0` at `401c222`, `0.41.0` at `8cdaac1`, which is
+the one state in which `check-version-bump.mjs` must fail. Measured while it was
+still open, its merge ref and its last run stopped at the same commit. Put that beside the strict up-to-date policy
+above and payload work here is serial rather than merely rebase-prone: a payload
+branch is green only between its rebase and the next merge. `gh pr view <n>
+--json mergeable` reading `CONFLICTING` is how the next agent tells "CI has not
+started" from "CI cannot start", which is the distinction three empty commits
+were spent on. #151, and `references/parallelism.md` ships the advice.
+
 **The probe kills the command it rides in on, and the guard now says so.**
 `guard-merge.mjs` refuses `check-guard-live.mjs` by name, and `PreToolUse`
 refuses the whole tool call, so `git pull && node scripts/check-guard-live.mjs`
