@@ -140,6 +140,26 @@ const DENIED = [
   // a gap. A probe walked past reports the gate inert in a session where it is
   // live, and a false "inert" arrives with the authority of a measurement.
   'GH_TOKEN=x node .factory/guard-guest-writes.mjs --probe',
+  // #135, and the reason this one is a defect in a control rather than a gap:
+  // the line below is how references/enforcement.md, references/first-run.md
+  // and docs/process/handoff.md all tell a session to ask this gate whether it
+  // is loaded. The gate lives outside the working tree, so a substitution is
+  // the only way to name it, and a substitution used to end the outer command
+  // at the `$(`: `node` landed in one segment and the file name in the next,
+  // and `isLivenessProbe` needs both. The documented probe ran and reported the
+  // gate inert from inside a session where it was denying.
+  'node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --probe',
+  'node "$(cat pointer)/factory/guard-guest-writes.mjs" --probe',
+  'node $(cat pointer)/factory/guard-guest-writes.mjs --probe',
+  // A `$(` that is never closed must not swallow the command it interrupted.
+  'git push $(cat',
+  // A substitution in the command position is still that command.
+  '"$(cat pointer)/bin/gh" pr create --fill',
+  // The deny direction, which is where a placeholder could narrow the gate
+  // rather than widen it. A `$(...)` can expand to nothing, so a word ending in
+  // one is still that word, and `$(true)` prints nothing.
+  'git push$(true) origin HEAD',
+  'gh issue create$(x) --title x',
 ]
 
 const ALLOWED = [
@@ -207,6 +227,14 @@ const ALLOWED = [
   'echo "node .factory/guard-guest-writes.mjs --probe"',
   'cat .factory/guard-guest-writes.mjs',
   'node .factory/guard-guest-writes.mjs --install',
+  // #135's other direction, and the one this gate is widest against because it
+  // denies `gh` by default. A substitution's result is an argument to the
+  // command it sits in, so the words after it are that argument's text. Reading
+  // the pointer that ADR 0037 introduced is itself the commonest shape here.
+  'cat "$(git rev-parse --path-format=absolute --git-common-dir)/factory-home"',
+  'echo "$(cat x)/gh pr create"',
+  'gh issue view "$(cat number)"',
+  'bd comment 1 --body "$(cat note) and git push is denied"',
   // Reading a command line means reading it all the way down, or the nested
   // case quietly reintroduces the text scan.
   'bash -c "echo git push origin main"',

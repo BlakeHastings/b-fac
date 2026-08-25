@@ -291,11 +291,29 @@ function deny(reason, refused) {
 // is a red test rather than a lucky reading.
 
 // Characters that end one command and begin another when they are not inside
-// quotes. A closing `)` is handled separately, since it only ends a command
-// when a `$(` opened one.
+// quotes. A closing `)` ends a command too, and when a `$(` opened it, it also
+// puts back the argument that `$(` interrupted.
 const OPERATORS = new Set(['&', '|', ';', '\n', '\r', '(', '`'])
 
 const ESCAPABLE = new Set([...OPERATORS, ')', '"', "'", '\\', '$', ' ', '\t'])
+
+// What a `$(...)` leaves behind in the argument it interrupted, so that the
+// argument survives as one token. This gate's own probe is documented as
+//
+//   node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-guest-writes.mjs" --probe
+//
+// because the gate lives outside the working tree and that is how a session
+// finds it. Ending the outer command at the `$(` put `node` in one segment and
+// the file name in the next, so `isLivenessProbe`, which needs both, never saw
+// them together: the documented probe ran and reported the gate inert from
+// inside a session where it was live. With the placeholder the argument reads
+// `$()/factory/guard-guest-writes.mjs` and `commandName` still resolves the
+// file.
+//
+// The text is the source's own with the command taken out, so a line that
+// really does contain `$()` reads the same either way and no token is invented
+// that a shell would not have produced.
+const SUBSTITUTION = '$()'
 
 // Split a command line into the commands it will actually run, each one
 // tokenised. Quotes come off the tokens, because `git "push"` has to read the
@@ -309,9 +327,14 @@ function parse(line, literalQuote) {
   let token = ''
   let quote = null
   let heredoc = null
-  // The quote context each open `$(` interrupted, so that the text after the
-  // closing bracket goes back to being that argument's contents.
-  const resume = []
+  // One frame per open bracket. A `$(` frame carries the whole of the argument
+  // it interrupted — the quote, the tokens so far and the half-built token — so
+  // the closing bracket can put all three back. A `(` frame carries nothing and
+  // exists only so that its own `)` does not close somebody else's.
+  const open = []
+  // How many `$(` are open, so each segment records whether it is a command the
+  // line runs or a command a substitution runs to produce an argument.
+  let inSubstitution = 0
 
   const endToken = () => {
     if (token !== '') tokens.push(token)
@@ -319,8 +342,14 @@ function parse(line, literalQuote) {
   }
   const endSegment = () => {
     endToken()
-    if (tokens.length > 0) segments.push(tokens)
+    if (tokens.length > 0) segments.push({ tokens, substituted: inSubstitution > 0 })
     tokens = []
+  }
+  const closeSubstitution = (frame) => {
+    tokens = frame.tokens
+    token = frame.token + SUBSTITUTION
+    quote = frame.quote
+    inSubstitution -= 1
   }
 
   for (let i = 0; i < line.length; i += 1) {
@@ -333,20 +362,44 @@ function parse(line, literalQuote) {
     // backticks, and a review record quoting a blocked command is precisely the
     // false positive this reader exists to have stopped producing.
     if (opensSubstitution && quote !== "'") {
-      endSegment()
-      resume.push(quote)
+      // A `$(...)` can expand to nothing, and then the word is only the text in
+      // front of it. So the word so far is emitted as a reading of its own and
+      // the joined reading follows, and a rule denies if either one is a push.
+      // Without this, `git push$(true) origin` stopped being a push the moment
+      // the placeholder joined `push` to it — a narrowing, where this change is
+      // meant to widen. With no text in front of it there is no such word: the
+      // vanishing reading is a bare command name carrying no arguments, which
+      // no rule in any of these three files decides on, and dropping it is what
+      // leaves `node "$(...)/guard-guest-writes.mjs" --probe` reading as one
+      // command.
+      //
+      // The vanishing reading reaches only as far as the `$(`, so a rule that
+      // turns on a token *after* one is not covered by it: `--probe` in
+      // `node guard.mjs$(x) --probe` sits past the split, and did before this
+      // change too. Gluing a substitution into the middle of a word is hiding
+      // rather than forgetting, and NOT COVERED draws that line already.
+      if (token !== '') {
+        segments.push({ tokens: [...tokens, token], substituted: inSubstitution > 0 })
+      }
+      open.push({ substitution: true, quote, tokens, token })
+      tokens = []
+      token = ''
       quote = null
+      inSubstitution += 1
       i += 1
       continue
     }
-    // `(` already ends a command, so `)` has to end one as well. Restoring the
-    // interrupted quote is only right when a `$(` opened the bracket; a closing
-    // bracket with nothing open is a subshell's, and the merge guard beside
-    // this one gets that case wrong. `(cd repo && git push)` tokenises there as
-    // `git` `push)`, and a rule looking for `push` does not see it.
+    // `(` already ends a command, so `)` has to end one as well, whether or not
+    // this parser saw the thing that opened it. A closing bracket that falls
+    // through to ordinary text glues itself to the preceding token, and
+    // `(cd repo && git push)` then presents a command named `push)` that a rule
+    // looking for `push` does not see. What is put back afterwards stays
+    // conditional, because only `$(` interrupts an argument; a subshell's
+    // bracket pops its own frame and puts nothing back.
     if (char === ')' && quote === null) {
       endSegment()
-      if (resume.length > 0) quote = resume.pop()
+      const frame = open.pop()
+      if (frame !== undefined && frame.substitution) closeSubstitution(frame)
       continue
     }
 
@@ -394,6 +447,11 @@ function parse(line, literalQuote) {
       continue
     }
     if (OPERATORS.has(char)) {
+      // A subshell's `(` is still an operator that ends a command. The frame it
+      // pushes is a placeholder, so that the `)` closing it does not pop the
+      // frame of a `$(` further out and splice a substitution's result into the
+      // wrong argument.
+      if (char === '(') open.push({ substitution: false, quote: null, tokens: [], token: '' })
       endSegment()
       continue
     }
@@ -404,8 +462,18 @@ function parse(line, literalQuote) {
     token += char
   }
 
+  const unterminated = quote ?? open.find((frame) => frame.quote !== null)?.quote ?? null
   endSegment()
-  return { segments, unterminated: quote ?? resume.find((open) => open !== null) ?? null }
+  // A `$(` that is never closed would otherwise leave the command it interrupted
+  // inside its frame and out of the segments entirely, so `git push $(cat` would
+  // stop reading as a push. Unwinding restores each level in turn.
+  while (open.length > 0) {
+    const frame = open.pop()
+    if (!frame.substitution) continue
+    closeSubstitution(frame)
+    endSegment()
+  }
+  return { segments, unterminated }
 }
 
 // The word after `<<` or `<<-`, with any quoting removed. Null when what
@@ -493,7 +561,7 @@ function withoutLeadingWords(tokens) {
   return tokens.slice(at)
 }
 
-function segmentsOf(line) {
+function read(line) {
   const first = parse(line, null)
   // An apostrophe in ordinary text opens a quote that never closes, and every
   // operator after it would read as that argument's contents — including a real
@@ -501,8 +569,26 @@ function segmentsOf(line) {
   const parsed = first.unterminated === null ? first : parse(line, first.unterminated)
   // Stripping can empty a segment, since `time` on its own is a whole command
   // and so is `FOO=1`, and every rule below reads the first token.
-  return parsed.segments.map(withoutLeadingWords).filter((tokens) => tokens.length > 0)
+  return parsed.segments
+    .map(({ tokens, substituted }) => ({ tokens: withoutLeadingWords(tokens), substituted }))
+    .filter((segment) => segment.tokens.length > 0)
 }
+
+// Every command the line runs, a substitution's included. This is what a rule
+// asks, because `$(git push origin HEAD)` pushes.
+const segmentsOf = (line) => read(line).map((segment) => segment.tokens)
+
+// Only the commands the line itself runs. A `$(...)` that produces an argument
+// is part of the command it sits in rather than a second command beside it, and
+// the two views differ exactly where that distinction is the question being
+// asked. Nothing in this file asks it yet; the skill repository's merge guard
+// uses it to tell a probe that lost a chained command from one that lost only
+// the substitution naming its own file, and #119 is where this gate's probe
+// gets the same two wordings.
+const outerSegmentsOf = (line) =>
+  read(line)
+    .filter((segment) => !segment.substituted)
+    .map((segment) => segment.tokens)
 
 // END command reader
 

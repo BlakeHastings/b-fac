@@ -137,6 +137,16 @@ const CORPUS = [
   'echo `gh pr merge 42`',
   'git commit -m "fix (again)"',
   'cd C:\\Program Files (x86)\\repo',
+  // #135. A `$(...)` is a command *and* part of the argument it sits in, so it
+  // has to segment as both.
+  'node "$(git rev-parse --path-format=absolute --git-common-dir)/../scripts/check-guard-live.mjs"',
+  'node $(cat pointer)/guard/check-guard-live.mjs',
+  'echo "$(cat x)/gh pr merge"',
+  '"$(cat pointer)/bin/gh" pr merge 42',
+  'echo "$(cat a)$(cat b)"',
+  'echo "$(cd repo && (pwd))"',
+  "echo '$(gh pr merge 42)'",
+  'gh pr merge $(cat',
   // Quotes decide structure and then come off the tokens.
   'gh pr "merge" 42',
   'gh pr me"rge" 42',
@@ -216,6 +226,101 @@ const EXPECTED = [
   // A wrapper command is not syntax, and stays open. See either guard's
   // NOT COVERED section for why that line is drawn where it is.
   ['env GIT_TRACE=1 git push', [['env', 'GIT_TRACE=1', 'git', 'push']]],
+
+  // #135. A substitution is two things at once and the reader has to produce
+  // both: the command it runs, and the argument its result becomes. Ending the
+  // outer command at the `$(` produced only the first, so `node` and the script
+  // it runs landed in different segments and every rule needing both saw
+  // neither. The substitution's own command comes first because that is the
+  // order a shell runs them in.
+  [
+    'node "$(cat pointer)/check-guard-live.mjs"',
+    [
+      ['cat', 'pointer'],
+      ['node', '$()/check-guard-live.mjs'],
+    ],
+  ],
+  // Quoting the substitution changes nothing: `$(` expands inside double quotes.
+  [
+    'node $(cat pointer)/check-guard-live.mjs',
+    [
+      ['cat', 'pointer'],
+      ['node', '$()/check-guard-live.mjs'],
+    ],
+  ],
+  // The direction that decides the placeholder's shape. The result is an
+  // argument to `echo`, so the words after it are that argument's text and stay
+  // in one token. A reader that broke the segment here would read `gh pr merge`
+  // as a command and refuse a line that runs nothing of the sort, which is #58.
+  [
+    'echo "$(cat x)/gh pr merge"',
+    [
+      ['cat', 'x'],
+      ['echo', '$()/gh pr merge'],
+    ],
+  ],
+  // The result standing alone as an argument leaves the placeholder alone.
+  [
+    'echo "$(gh pr create --fill)"',
+    [
+      ['gh', 'pr', 'create', '--fill'],
+      ['echo', '$()'],
+    ],
+  ],
+  // Two of them in one argument, so the frames have to nest rather than share.
+  // The `['echo', '$()']` in the middle is the second `$(`'s vanishing reading,
+  // which by then has a word in front of it: `echo "$(cat a)"` is what the line
+  // runs if `cat b` prints nothing.
+  [
+    'echo "$(cat a)$(cat b)"',
+    [['cat', 'a'], ['echo', '$()'], ['cat', 'b'], ['echo', '$()$()']],
+  ],
+  // The vanishing reading is what keeps the deny direction from narrowing. A
+  // placeholder glued to `merge` would otherwise stop this being a merge, and
+  // `$(true)` prints nothing, so it merges.
+  [
+    'gh pr merge$(true)',
+    [
+      ['gh', 'pr', 'merge'],
+      ['true'],
+      ['gh', 'pr', 'merge$()'],
+    ],
+  ],
+  // A subshell inside a substitution closes its own bracket. Without a frame
+  // for `(`, the first `)` would put the outer argument back a bracket early.
+  [
+    'echo "$(cd repo && (pwd))"',
+    [['cd', 'repo'], ['pwd'], ['echo', '$()']],
+  ],
+  // Single quotes do not expand a substitution, so there is no command in here
+  // at all and the text is one argument.
+  ["echo '$(gh pr merge 42)'", [['echo', '$(gh pr merge 42)']]],
+  // A `$(` with no `)` must not swallow the command it interrupted. It did not
+  // before, because the outer command was already closed at the `$(`; now the
+  // frame is unwound at the end of the line to the same effect.
+  [
+    'gh pr merge $(cat',
+    [
+      ['cat'],
+      ['gh', 'pr', 'merge', '$()'],
+    ],
+  ],
+  // The brackets that are ordinary text still are. `(` and `)` have split this
+  // line since #58 and the placeholder does not reach it, because no `$(` is
+  // open for the `)` to close.
+  [
+    'cd C:\\Program Files (x86)\\repo',
+    [['cd', 'C:\\Program', 'Files'], ['x86'], ['\\repo']],
+  ],
+  // #90, unchanged: a subshell's `)` still ends a command rather than gluing
+  // itself to `merge`.
+  [
+    '(cd repo && gh pr merge)',
+    [
+      ['cd', 'repo'],
+      ['gh', 'pr', 'merge'],
+    ],
+  ],
 ]
 
 for (const [line, segments] of EXPECTED) {
