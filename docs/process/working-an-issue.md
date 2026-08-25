@@ -95,12 +95,12 @@ trivial, and even when you are confident.
 
 CI runs two checks on a pull request: `Checks` and `Plugin`. A third workflow,
 `provenance`, runs only on a push to `main`, so it never appears on a pull
-request and never blocks a landing. That is deliberate. ADR 0050.
+request and never blocks a landing. That is deliberate. ADR 0051.
 
 Four things stand between a change and `main`, and each is worth exactly what
 it covers. The first three prevent; the fourth reports afterwards on whether
 they held. See ADR 0001 for why this repo's set differs from the one the skill
-ships to private repos, and ADR 0050 for why the fourth came back.
+ships to private repos, and ADR 0051 for why the fourth came back.
 
 1. **The ruleset on `main`**, which requires a pull request and both checks,
    blocks force pushes and deletion, and has **no bypass actors**. This is the
@@ -121,7 +121,7 @@ ships to private repos, and ADR 0050 for why the fourth came back.
    every push to `main`, which fails when a commit arrives with no merged pull
    request behind it. This is the only one of the four that detects rather than
    prevents, which is why it exists: the ruleset above is configuration that can
-   be disabled and restored without leaving a trace in any checkout. ADR 0050.
+   be disabled and restored without leaving a trace in any checkout. ADR 0051.
    *Not covered:* anything, until after the commit has landed.
 
 Landing a PR:

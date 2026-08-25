@@ -23,7 +23,7 @@ adding it is cheaper than reviewing for it forever.
 It runs only on a push to `main`, so it has nothing to say about a branch under
 review, and it reports on whether the gate above held rather than holding it.
 A reviewer who waits for it is waiting for a run that will not happen until
-after they merge. ADR 0050.
+after they merge. ADR 0051.
 
 ## Lens 1: functionality, proven by interaction
 

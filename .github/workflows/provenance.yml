@@ -33,7 +33,7 @@
 # WHAT A RED RUN HERE MEANS
 # Not that the build is broken. That a commit is on `main` with no merged pull
 # request behind it, so it arrived without review or green checks. The script's
-# own failure output says what to do about it, in order. See ADR 0050.
+# own failure output says what to do about it, in order. See ADR 0051.
 name: provenance
 
 on:
@@ -48,7 +48,7 @@ on:
   # A dispatched run has no `before`, so it audits the whole history above the
   # baseline and is red today: two commits from this repository's first
   # twenty-four minutes have no pull request behind them. That is the true
-  # answer to the question this workflow asks, not a defect. ADR 0050 records
+  # answer to the question this workflow asks, not a defect. ADR 0051 records
   # the commits and why the baseline sits below them rather than above.
   workflow_dispatch:
 

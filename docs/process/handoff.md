@@ -158,7 +158,7 @@ factory state lives.
   before believing it, which is the same warning #137 carries about `edges=0`.
 - **`assets/check-setup.mjs` exits 0 in this repository, as of #152.** Layer 3,
   the provenance audit, was deliberately absent under ADR 0001 and is now
-  installed under **ADR 0050**. The reversal is worth reading for the reason as
+  installed under **ADR 0051**. The reversal is worth reading for the reason as
   much as the decision: the earlier note said the standing red was tolerable and
   said so in three places, and it was picked up as a defect anyway, most recently
   as an issue that reached an agent. Three paragraphs asking a reader to ignore a

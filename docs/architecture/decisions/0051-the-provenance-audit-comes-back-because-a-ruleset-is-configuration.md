@@ -1,4 +1,4 @@
-# 0050. The provenance audit comes back, because a ruleset is configuration and not a fact
+# 0051. The provenance audit comes back, because a ruleset is configuration and not a fact
 
 Status: accepted
 
