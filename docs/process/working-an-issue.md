@@ -93,11 +93,14 @@ trivial, and even when you are confident.
 
 ## Merge discipline
 
-CI runs two checks: `Checks` and `Plugin`.
+CI runs two checks on a pull request: `Checks` and `Plugin`. A third workflow,
+`provenance`, runs only on a push to `main`, so it never appears on a pull
+request and never blocks a landing. That is deliberate. ADR 0051.
 
-Three things stand between a change and `main`, and each is worth exactly what
-it covers. See ADR 0001 for why this repo's set differs from the one the skill
-ships to private repos.
+Four things stand between a change and `main`, and each is worth exactly what
+it covers. The first three prevent; the fourth reports afterwards on whether
+they held. See ADR 0001 for why this repo's set differs from the one the skill
+ships to private repos, and ADR 0051 for why the fourth came back.
 
 1. **The ruleset on `main`**, which requires a pull request and both checks,
    blocks force pushes and deletion, and has **no bypass actors**. This is the
@@ -114,6 +117,12 @@ ships to private repos.
    check is green and always squash merges. A convenience rather than a control
    here, kept because it says *which* check is red where a merge button does
    not.
+4. **`scripts/check-main-provenance.mjs`**, run by the `provenance` workflow on
+   every push to `main`, which fails when a commit arrives with no merged pull
+   request behind it. This is the only one of the four that detects rather than
+   prevents, which is why it exists: the ruleset above is configuration that can
+   be disabled and restored without leaving a trace in any checkout. ADR 0051.
+   *Not covered:* anything, until after the commit has landed.
 
 Landing a PR:
 

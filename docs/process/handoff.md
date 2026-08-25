@@ -156,12 +156,16 @@ factory state lives.
   filter returns zero matches and looks like a real answer. Both produced a
   confident empty count here. Compare a structural count against a case you know
   before believing it, which is the same warning #137 carries about `edges=0`.
-- **`assets/check-setup.mjs` exits 1 in this repository and that is correct.**
-  Layer 3, the provenance audit, is deliberately absent under ADR 0001, which
-  spends this repo's one tolerable permanently-red line on it knowingly. Do not
-  install `check-main-provenance.mjs` here to make the output green. This has now
-  been rediscovered more than once, so it is written in ADR 0001, in the asset's
-  own header, and now here.
+- **`assets/check-setup.mjs` exits 0 in this repository, as of #152.** Layer 3,
+  the provenance audit, was deliberately absent under ADR 0001 and is now
+  installed under **ADR 0051**. The reversal is worth reading for the reason as
+  much as the decision: the earlier note said the standing red was tolerable and
+  said so in three places, and it was picked up as a defect anyway, most recently
+  as an issue that reached an agent. Three paragraphs asking a reader to ignore a
+  red line are the ceremony `review.md` says to delete.
+  `npm run check:provenance` audits the whole history and is red on purpose: it
+  names two commits from 9 August that predate the ruleset. The workflow judges
+  only what each push adds, so it is green until a real violation.
 
 ## How this owner works
 

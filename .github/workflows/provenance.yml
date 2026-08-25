@@ -1,0 +1,101 @@
+# Layer 3: did every commit now on `main` arrive through a pull request?
+#
+# WHY THIS IS A WORKFLOW OF ITS OWN AND NOT A STEP IN `Checks`
+# ADR 0009 says a new job name is expensive here, and it is right, but what it
+# costs is a *required check context*: a fourth copy of a string kept in step
+# across a workflow file, `scripts/merge-pr.mjs`'s REQUIRED array and the
+# ruleset. A required context is one GitHub can see on a pull request head. This
+# workflow never runs on a pull request, so it cannot produce one, and the
+# ruleset's required list is unchanged at `Checks` and `Plugin`.
+#
+# Putting the audit in `Checks` instead would have cost all three of those. It
+# would have run on pull request heads, where the commits under review are not
+# on `main` yet and there is nothing to audit. It would have become a required
+# context, which is the fourth copy ADR 0009 refuses. And it would have turned
+# the one detective layer into a fourth preventive one, blocking a landing
+# instead of reporting on one, which is the failure SKILL.md's fourth
+# constraint names: prevention that can be bypassed is silent when it is, so
+# detection has to sit somewhere the bypass cannot reach.
+#
+# `assets/check-setup.mjs` checks for this shape directly. It reports a partial
+# install when the workflow running the audit also triggers on a pull request,
+# with the reason spelled out: "a push-only job reads as never ran and refuses
+# every merge".
+#
+# NOTHING BELOW MAY SPELL THAT TRIGGER'S NAME, EVEN IN A COMMENT
+# That check reads this file as text rather than parsing its `on:` block, so it
+# cannot tell a trigger from a mention of one. Written the obvious way, this
+# header named the trigger it deliberately does not use, and layer 3 reported
+# PARTIAL against a workflow that is already correct. Spell it in prose, with a
+# space. Reported upstream in #152 rather than worked around in the asset,
+# because the asset is payload and this repository is one of its readers.
+#
+# WHAT A RED RUN HERE MEANS
+# Not that the build is broken. That a commit is on `main` with no merged pull
+# request behind it, so it arrived without review or green checks. The script's
+# own failure output says what to do about it, in order. See ADR 0051.
+name: provenance
+
+on:
+  push:
+    branches: [main]
+
+  # An on-demand re-audit, after a force push or while investigating a red run.
+  # It cannot become a required check: required contexts are chosen in the
+  # ruleset from what GitHub sees on a pull request head, and nothing here runs
+  # on a pull request.
+  #
+  # A dispatched run has no `before`, so it audits the whole history above the
+  # baseline and is red today: two commits from this repository's first
+  # twenty-four minutes have no pull request behind them. That is the true
+  # answer to the question this workflow asks, not a defect. ADR 0051 records
+  # the commits and why the baseline sits below them rather than above.
+  workflow_dispatch:
+
+# `gh api repos/{owner}/{repo}/commits/<sha>/pulls` is the whole check, and it
+# is the one thing here that needs more than the default read.
+permissions:
+  contents: read
+  pull-requests: read
+
+# Deliberately not cancel-in-progress, unlike the other two workflows. Each run
+# audits the commits one specific push added, and a superseded run is the only
+# thing that will ever ask about those commits.
+concurrency:
+  group: provenance-${{ github.ref }}
+
+jobs:
+  provenance:
+    name: Provenance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The script exits 1 and says so when the baseline commit is not in
+          # the checkout. The baseline is the repository's first commit, so
+          # anything shallow fails loudly rather than auditing a short window
+          # and reporting green.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The script by name, where every other step in this repository's
+      # workflows runs an npm script. `assets/check-setup.mjs` decides whether
+      # this layer is wired by looking for `check-main-provenance` in the text
+      # of a workflow, so naming the file is what makes the installation
+      # visible to the thing that reports on it, and it keeps the audit running
+      # if the npm alias is ever renamed. `npm run check:provenance` is the
+      # same command for a developer at a terminal.
+      #
+      # The range, not just the head. A push can add several commits and only
+      # the last is in `github.sha`. `github.event.before` is the zero SHA on a
+      # branch creation and is not an ancestor after a force push; the script
+      # detects both and falls back to auditing everything above the baseline.
+      - name: Every new commit on main came through a pull request
+        run: node scripts/check-main-provenance.mjs
+        env:
+          PROVENANCE_BEFORE: ${{ github.event.before }}
+          PROVENANCE_AFTER: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}

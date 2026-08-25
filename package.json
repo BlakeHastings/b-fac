@@ -17,6 +17,7 @@
     "check:references": "node scripts/check-reference-tables.mjs",
     "check:version": "node scripts/check-version-bump.mjs",
     "check:bodies": "node scripts/check-bodies.mjs",
+    "check:provenance": "node scripts/check-main-provenance.mjs",
     "check:plugin": "claude plugin validate . --strict",
     "check:plugin-load": "node scripts/check-plugin-load.mjs",
     "check:harnesses": "node tools/harness-verify/verify.mjs",
