@@ -199,7 +199,7 @@ const MERGE_GUARD = 'scripts/guard-merge.mjs'
 //
 // A fixed string there is refused by nothing in such a repository. It is
 // allowed through, runs a hook script with no payload on stdin, does nothing,
-// and exits 0 — which is exactly what an absent gate looks like. A liveness
+// and exits 0, which is exactly what an absent gate looks like. A liveness
 // probe reading "not loaded" while the gate is loaded is the single failure the
 // probe exists to rule out, and here it was prescribed by the report and copied
 // into the machine record by `--record-owned`.
@@ -210,7 +210,7 @@ const MERGE_GUARD = 'scripts/guard-merge.mjs'
 //
 // So this reads the rule out of the gate in front of it. Which line a gate
 // answers to is a property of that gate, and both shipped gates state it in one
-// function, in a shape stable enough to grep — the same technique this file
+// function, in a shape stable enough to grep. That is the same technique this file
 // already uses on `DEFAULT_BRANCH`, `REQUIRED` and `BASELINE`, and pinned the
 // same way by a test beside each gate.
 //
@@ -222,7 +222,7 @@ const MERGE_GUARD = 'scripts/guard-merge.mjs'
 // old behaviour and it is wrong in exactly the same way, so it is worth saying
 // what it costs: a gate with no readable probe rule is one this report cannot
 // describe, and every gate this skill ships has one. Reporting a finding
-// instead was considered and refused — it would put a permanent PARTIAL on
+// instead was considered and refused: it would put a permanent PARTIAL on
 // layer 2 for anyone running a guard from before probes existed, which is the
 // permanently-red line the header above argues against.
 const probeRule = (source) => {
@@ -386,8 +386,8 @@ function workflows() {
 // top-level `on:` key and the indented lines under it, strips comments, and
 // asks the question of what is left.
 //
-// Narrowing the pattern instead — a line beginning with optional indentation
-// and the trigger name — was the other candidate and is rejected. It fixes the
+// Narrowing the pattern instead, to a line beginning with optional indentation
+// and the trigger name, was the other candidate and is rejected. It fixes the
 // reported case and breaks `on: [push, pull_request]`, which is a form real
 // workflows are written in, so it trades a false positive for a false negative
 // in a common shape. The asymmetry above licenses an exotic residual, not a
