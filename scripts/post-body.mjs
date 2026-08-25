@@ -32,8 +32,9 @@
 //
 // WHY THE READ-BACK CANNOT SHARE THE FAILURE MODE
 // The write is `gh issue comment <n> --body-file <path>` and the read is
-// `gh issue view <n> --json comments`. The read carries no body argument of any
-// kind, so there is nothing for an argument convention to be misread as. It
+// `gh issue view <n> --json comments`; for the comment target the read is a
+// bare `gh api` GET with no fields at all. No read carries a body argument of
+// any kind, so there is nothing for an argument convention to be misread as. It
 // returns JSON, parsed by Node, rather than the rendered view a human would
 // read. And every `gh` call below goes through `execFileSync` with an argument
 // array: no shell, no quoting, no substitution, and the body itself never
@@ -48,39 +49,102 @@
 // nobody waiting on it. A blank brief has an agent about to read it and
 // complain; a blank question to the owner can sit there for ever.
 //
+// WHY THERE IS A FIFTH TARGET AND WHY IT IS NOT THE `create` ADR 0050 REFUSED
+// `comment:<id>` rewrites a comment that already exists. Until it landed, the
+// four targets could add a comment or replace a body, so a comment that stored
+// the wrong bytes could not be repaired at all, and every one of
+// `check-bodies.mjs`'s standing findings is a comment (#164). ADR 0050 rejected
+// a `create` target because the artifact's number is an *output* there and it
+// needs a title, so it could never be a fifth row of a table whose whole shape
+// is `write(number, file)`, `read(number)`, `pick`. **A comment id is an
+// input**, and it is the only argument besides the file, so this one is that
+// fifth row and nothing else. ADR 0052.
+//
+// `--edit-last` is not the missing flag and must not be added. On five of the
+// six blanked briefs the most recent comment is the repost carrying the real
+// text, so an "edit the last one" route overwrites the recovered brief and
+// leaves the two characters exactly where they were. Addressing a comment by
+// its id cannot make that mistake, which is the second reason the id is the
+// right argument.
+//
 //   node scripts/post-body.mjs issue-comment:143 brief.md
 //   node scripts/post-body.mjs pr-body:144 pr-body.md
+//   node scripts/post-body.mjs comment:5402513885 repair.md
 //   node scripts/post-body.mjs issue-comment:143 brief.md --check
 import { execFileSync } from 'node:child_process'
 import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-// Four artifacts carry a body worth guarding: a comment on an issue or a pull
-// request, and the body of either. `write` appends or replaces; `read` fetches
-// the artifact as JSON. The two are different `gh` subcommands on purpose.
+// Five artifacts carry a body worth guarding: a comment on an issue or a pull
+// request, the body of either, and a comment that already exists, addressed by
+// its id. `write` appends or replaces; `read` fetches the artifact as JSON. The
+// two are different `gh` subcommands on purpose.
+//
+// `appends` is the difference between adding an artifact and replacing one, and
+// it is here because it is the one thing the mismatch report has to know: a new
+// comment that came out wrong leaves two versions for a reader to choose
+// between and has to be deleted, while a body or an existing comment is
+// repaired by running the same command again. It used to be inferred from the
+// kind's name, which stopped being true the moment a target replaced a comment.
 export const TARGETS = {
   'issue-comment': {
     noun: 'the latest comment on issue',
+    appends: true,
     write: (number, file) => ['issue', 'comment', number, '--body-file', file],
     read: (number) => ['issue', 'view', number, '--json', 'comments'],
     pick: (data, url) => pickComment(data.comments, url),
   },
   'pr-comment': {
     noun: 'the latest comment on pull request',
+    appends: true,
     write: (number, file) => ['pr', 'comment', number, '--body-file', file],
     read: (number) => ['pr', 'view', number, '--json', 'comments'],
     pick: (data, url) => pickComment(data.comments, url),
   },
   'issue-body': {
     noun: 'the body of issue',
+    appends: false,
     write: (number, file) => ['issue', 'edit', number, '--body-file', file],
     read: (number) => ['issue', 'view', number, '--json', 'body'],
     pick: (data) => data.body,
   },
   'pr-body': {
     noun: 'the body of pull request',
+    appends: false,
     write: (number, file) => ['pr', 'edit', number, '--body-file', file],
     read: (number) => ['pr', 'view', number, '--json', 'body'],
+    pick: (data) => data.body,
+  },
+  // The only `gh api` call in this file, and it is pinned rather than passed
+  // through: one method, one path, one field, with nothing but the id
+  // interpolated. A caller cannot reach a second endpoint through it, which is
+  // what keeps it a target rather than the front end ADR 0049 refuses.
+  //
+  // `--field body=@<path>` is the file-reading half of the same `@` convention
+  // that ate #143, and `gh api` is the one command that honours it, which is
+  // why #143 happened to `gh issue comment` and not here. The body still never
+  // appears on a command line, only a path to it does, so the property every
+  // write above has is the property this one has. If that were ever wrong the
+  // read-back below would say so, which is the point of the read-back.
+  //
+  // One endpoint covers both nouns: a comment on a pull request is an issue
+  // comment to the API. Review comments and inline review threads are a
+  // different endpoint and are not reachable here, the same gap
+  // `check-bodies.mjs` names in its own header.
+  comment: {
+    noun: 'the comment with id',
+    appends: false,
+    write: (id, file) => [
+      'api',
+      '--method',
+      'PATCH',
+      `repos/{owner}/{repo}/issues/comments/${id}`,
+      '--field',
+      `body=@${file}`,
+      '--jq',
+      '.html_url',
+    ],
+    read: (id) => ['api', `repos/{owner}/{repo}/issues/comments/${id}`],
     pick: (data) => data.body,
   },
 }
@@ -116,7 +180,10 @@ export function parseTarget(spec) {
     )
   }
   if (!/^\d+$/.test(number)) {
-    throw new Error(`Target ${JSON.stringify(spec)} carries no issue or pull request number.`)
+    throw new Error(
+      `Target ${JSON.stringify(spec)} carries no number. ` +
+        `${kind === 'comment' ? 'A comment id' : 'An issue or pull request number'} is required.`,
+    )
   }
   return { kind, number, ...TARGETS[kind] }
 }
@@ -180,11 +247,11 @@ export function mismatchReport(target, file, result, checkOnly = false) {
     }
   }
   lines.push(
-    target.kind.endsWith('-body')
-      ? `  The artifact is wrong now and nobody is waiting on it to notice. Fix it before` +
-        `\n  anything else: re-run this command without --check once the file is right.`
-      : `  The comment is wrong. Delete it and post again through this script, rather` +
-        `\n  than leaving two versions for a reader to choose between.`,
+    target.appends
+      ? `  The comment is wrong. Delete it and post again through this script, rather` +
+        `\n  than leaving two versions for a reader to choose between.`
+      : `  The artifact is wrong now and nobody is waiting on it to notice. Fix it before` +
+        `\n  anything else: re-run this command without --check once the file is right.`,
   )
   return lines.join('\n')
 }
@@ -264,10 +331,14 @@ export function run({ targetSpec, file, checkOnly = false, gh, log = console.log
 const USAGE = `Usage: node scripts/post-body.mjs <kind>:<number> <file> [--check]
 
   kind    ${Object.keys(TARGETS).join(' | ')}
+  number  an issue or pull request number, or for comment:<id> the comment id
+          that check-bodies.mjs prints and that ends a comment's own URL
   --check read the artifact back and compare, without posting anything
 
 Posts a body from a file, reads the artifact back, and exits non-zero when what
-is stored is not what was sent. See the header of this file and ADR 0049.`
+is stored is not what was sent. comment:<id> replaces what that comment holds,
+which is not reversible, so read the id off the artifact you mean rather than
+off a note about it. See the header of this file, ADR 0049 and ADR 0052.`
 
 function main(argv) {
   const args = argv.filter((arg) => arg !== '--check')

@@ -129,7 +129,12 @@ test('a body containing @- inside real prose is not the defect', () => {
   assert.equal(diagnose('Do not use `--body @-`, it stores two characters.'), undefined)
 })
 
-test('a repository with nothing wrong says how much it looked at', () => {
+// WHAT IT SAYS IT SCANNED
+// A green here used to read as "nothing is wrong" when it meant "nothing is
+// wrong in the last fifty". The seven standing findings sat inside a window
+// that issues were pushing them out of, so this was on course to go green with
+// nothing repaired, and an issue's deliverable was that exit code. #165.
+test('a clean scan that read everything says so, and is an all-clear', () => {
   const { out, log, error } = capture()
   const code = run({
     gh: fakeGh({ issues: [issue(1, 'A body.', ['Ship it.'])], prs: [issue(2, 'A body.')] }),
@@ -138,7 +143,28 @@ test('a repository with nothing wrong says how much it looked at', () => {
     error,
   })
   assert.equal(code, 0)
-  assert.match(out.join('\n'), /Checked 3 stored bodies in the last 50/)
+  const report = out.join('\n')
+  assert.match(report, /Checked 3 stored bodies\./)
+  assert.match(report, /the whole history of this repository: every issue \(1\) and every pull request \(1\)/)
+  assert.doesNotMatch(report, /clean as far as it looked/)
+})
+
+test('a clean scan that filled its window says how far back it reached and refuses to be an all-clear', () => {
+  const issues = Array.from({ length: 3 }, (_, index) => issue(30 - index, 'A body.'))
+  const { out, log, error } = capture()
+  const code = run({ gh: fakeGh({ issues, prs: [] }), limit: 3, log, error })
+  assert.equal(code, 0)
+  const report = out.join('\n')
+  assert.match(report, /the 3 most recent issues \(back to #28\)/)
+  assert.match(report, /clean as far as it looked/)
+  assert.match(report, /--all/)
+})
+
+test('a scan that found something still says what it read, because the window is why a finding is the last one', () => {
+  const { out, log, error } = capture()
+  const code = run({ gh: fakeGh({ issues: [issue(1, '@-')], prs: [] }), limit: 1, log, error })
+  assert.equal(code, 1)
+  assert.match(out.join('\n'), /the 1 most recent issue \(back to #1\)/)
 })
 
 // WHAT IT READS, AND WHAT IT MUST NOT
@@ -171,9 +197,46 @@ test('closed artifacts are in the window, because a blanked issue can be closed'
 })
 
 test('a comment is located by its own url, not by the issue it is on', () => {
-  const artifacts = collect({ gh: fakeGh({ issues: [issue(143, 'A body.', ['@-'])] }) })
+  const { artifacts } = collect({ gh: fakeGh({ issues: [issue(143, 'A body.', ['@-'])] }) })
   const comment = artifacts.find((artifact) => artifact.what.startsWith('a comment'))
   assert.match(comment.url, /#issuecomment-0$/)
+})
+
+// THE REMEDY IT PRINTS HAS TO BE ONE THAT WORKS
+// The closing advice used to name the four targets that existed, and every
+// finding this has ever reported is a comment, which none of the four could
+// rewrite. A detector that prescribes an inapplicable remedy is worse than one
+// that prescribes none, so each finding now carries its own. #164.
+test('a blanked comment is told to repair itself by its own comment id', () => {
+  const { out, log, error } = capture()
+  const code = run({ gh: fakeGh({ issues: [issue(138, 'A real body.', ['@-'])] }), log, error })
+  assert.equal(code, 1)
+  const report = out.join('\n')
+  assert.match(report, /Repair: node scripts\/post-body\.mjs comment:0 <file>/)
+  assert.doesNotMatch(report, /issue-comment\|pr-comment/)
+})
+
+test('a blanked body is told to repair itself by the artifact number', () => {
+  const { out, log, error } = capture()
+  const code = run({ gh: fakeGh({ issues: [issue(141, '@-')], prs: [issue(140, '@-')] }), log, error })
+  assert.equal(code, 1)
+  const report = out.join('\n')
+  assert.match(report, /Repair: node scripts\/post-body\.mjs issue-body:141 <file>/)
+  assert.match(report, /Repair: node scripts\/post-body\.mjs pr-body:140 <file>/)
+})
+
+// A repair line naming a target that cannot reach the artifact is the defect
+// this replaced, so an artifact with no reachable target says that instead of
+// guessing at one.
+test('a comment whose url carries no id is not given a command that would miss', () => {
+  const { out, log, error } = capture()
+  const withoutId = {
+    ...issue(1, 'A real body.', ['@-']),
+    comments: [{ body: '@-', url: 'https://github.com/o/r/pull/1#discussion_r1', author: { login: 'x' } }],
+  }
+  const code = run({ gh: fakeGh({ issues: [withoutId] }), log, error })
+  assert.equal(code, 1)
+  assert.match(out.join('\n'), /no post-body\.mjs target reaches this artifact/)
 })
 
 // A scan that cannot reach the repository has found nothing, which is not the

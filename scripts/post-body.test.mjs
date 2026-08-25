@@ -209,9 +209,27 @@ test('--check does not claim to have refused a post it never made', () => {
 test('every write passes the body as a file and never as a command-line string', () => {
   for (const [kind, target] of Object.entries(TARGETS)) {
     const args = target.write('7', 'brief.md')
-    assert.equal(args.includes('--body-file'), true, `${kind} does not use --body-file`)
+    // Either `--body-file <path>` or the `gh api` field that reads a file. What
+    // matters is not which flag: it is that the argument list carries a path to
+    // the body and never the body.
+    const carriesTheFile = args.includes('brief.md') || args.includes('body=@brief.md')
+    assert.equal(carriesTheFile, true, `${kind} does not pass the file it was given`)
     assert.equal(args.includes('--body'), false, `${kind} puts the body on the command line`)
-    assert.equal(args.at(-1), 'brief.md', `${kind} does not end with the file it was given`)
+    assert.equal(args.includes('-b'), false, `${kind} puts the body on the command line`)
+  }
+})
+
+// The obvious patch for "cannot edit a comment" was `--edit-last`, and it would
+// have overwritten the reposted brief that carries the real text while leaving
+// the two characters in place. It is not a flag this file forgot; it is one it
+// must not grow. #164.
+test('no target reaches a comment by being the last one', () => {
+  for (const [kind, target] of Object.entries(TARGETS)) {
+    assert.equal(
+      target.write('7', 'brief.md').includes('--edit-last'),
+      false,
+      `${kind} edits the last comment rather than a named one`,
+    )
   }
 })
 
@@ -222,17 +240,68 @@ test('no read-back carries a body argument for a convention to be misread as', (
       assert.equal(/^--body/.test(argument), false, `${kind} reads back through ${argument}`)
       assert.equal(argument, argument.replace('@-', ''), `${kind} reads back through @-`)
     }
-    assert.equal(args[1], 'view', `${kind} does not read back with a view subcommand`)
+    // A `view` subcommand, or for the comment target a bare `gh api` GET. The
+    // property is the same one: the read is not a write and carries no field.
+    if (args[0] === 'api') {
+      assert.equal(args.includes('--method'), false, `${kind} reads back with a method`)
+      assert.equal(args.includes('--field'), false, `${kind} reads back with a field`)
+      assert.equal(args.length, 2, `${kind} reads back with more than a path`)
+    } else {
+      assert.equal(args[1], 'view', `${kind} does not read back with a view subcommand`)
+    }
   }
 })
 
+// THE FIFTH TARGET
+// All seven artifacts the detection layer reports are comments, and until this
+// existed none of the four targets could rewrite one. #164, ADR 0052.
+test('a comment is addressed by its id and rewritten in place', () => {
+  const file = sourceFile('Repaired under #163. The real brief is at ...\n')
+  const calls = []
+  const { out, log, error } = capture()
+  const gh = (args) => {
+    calls.push(args)
+    return args.includes('--method')
+      ? 'https://github.com/o/r/issues/138#issuecomment-5402513885\n'
+      : JSON.stringify({ body: 'Repaired under #163. The real brief is at ...' })
+  }
+  assert.equal(run({ targetSpec: 'comment:5402513885', file, gh, log, error }), 0)
+  assert.match(out.join('\n'), /Posted and verified: the comment with id #5402513885/)
+  assert.deepEqual(calls[0].slice(0, 4), [
+    'api',
+    '--method',
+    'PATCH',
+    'repos/{owner}/{repo}/issues/comments/5402513885',
+  ])
+  assert.deepEqual(calls[1], ['api', 'repos/{owner}/{repo}/issues/comments/5402513885'])
+})
+
+test('a comment edit that stored something else is refused like every other target', () => {
+  const file = sourceFile('Repaired under #163.\n')
+  const { out, log, error } = capture()
+  const gh = (args) => (args.includes('--method') ? 'url\n' : JSON.stringify({ body: '@-' }))
+  assert.equal(run({ targetSpec: 'comment:5402513885', file, gh, log, error }), 1)
+  const report = out.join('\n')
+  assert.match(report, /Stored body: "@-"/)
+  // Replacing a comment is repaired by running the same command again. Telling
+  // the caller to delete it, which is what the old suffix test would have done
+  // for a kind that does not end in `-body`, would be telling them to destroy
+  // the artifact they were repairing.
+  assert.match(report, /re-run this command/)
+  assert.doesNotMatch(report, /Delete it/)
+})
+
 test('a target with no number or an unknown kind is a usage error', () => {
-  assert.throws(() => parseTarget('issue-comment'), /carries no issue or pull request number/)
-  assert.throws(() => parseTarget('issue-comment:abc'), /carries no issue or pull request number/)
+  assert.throws(() => parseTarget('issue-comment'), /An issue or pull request number is required/)
+  assert.throws(() => parseTarget('comment:abc'), /A comment id is required/)
   assert.throws(() => parseTarget('discussion:1'), /Unknown target kind/)
   assert.deepEqual(
     { kind: parseTarget('pr-body:144').kind, number: parseTarget('pr-body:144').number },
     { kind: 'pr-body', number: '144' },
+  )
+  assert.deepEqual(
+    { kind: parseTarget('comment:5402513885').kind, number: parseTarget('comment:5402513885').number },
+    { kind: 'comment', number: '5402513885' },
   )
 })
 

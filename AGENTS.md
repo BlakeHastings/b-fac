@@ -46,6 +46,14 @@ issues and pull requests, so it needs a token and the network, and `npm run
 check` is hermetic. Run it after a session that wrote outward. ADR 0050 says
 what it can and cannot see.
 
+Bare, it reads a window and its output says how far back that reached, so a
+green from it is "clean as far as I looked". `node scripts/check-bodies.mjs
+--all` reads the whole history and takes about five seconds, and it is the only
+run whose exit 0 is an all-clear. Each finding prints the `post-body.mjs`
+command that repairs that artifact, including `comment:<id>` for a comment,
+which is the one thing the four original targets could not reach. ADR 0052 and
+ADR 0053.
+
 `check:provenance` is out for that second reason too, one API call per commit.
 Run bare it audits the whole history and exits 1, naming two commits from 9
 August that predate the ruleset. That is the true answer and not a broken
