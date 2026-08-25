@@ -324,6 +324,31 @@ test('the guard refuses the probe script that actually ships', () => {
   assert.equal(run(`node ${probe}`).denied, true, 'the guard does not refuse its own probe')
 })
 
+// #153. `--probe` belongs to the shipped guard, which is its own probe. Handed
+// to this copy it used to fall through to the hook body, read an empty stdin and
+// exit 0 without a word, which is what an unloaded gate looks like. The command
+// was prescribed by the machine record and by `check-setup.mjs` at the time.
+//
+// This is a signpost, not a second probe rule: `isLivenessProbe` is untouched,
+// and the exit code says the answer is "ask elsewhere" rather than "nothing
+// intercepted me".
+test('--probe is refused with the probe that does exist, rather than silently ignored', () => {
+  let failed = null
+  try {
+    execFileSync('node', [GUARD, '--probe'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    failed = error
+  }
+  assert.notEqual(failed, null, 'a silent exit 0 is indistinguishable from an unloaded guard')
+  assert.match(failed.stderr, /node scripts\/check-guard-live\.mjs/)
+})
+
+// And the hook path is untouched by it, which is the whole safety argument: the
+// PreToolUse entry runs this file with no arguments and writes to stdin.
+test('the hook still judges a command when no flag is in the way', () => {
+  assert.equal(run('gh pr merge 42').denied, true)
+})
+
 test('a malformed payload does not deny', () => {
   const out = execFileSync('node', [GUARD], { input: 'not json', encoding: 'utf8' })
   assert.equal(out.trim(), '')

@@ -310,6 +310,175 @@ test('a recorded owned repo reports the four layers and excuses the gate', () =>
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layer 3 reads the `on:` block, not the file
+//
+// The note about a workflow that also triggers on a pull request used to be a
+// substring test over the whole file, comments included, so a header explaining
+// why the workflow avoids that trigger read as the trigger being present. It
+// reported PARTIAL against a correct workflow, and the repository that ships
+// the check carried a comment telling the next reader not to spell the word
+// (#152, #160).
+//
+// A false positive on a setup report is the failure that gets the report
+// ignored, so both directions are pinned here. The flow-sequence case is pinned
+// for a second reason: it is what a rule anchored to the start of a line would
+// have missed, and it is a shape real workflows are written in.
+// ---------------------------------------------------------------------------
+
+const RUNNER = '.github/workflows/audit.yml'
+const runnerWith = (root, on) =>
+  write(root, RUNNER, `name: audit\n${on}\njobs:\n  audit:\n    run: node scripts/check-main-provenance.mjs\n`)
+
+const ownedWithRunner = (root, on) => {
+  write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+  installOwnedLayers(root)
+  runnerWith(root, on)
+}
+
+const NOTE = /also triggers on pull_request/
+
+test('a comment explaining the avoided trigger is not the trigger', () => {
+  withRepo((root) => {
+    ownedWithRunner(
+      root,
+      '# This workflow deliberately does not run on pull_request: a push-only job\n' +
+        '# reads as "never ran" if it is ever made a required check.\non:\n  push:\n    branches: [main]',
+    )
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a correct workflow was reported as a partial install:\n${out}`)
+    assert.equal(statusOf(out, '3'), 'ok')
+    assert.doesNotMatch(row(out, '3'), NOTE)
+  })
+})
+
+test('a comment inside the on: block is stripped rather than skipped over', () => {
+  withRepo((root) => {
+    ownedWithRunner(
+      root,
+      'on:\n  push:\n    branches: [main]\n\n  # Nothing here runs on pull_request, so this can never be a\n  # required check.\n  workflow_dispatch:',
+    )
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a comment inside the on: block was read as a trigger:\n${out}`)
+    assert.doesNotMatch(row(out, '3'), NOTE)
+  })
+})
+
+test('a workflow that really does trigger on a pull request is still reported', () => {
+  withRepo((root) => {
+    ownedWithRunner(root, 'on:\n  push:\n    branches: [main]\n  pull_request:')
+    const { code, out } = check(root)
+
+    assert.equal(code, 1, 'the note this check exists to print was not printed')
+    assert.equal(statusOf(out, '3'), 'PARTIAL')
+    assert.match(row(out, '3'), NOTE)
+  })
+})
+
+test('the flow-sequence form is a trigger too, which a line-anchored rule would miss', () => {
+  withRepo((root) => {
+    ownedWithRunner(root, 'on: [push, pull_request]')
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'PARTIAL')
+    assert.match(row(out, '3'), NOTE)
+  })
+})
+
+test('pull_request_target is the same trigger for this purpose', () => {
+  withRepo((root) => {
+    ownedWithRunner(root, 'on:\n  pull_request_target:\n    types: [opened]')
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'PARTIAL')
+  })
+})
+
+test('a job named after the trigger is not a trigger', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    write(
+      root,
+      RUNNER,
+      'name: audit\non:\n  push:\n    branches: [main]\njobs:\n  pull_request:\n    run: node scripts/check-main-provenance.mjs\n',
+    )
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a job name below the on: block was read as a trigger:\n${out}`)
+    assert.doesNotMatch(row(out, '3'), NOTE)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The probe line is the installed gate's, not this script's
+//
+// #153: the report printed `node scripts/guard-merge.mjs --probe` whatever it
+// found. In a repository whose guard recognises another probe, that line is
+// refused by nothing, runs a hook script with no payload on stdin, and exits 0
+// silently, which is indistinguishable from the guard being absent. The same
+// line was written into the machine record by `--record-owned`.
+// ---------------------------------------------------------------------------
+
+// The shape both shipped gates state their probe rule in. `check-setup.mjs`
+// greps for it, the same way it greps for `DEFAULT_BRANCH` and `BASELINE`.
+const guardAnswering = (script, flag) =>
+  "const DEFAULT_BRANCH = 'main'\n" +
+  'function isLivenessProbe(tokens) {\n' +
+  "  if (commandName(tokens[0]) !== 'node') return false\n" +
+  (flag === null ? '' : `  if (!tokens.includes('${flag}')) return false\n`) +
+  "  const script = tokens.slice(1).find((token) => !token.startsWith('-'))\n" +
+  `  return script !== undefined && commandName(script) === '${script}'\n` +
+  '}\n'
+
+const probeLineIn = (out) => {
+  const lines = out.split('\n')
+  const at = lines.findIndex((line) => line.includes('itself and put its answer beside this output'))
+  assert.notEqual(at, -1, `no probe block in:\n${out}`)
+  return lines[at + 2].trim()
+}
+
+test('the report names the probe the installed guard answers to', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    write(root, 'scripts/guard-merge.mjs', guardAnswering('check-guard-live.mjs', null))
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, out)
+    assert.equal(probeLineIn(out), 'node "scripts/check-guard-live.mjs"')
+  })
+})
+
+test('a guard that is its own probe is named with its flag', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    write(root, 'scripts/guard-merge.mjs', guardAnswering('guard-merge.mjs', '--probe'))
+    const { out } = check(root)
+
+    assert.equal(probeLineIn(out), 'node "scripts/guard-merge.mjs" --probe')
+  })
+})
+
+test('--record-owned writes the probe the guard answers to, not a fixed line', () => {
+  withRepo((root) => {
+    installOwnedLayers(root)
+    write(root, 'scripts/guard-merge.mjs', guardAnswering('check-guard-live.mjs', null))
+    recordOwned(root)
+    const record = readFileSync(join(root, `${FACTORY}/machine.md`), 'utf8')
+
+    assert.match(record, /node "scripts\/check-guard-live\.mjs"/)
+    assert.doesNotMatch(
+      record,
+      /guard-merge\.mjs" --probe/,
+      'the machine record names a probe this repository has no rule for',
+    )
+  })
+})
+
 test('an owned repo with a guest gate lying around is told the two disagree', () => {
   withRepo((root) => {
     write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')

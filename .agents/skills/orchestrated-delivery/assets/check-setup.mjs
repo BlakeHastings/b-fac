@@ -28,8 +28,9 @@
 // So this reports the layers that apply to the mode it is in, and explains an
 // absent layer by the mode rather than listing it as a failure. A permanently
 // red line is the same failure as a guard that cries wolf: both get switched
-// off, and this repository already spends its one tolerable permanently-red
-// line on layer 3 under ADR 0001.
+// off, and a line that is red on every run carries no information about the run
+// you are looking at. That argument is about any report, not about the
+// repository this file happens to ship from.
 //
 // There are three states rather than two: owned, guest, and nobody having said.
 // The third is a finding rather than an error. ADR 0021 has the question asked
@@ -179,11 +180,71 @@ const LEGACY_GATE = `${LEGACY_FACTORY}/guard-guest-writes.mjs`
 const RECORD_AT = COMMON === null ? `<git common dir>/${MACHINE_RECORD}` : show(join(COMMON, MACHINE_RECORD))
 const GATE_AT = COMMON === null ? `<git common dir>/${GUEST_GATE}` : show(join(COMMON, GUEST_GATE))
 
-// SETUP: where layer 2's guard was copied to, if not `scripts/`. Both gates
-// answer `--probe`, so this is also the file the report tells you to ask, and
-// `guard-merge-asset.test.mjs` pins that: it reads this constant, builds the
-// line printed below, and asserts the shipped guard refuses it.
+// SETUP: where layer 2's guard was copied to, if not `scripts/`. This is also
+// the file the report tells you to ask whether it is loaded, and
+// `guard-merge-asset.test.mjs` pins that: it stands up a repository holding the
+// shipped guard, reads the line this script prints, and asserts the guard
+// refuses it.
 const MERGE_GUARD = 'scripts/guard-merge.mjs'
+
+// ---------------------------------------------------------------------------
+// The probe line belongs to the gate that is installed, not to this file
+//
+// This printed `node scripts/guard-merge.mjs --probe` unconditionally, which is
+// the shipped gate's probe and is the right answer for almost every repository
+// installing this skill. It is not right for a repository whose gate is a
+// version of the asset that recognises something else, and the repository that
+// ships this file is one: ADR 0033 keeps its guard deliberately different, and
+// its probe is a second script, `check-guard-live.mjs`, run without a flag.
+//
+// A fixed string there is refused by nothing in such a repository. It is
+// allowed through, runs a hook script with no payload on stdin, does nothing,
+// and exits 0 — which is exactly what an absent gate looks like. A liveness
+// probe reading "not loaded" while the gate is loaded is the single failure the
+// probe exists to rule out, and here it was prescribed by the report and copied
+// into the machine record by `--record-owned`.
+//
+// **The fix belongs here rather than in anybody's gate.** Teaching a gate to
+// answer a second probe line is two things to keep true in two places, and
+// probe recognition is already the subtlest rule either gate has.
+//
+// So this reads the rule out of the gate in front of it. Which line a gate
+// answers to is a property of that gate, and both shipped gates state it in one
+// function, in a shape stable enough to grep — the same technique this file
+// already uses on `DEFAULT_BRANCH`, `REQUIRED` and `BASELINE`, and pinned the
+// same way by a test beside each gate.
+//
+// When the gate names itself, the probe is the gate plus its flag. When it names
+// another file, that file is a sibling: `commandName` compares base names, so a
+// path next to the gate is a path the rule matches.
+//
+// A gate whose rule cannot be read falls back to the shipped form. That is the
+// old behaviour and it is wrong in exactly the same way, so it is worth saying
+// what it costs: a gate with no readable probe rule is one this report cannot
+// describe, and every gate this skill ships has one. Reporting a finding
+// instead was considered and refused — it would put a permanent PARTIAL on
+// layer 2 for anyone running a guard from before probes existed, which is the
+// permanently-red line the header above argues against.
+const probeRule = (source) => {
+  const body = /function isLivenessProbe\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/.exec(source ?? '')?.[1]
+  if (body === undefined) return null
+  const script = /commandName\(\s*script\s*\)\s*===\s*['"]([^'"]+)['"]/.exec(body)?.[1]
+  if (script === undefined) return null
+  return { script, flag: /tokens\.includes\(\s*['"](--[\w-]+)['"]\s*\)/.exec(body)?.[1] ?? null }
+}
+
+// The command to type, for a gate at `path` whose source is `source`. `path` is
+// printed back unchanged when the gate is its own probe, so a gate reached
+// through an absolute path keeps it.
+function probeCommand(path, source) {
+  const rule = probeRule(source)
+  if (rule === null) return `node "${path}" --probe`
+  const at = path.replace(/\\/g, '/').lastIndexOf('/')
+  const target = rule.script === path.slice(at + 1) ? path : `${path.slice(0, at + 1)}${rule.script}`
+  return `node "${target}"${rule.flag === null ? '' : ` ${rule.flag}`}`
+}
+
+const MERGE_PROBE = probeCommand(MERGE_GUARD, read(MERGE_GUARD))
 
 // The one line a reader and a writer of the machine record have to agree about,
 // asked in one place so they cannot drift apart. `undefined` means the file has
@@ -301,6 +362,67 @@ function workflows() {
     .map((f) => ({ file: `.github/workflows/${f}`, text: read(`.github/workflows/${f}`) ?? '' }))
 }
 
+// ---------------------------------------------------------------------------
+// A workflow's triggers, which are not the same thing as its text
+//
+// The question below is whether layer 3's workflow *also* runs on a pull
+// request. It used to be asked of the whole file, comments included, and that
+// is backwards in the case that matters: the more carefully a workflow explains
+// why it avoids a trigger, the more certainly it is accused of using it. The
+// repository this file ships from spent a wiring attempt on exactly that, and
+// then carried a comment telling the next reader not to spell the word, which
+// is a comment doing a check's job (#152, #160).
+//
+// **A false positive is the expensive direction here.** A setup report that
+// accuses a correct installation is the failure that gets the report switched
+// off, which is the whole argument this file's header makes about permanently
+// red lines. A residual false negative in an exotic shape costs one unreported
+// advisory note. The two are not close, and that asymmetry is what picks the
+// rule below.
+//
+// A YAML parser would settle it and there is not one: no dependencies, one
+// file, and a parser written here would be a second thing to be wrong about.
+// So this narrows the *region* instead of narrowing the pattern. It takes the
+// top-level `on:` key and the indented lines under it, strips comments, and
+// asks the question of what is left.
+//
+// Narrowing the pattern instead — a line beginning with optional indentation
+// and the trigger name — was the other candidate and is rejected. It fixes the
+// reported case and breaks `on: [push, pull_request]`, which is a form real
+// workflows are written in, so it trades a false positive for a false negative
+// in a common shape. The asymmetry above licenses an exotic residual, not a
+// routine one.
+//
+// What is left wrong, said out loud: a trigger named inside a multi-line string
+// inside the `on:` block reads as a trigger, and a `#` inside a quoted scalar
+// there truncates the line. Both are absurd in an `on:` block, and both fail
+// toward saying less rather than more.
+//
+// `null` means no top-level `on:` key was found at all, and the caller asks
+// nothing rather than falling back to the whole file. Falling back would
+// reinstate the defect in precisely the file too odd to read.
+const uncommented = (line) => line.replace(/(^|\s)#.*$/, '$1')
+
+function triggerBlock(text) {
+  const lines = text.split('\n')
+  const at = lines.findIndex((line) => /^(?:on|"on"|'on'):/.test(line))
+  if (at === -1) return null
+  const block = [uncommented(lines[at]).replace(/^(?:on|"on"|'on'):/, '')]
+  for (const line of lines.slice(at + 1)) {
+    if (/^\S/.test(line)) break
+    block.push(uncommented(line))
+  }
+  return block.join('\n')
+}
+
+// `pull_request_target` is named as well, because it is the same trigger for
+// this purpose and `\b` will not find it inside the longer word.
+const PULL_REQUEST_TRIGGER = /(?:^|[^\w-])pull_request(?:_target)?(?![\w-])/
+const triggersOnPullRequest = (text) => {
+  const block = triggerBlock(text)
+  return block !== null && PULL_REQUEST_TRIGGER.test(block)
+}
+
 // What the scripts' DEFAULT_BRANCH constants are supposed to equal. A guard
 // that protects `main` in a repo whose default branch is `develop` denies
 // nothing and reports no error, which is the worst shape a control can take.
@@ -393,6 +515,13 @@ function visibleToTheHostRepo(paths) {
 // the mode.
 // ---------------------------------------------------------------------------
 
+// The two commands below line up in a column, and the left one is now as long
+// as whichever probe this repository's gate answers to, so the width is measured
+// rather than typed. #153 read the record before it read anything else, which is
+// what a machine record is for, so a ragged one is worse here than in output
+// nobody keeps.
+const RECORD_COLUMN = Math.max('check-setup.mjs'.length, MERGE_PROBE.length) + 3
+
 // What an owned record says, which is nearly all reason and one fact. There is
 // no owned equivalent of the guest record's backlog line or probe command: in
 // owned mode the backlog and the check command are repo facts, true for anyone
@@ -420,8 +549,8 @@ at this point. What there is to ask here is the owned enforcement stack, which
 answers a different question: what may land, rather than what may be written
 outward.
 
-    check-setup.mjs               the layers, and whether each one is wired
-    node ${MERGE_GUARD} --probe   whether the one that refuses a merge loaded
+    ${'check-setup.mjs'.padEnd(RECORD_COLUMN)}the layers, and whether each one is wired
+    ${MERGE_PROBE.padEnd(RECORD_COLUMN)}whether the one that refuses a merge loaded
 
 Written by \`check-setup.mjs --record-owned\`, which refuses to overwrite it. If
 the answer here changes, delete this file and record the new one.
@@ -802,7 +931,7 @@ const LAYERS = [
       'gate G below refuses `gh pr merge` along with every other outward write, by its',
       'general rule rather than as a special case',
     ],
-    fix: `Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup. Then \`node ${MERGE_GUARD} --probe\`, which the guard refuses when it is loaded.`,
+    fix: `Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup. Then \`${MERGE_PROBE}\`, which the guard refuses when it is loaded.`,
     run() {
       const source = read(MERGE_GUARD)
       if (source === null) return { status: MISSING, findings: [`${MERGE_GUARD} is absent`] }
@@ -876,7 +1005,7 @@ const LAYERS = [
         }
       }
       for (const runner of runners) {
-        if (runner.text.includes('pull_request')) {
+        if (triggersOnPullRequest(runner.text)) {
           findings.push(
             `note: ${runner.file} also triggers on pull_request. Keep this one out of the` +
               ' required checks: a push-only job reads as "never ran" and refuses every merge',
@@ -1114,13 +1243,20 @@ for (const layer of LAYERS) {
 // had no probe, which meant the owned stack could report every layer `ok` with
 // no way to ask the one that matters whether it had loaded. That was the exact
 // state the two lost days above were spent in.
-const PROBE_TARGET = CHECKLIST === GUEST ? GATE_AT : MERGE_GUARD
-const PROBE_EXISTS = CHECKLIST === GUEST ? readCommon(GUEST_GATE) !== null : read(MERGE_GUARD) !== null
+//
+// Which line to type is the gate's own business, so it is read out of the gate
+// rather than assumed. See `probeCommand` above for what that costs and what it
+// was costing before. The guest side was measured at the same time and is
+// unaffected: `guard-guest-writes.mjs` names itself and takes `--probe`, so the
+// derived line and the old fixed one are the same string.
+const PROBE_SOURCE = CHECKLIST === GUEST ? readCommon(GUEST_GATE) : read(MERGE_GUARD)
+const PROBE_EXISTS = PROBE_SOURCE !== null
+const PROBE_LINE = CHECKLIST === GUEST ? probeCommand(GATE_AT, PROBE_SOURCE) : MERGE_PROBE
 const PROBE = [
   'Wired is not loaded. Settings are read once at process start, so ask the gate',
   'itself and put its answer beside this output:',
   '',
-  `    node "${PROBE_TARGET}" --probe`,
+  `    ${PROBE_LINE}`,
   '',
   'Being refused is the answer you want. Ask it from the checkout the work is',
   'actually happening in, because which sessions a hook is registered for is a',

@@ -219,9 +219,9 @@ if (violations.length > 0) {
       `     this run tell you most of it.\n` +
       `  2. Decide whether the change stands. If it does not, revert it through a\n` +
       `     pull request like anything else.\n` +
-      `  3. Close the gap that let it through, and record it. Per\n` +
-      `     the process doc: this is a defect in the guard, not a\n` +
-      `     not a mistake by whoever pushed. Add the case to scripts/guard-merge.mjs.\n\n` +
+      `  3. Close the gap that let it through, and record it. Per the process\n` +
+      `     doc: this is a defect in the guard, not a mistake by whoever pushed.\n` +
+      `     Add the case to scripts/guard-merge.mjs.\n\n` +
       `Do not silence this by moving the baseline in this script forward.`,
   )
   process.exit(1)

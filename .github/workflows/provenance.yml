@@ -18,17 +18,18 @@
 # detection has to sit somewhere the bypass cannot reach.
 #
 # `assets/check-setup.mjs` checks for this shape directly. It reports a partial
-# install when the workflow running the audit also triggers on a pull request,
+# install when the workflow running the audit also triggers on `pull_request`,
 # with the reason spelled out: "a push-only job reads as never ran and refuses
 # every merge".
 #
-# NOTHING BELOW MAY SPELL THAT TRIGGER'S NAME, EVEN IN A COMMENT
-# That check reads this file as text rather than parsing its `on:` block, so it
-# cannot tell a trigger from a mention of one. Written the obvious way, this
-# header named the trigger it deliberately does not use, and layer 3 reported
-# PARTIAL against a workflow that is already correct. Spell it in prose, with a
-# space. Reported upstream in #152 rather than worked around in the asset,
-# because the asset is payload and this repository is one of its readers.
+# This header was forbidden to spell that trigger's name for a while, even in a
+# comment. The check read the whole file as text, so it could not tell a trigger
+# from a mention of one, and a header explaining the avoidance was read as the
+# avoidance having been broken: layer 3 reported PARTIAL against a workflow that
+# was already correct. #160 taught it to read the `on:` block below with the
+# comments stripped, so the word is safe to write here again and the warning
+# that stood in this place is gone. A comment doing a check's job is the thing
+# this repository deletes rather than keeps.
 #
 # WHAT A RED RUN HERE MEANS
 # Not that the build is broken. That a commit is on `main` with no merged pull
@@ -42,8 +43,10 @@ on:
 
   # An on-demand re-audit, after a force push or while investigating a red run.
   # It cannot become a required check: required contexts are chosen in the
-  # ruleset from what GitHub sees on a pull request head, and nothing here runs
-  # on a pull request.
+  # ruleset from what GitHub sees on a `pull_request` head, and nothing here
+  # runs on `pull_request`. That name is inside this `on:` block, which is the
+  # region the check narrowed to, so it is also the case that proves comments
+  # are stripped rather than merely skipped over.
   #
   # A dispatched run has no `before`, so it audits the whole history above the
   # baseline and is red today: two commits from this repository's first

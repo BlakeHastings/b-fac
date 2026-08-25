@@ -560,6 +560,42 @@ function judge(line, depth, whole) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// `--probe` is not this guard's flag, and silence was the wrong way to say so
+//
+// The shipped guard in `assets/` answers `--probe` itself, because ADR 0033
+// gives it a one-file probe and a repository installing it has no second file.
+// This copy does not: ADR 0027 put the probe in `scripts/check-guard-live.mjs`,
+// which the rule above refuses by name.
+//
+// Run here, `node scripts/guard-merge.mjs --probe` therefore fell through to
+// the hook body, read nothing off a stdin nobody had written to, and exited 0
+// without a word. That is the same silence an unloaded gate produces, arriving
+// from the other direction, and it was prescribed by the machine record and by
+// `check-setup.mjs` until #160 taught the reporter to name the probe belonging
+// to the guard it found (#153).
+//
+// **This does not make `--probe` a second probe line.** The rule above is
+// untouched, and a second name to recognise is exactly what #153 says not to
+// build: probe recognition is the subtlest rule in this file and it should have
+// one answer. This is the opposite, a signpost rather than a rule. It converts a
+// silent exit 0 into a refusal to guess, and it says where the probe actually
+// is.
+//
+// Safe because the hook never sees it. The `PreToolUse` entry runs this file
+// with no arguments and writes its payload to stdin, so `--probe` in `argv` is
+// a person or an agent at a terminal, every time.
+if (process.argv.includes('--probe')) {
+  console.error('This guard has no --probe mode. That flag belongs to the version of it')
+  console.error('this repository ships to other people, in assets/guard-merge.mjs, which is')
+  console.error('its own probe because an installed repository has only the one file.\n')
+  console.error('Here the probe is a second script, and being refused is its whole answer:\n')
+  console.error('  node scripts/check-guard-live.mjs\n')
+  console.error('Run it on its own line. A PreToolUse hook refuses the whole tool call, so')
+  console.error('anything chained to the probe is thrown away with it. ADR 0027, ADR 0038.')
+  process.exit(1)
+}
+
 let payload = ''
 for await (const chunk of process.stdin) payload += chunk
 
