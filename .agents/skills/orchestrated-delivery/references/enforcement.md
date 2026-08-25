@@ -88,6 +88,13 @@ afterwards, and keep both. A layer whose script is present and whose wiring is
 absent reports as absent rather than partial, on layer 0's reasoning: a control
 nothing invokes is an instruction.
 
+**It looks for the guard where the wiring says it is**, not only at
+`scripts/guard-merge.mjs`. Install it elsewhere and the hook you write is where
+the report reads the path from, so the verdict and the probe line below both
+name your copy. A hook naming a file that is not there is still absent: wired at
+nothing and copied but unwired are the same failure, and the report says which
+of the two it found.
+
 **It reports the layers that apply to the mode it is in**, which is the one
 place a report is allowed to read the write boundary off disk. It reads
 `.factory/machine.md`, and it prints one of three answers: owned, guest, or

@@ -97,7 +97,11 @@ words.
 is the same reason `check:plugin` and `check:plugin-load` are left out. The
 workflow names the script file directly rather than the npm alias, because
 `check-setup.mjs` decides whether the layer is wired by looking for
-`check-main-provenance` in a workflow's text.
+`check-main-provenance` in a workflow's `run:` values. It read the whole file
+when this was written, comments included, which made the workflow's own header
+count as running it; #170 narrowed it to where a workflow actually invokes
+something, and the reason for naming the file directly is unchanged and now
+load-bearing rather than incidental.
 
 **`scripts/check-main-provenance.test.mjs` holds the copy and the asset
 together.** #152 asked for a copy rather than a rewrite and named the reason:

@@ -413,6 +413,86 @@ test('a job named after the trigger is not a trigger', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Layer 3 asks the run: lines, not the file
+//
+// The mistake above in its other direction, and the more expensive one. Reading
+// the whole file meant a workflow naming the audit in a comment counted as
+// running it, and layer 3 reported `ok` to a repository whose only detective
+// layer was a paragraph (#170). `installOwnedLayers` writes a workflow that
+// really does run it, so these overwrite that file rather than adding a second.
+// ---------------------------------------------------------------------------
+
+const onlyWorkflow = (root, text) => {
+  write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+  installOwnedLayers(root)
+  write(root, '.github/workflows/ci.yml', text)
+}
+
+const STEPS = 'name: Checks\non:\n  push:\n    branches: [main]\njobs:\n  audit:\n    steps:\n'
+
+test('a workflow naming the audit only in a comment does not count as running it', () => {
+  withRepo((root) => {
+    onlyWorkflow(
+      root,
+      '# Layer 3: scripts/check-main-provenance.mjs runs below, on a push to main.\n' +
+        `${STEPS}      - run: npm run check\n`,
+    )
+    const { code, out } = check(root)
+
+    assert.equal(code, 1, `a comment naming the audit was read as running it:\n${out}`)
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.match(row(out, '3'), /names it outside any run: line/)
+  })
+})
+
+test('a run: block scalar is where a workflow invokes things too', () => {
+  withRepo((root) => {
+    onlyWorkflow(root, `${STEPS}      - run: |\n          set -e\n          node scripts/check-main-provenance.mjs\n`)
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a block scalar was not read as a run: value:\n${out}`)
+    assert.equal(statusOf(out, '3'), 'ok')
+  })
+})
+
+test('a block scalar ends where the indentation does', () => {
+  withRepo((root) => {
+    onlyWorkflow(
+      root,
+      `${STEPS}      - run: |\n          npm run check\n      - name: node scripts/check-main-provenance.mjs\n        run: npm test\n`,
+    )
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING', 'a dedented line was read as part of the block above it')
+  })
+})
+
+test('a workflow that names it nowhere gets the blunter finding, not the named-but-not-run one', () => {
+  withRepo((root) => {
+    onlyWorkflow(root, `${STEPS}      - run: npm run check\n`)
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'MISSING')
+    assert.match(row(out, '3'), /no workflow runs it, so it detects nothing/)
+  })
+})
+
+// The residual #170 leaves rather than closes, pinned so that closing it has to
+// change this line and say why. Inside a `run:` block the text belongs to the
+// shell, so a `#` there is the shell's comment character and stripping it would
+// mean deciding which shell. The cost of stripping is the expensive direction:
+// a `#` inside a quoted argument would truncate the line and report a correct
+// installation MISSING.
+test('a shell comment inside a run: block still counts, which is where this stops', () => {
+  withRepo((root) => {
+    onlyWorkflow(root, `${STEPS}      - run: |\n          # node scripts/check-main-provenance.mjs\n          npm run check\n`)
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '3'), 'ok')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The probe line is the installed gate's, not this script's
 //
 // #153: the report printed `node scripts/guard-merge.mjs --probe` whatever it
@@ -476,6 +556,121 @@ test('--record-owned writes the probe the guard answers to, not a fixed line', (
       /guard-merge\.mjs" --probe/,
       'the machine record names a probe this repository has no rule for',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Layer 2 locates the guard instead of assuming it
+//
+// `MERGE_GUARD` was a fixed path under a comment admitting an installer may have
+// moved the guard, and nothing acted on that. A repository with its guard in
+// `tools/` got MISSING on the only preventive layer it had, a FIX telling it to
+// install what it had installed, and a probe line naming a file that is not
+// there, which is #153 arriving down the path #169's fix could not see (#171).
+//
+// The hook is where the repository wrote down its own answer, so that is what
+// is read. The dangerous way this fails is trusting the hook string, so the
+// case below where a hook names nothing is pinned beside the case where it
+// names something.
+// ---------------------------------------------------------------------------
+
+const wiredAt = (root, path) =>
+  write(
+    root,
+    '.claude/settings.json',
+    `${JSON.stringify(
+      {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash|PowerShell',
+              hooks: [{ type: 'command', command: `node "$CLAUDE_PROJECT_DIR/${path}"` }],
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  )
+
+test('a guard installed outside scripts/ is found through the hook that runs it', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    rmSync(join(root, 'scripts/guard-merge.mjs'))
+    write(root, 'tools/guard-merge.mjs', guardAnswering('guard-merge.mjs', '--probe'))
+    wiredAt(root, 'tools/guard-merge.mjs')
+    const { code, out } = check(root)
+
+    assert.equal(code, 0, `a correctly installed layer 2 was reported absent:\n${out}`)
+    assert.equal(statusOf(out, '2'), 'ok')
+    assert.match(row(out, '2'), /note: the guard is at tools\/guard-merge\.mjs/)
+    assert.equal(probeLineIn(out), 'node "tools/guard-merge.mjs" --probe')
+  })
+})
+
+test('a hook naming a guard that is not there is not a guard', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    rmSync(join(root, 'scripts/guard-merge.mjs'))
+    wiredAt(root, 'tools/guard-merge.mjs')
+    const { code, out } = check(root)
+
+    assert.equal(code, 1, `a hook pointed at nothing was read as an installed guard:\n${out}`)
+    assert.equal(statusOf(out, '2'), 'MISSING')
+    assert.match(row(out, '2'), /where there is no file either/)
+  })
+})
+
+test('the documented path wins, so an ordinary install is answered without the hook', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    write(root, 'scripts/guard-merge.mjs', guardAnswering('guard-merge.mjs', '--probe'))
+    write(root, 'tools/guard-merge.mjs', guardAnswering('check-guard-live.mjs', null))
+    wiredAt(root, 'tools/guard-merge.mjs')
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '2'), 'ok')
+    assert.doesNotMatch(row(out, '2'), /note: the guard is at/)
+    assert.equal(probeLineIn(out), 'node "scripts/guard-merge.mjs" --probe')
+  })
+})
+
+// A path this file cannot resolve is refused rather than guessed at, because a
+// guess that happened to name a real file would be the wrong answer arriving
+// with the authority of a measurement. The cost is the old behaviour, which is
+// what such a repository has today.
+test('a hook path this file cannot resolve leaves the layer where it was', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    installOwnedLayers(root)
+    rmSync(join(root, 'scripts/guard-merge.mjs'))
+    write(root, 'tools/guard-merge.mjs', guardAnswering('guard-merge.mjs', '--probe'))
+    write(
+      root,
+      '.claude/settings.json',
+      `${JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Bash|PowerShell',
+                hooks: [{ type: 'command', command: 'node "$GUARD_HOME/guard-merge.mjs"' }],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    const { out } = check(root)
+
+    assert.equal(statusOf(out, '2'), 'MISSING')
+    assert.match(row(out, '2'), /scripts\/guard-merge\.mjs is absent/)
   })
 })
 

@@ -23,7 +23,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -513,6 +513,45 @@ test('in a repository whose guard answers elsewhere, the report follows the guar
       join(root, 'scripts/guard-merge.mjs'),
     )
     assert.equal(probeLinePrintedIn(root), 'node "scripts/check-guard-live.mjs"')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// The mirror image of the first of those two, and the case #171 was about. The
+// report used to read a fixed `scripts/guard-merge.mjs`, so a repository whose
+// installer put the guard elsewhere got the shipped probe form at a path with
+// no file at it: #153 again, through the one route #169's fix could not see.
+// The whole chain is measured rather than the path being asserted, because a
+// path assertion is what let the old test pass while the report was wrong.
+test('a guard wired outside scripts/ is the one the report names, and it refuses that line', () => {
+  const root = mkdtempSync(join(tmpdir(), 'probe-line-'))
+  try {
+    execFileSync('git', ['init', '--quiet', '--initial-branch=main'], { cwd: root })
+    mkdirSync(join(root, 'tools'), { recursive: true })
+    mkdirSync(join(root, '.claude'), { recursive: true })
+    copyFileSync(GUARD, join(root, 'tools/guard-merge.mjs'))
+    // The wiring `references/enforcement.md` ships, with the path an installer
+    // who chose `tools/` would have written into it. The variable and the
+    // quoting are the two things the report has to get through with no command
+    // reader beside it.
+    writeFileSync(
+      join(root, '.claude/settings.json'),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash|PowerShell',
+              hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/tools/guard-merge.mjs"' }],
+            },
+          ],
+        },
+      }),
+    )
+    const line = probeLinePrintedIn(root)
+
+    assert.equal(line, 'node "tools/guard-merge.mjs" --probe')
+    assert.equal(run(line).denied, true, 'the guard does not refuse the line the report named')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

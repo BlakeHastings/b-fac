@@ -180,11 +180,16 @@ const LEGACY_GATE = `${LEGACY_FACTORY}/guard-guest-writes.mjs`
 const RECORD_AT = COMMON === null ? `<git common dir>/${MACHINE_RECORD}` : show(join(COMMON, MACHINE_RECORD))
 const GATE_AT = COMMON === null ? `<git common dir>/${GUEST_GATE}` : show(join(COMMON, GUEST_GATE))
 
-// SETUP: where layer 2's guard was copied to, if not `scripts/`. This is also
-// the file the report tells you to ask whether it is loaded, and
-// `guard-merge-asset.test.mjs` pins that: it stands up a repository holding the
-// shipped guard, reads the line this script prints, and asserts the guard
-// refuses it.
+// Where layer 2's guard is documented to live, and where `guardLocation` below
+// looks first. This is also the file the report tells you to ask whether it is
+// loaded, and `guard-merge-asset.test.mjs` pins that: it stands up a repository
+// holding the shipped guard, reads the line this script prints, and asserts the
+// guard refuses it.
+//
+// This was a SETUP constant, with a comment telling an installer to edit it
+// where their guard sits elsewhere, and nothing acted on it if they did not
+// (#171). It is the default now rather than an assumption, so an unedited copy
+// is no longer a wrong answer about a correctly installed repository.
 const MERGE_GUARD = 'scripts/guard-merge.mjs'
 
 // ---------------------------------------------------------------------------
@@ -244,7 +249,105 @@ function probeCommand(path, source) {
   return `node "${target}"${rule.flag === null ? '' : ` ${rule.flag}`}`
 }
 
-const MERGE_PROBE = probeCommand(MERGE_GUARD, read(MERGE_GUARD))
+// ---------------------------------------------------------------------------
+// Where the guard is, rather than where this file says it should be
+//
+// Everything above derives the probe line from the guard's own rule, which is
+// only as good as the file it read, and the file it read was whatever sat at
+// `MERGE_GUARD`. In a repository whose installer put the guard in `tools/`, the
+// read returned nothing, the derivation fell back to the shipped form, and the
+// report printed a command naming a file that is not there: #153 again, down
+// the one path #153's fix could not see (#171). The layer-2 verdict was the
+// worse half of it, `MISSING` on the only preventive layer such a repository
+// actually has, plus a FIX telling it to install what it had already installed.
+// A permanently red line in a correct repository is what this file's header
+// argues against at length.
+//
+// **The repository's own answer is in its hook.** A wired `PreToolUse` entry
+// carries the command the harness runs, written by whoever installed the guard,
+// and `preToolUseHooks` already reads those entries for layer 2's next
+// question. So the order is: the documented path if a file is there, then the
+// path a wired hook names if a file is there, then absent.
+//
+// The documented path wins where both exist, so an ordinary installation is
+// answered without consulting a hook at all and this changes nothing for it.
+//
+// **A hook naming a file that does not exist is not the guard.** Layer 2's
+// `MISSING` covers copied-and-unwired and wired-at-nothing alike, and a locator
+// that believed the hook string would turn the second one green, which is the
+// dangerous way this fix fails. So a candidate counts only once it has been
+// read. Where a hook names something absent, that is said in the finding: it is
+// a more specific failure than "the guard is absent" and it wants a different
+// fix.
+//
+// **Reading a path out of a command line, with no command reader here.** ADR
+// 0029 keeps this file to one file with nothing beside it, so the guards'
+// tokeniser is not available and this does not pretend to be one. It looks only
+// for an argument naming a `guard-merge*.mjs`, quoted arguments first so a path
+// containing a space survives. `$CLAUDE_PROJECT_DIR` is the wiring
+// `references/enforcement.md` ships and it resolves to the root this report is
+// already standing in. Any other variable or substitution is refused rather
+// than guessed at: an unresolvable path that happened to read as a real file
+// would be the wrong answer arriving with the authority of a measurement, and
+// refusing it costs a repository with an exotic hook the old behaviour, which
+// is what it has today.
+const GUARD_IN_COMMAND = [
+  /"([^"]*guard-merge[\w.-]*\.mjs)"/g,
+  /'([^']*guard-merge[\w.-]*\.mjs)'/g,
+  /(?:^|\s)([^\s"']*guard-merge[\w.-]*\.mjs)(?=\s|$)/g,
+]
+
+const PROJECT_DIR = /^\$\{?CLAUDE_PROJECT_DIR\}?[\\/]/
+
+function guardPathsIn(command) {
+  const paths = []
+  for (const pattern of GUARD_IN_COMMAND) {
+    for (const [, raw] of command.matchAll(pattern)) {
+      const path = raw.replace(PROJECT_DIR, '')
+      if (/[$%`]/.test(path)) continue
+      if (!paths.includes(path)) paths.push(path)
+    }
+  }
+  return paths
+}
+
+// `join` does not step aside for an absolute path, so a hook naming one has to
+// be read directly rather than through `read`.
+const readResolved = (abs) => {
+  try {
+    return readFileSync(abs, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+// `path` is how the report spells it, relative where it is inside this checkout.
+// `named` is every path a hook pointed at, so a failure can say which of the two
+// shapes of absence this is.
+function guardLocation() {
+  const source = read(MERGE_GUARD)
+  const named = []
+  if (source !== null) return { path: MERGE_GUARD, source, conventional: true, named }
+
+  for (const { file, entry } of MERGE_HOOKS.wired) {
+    for (const hook of entry.hooks ?? []) {
+      for (const path of guardPathsIn(hook.command ?? '')) {
+        const abs = resolve(ROOT, path)
+        const found = readResolved(abs)
+        if (found === null) {
+          if (!named.includes(path)) named.push(path)
+          continue
+        }
+        return { path: show(abs), source: found, conventional: false, file, named }
+      }
+    }
+  }
+  return { path: MERGE_GUARD, source: null, conventional: true, named }
+}
+
+const MERGE_HOOKS = preToolUseHooks('guard-merge')
+const GUARD = guardLocation()
+const MERGE_PROBE = probeCommand(GUARD.path, GUARD.source)
 
 // The one line a reader and a writer of the machine record have to agree about,
 // asked in one place so they cannot drift apart. `undefined` means the file has
@@ -413,6 +516,71 @@ function triggerBlock(text) {
     block.push(uncommented(line))
   }
   return block.join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// A script a workflow runs, which is not the same thing as one it names
+//
+// Layer 3 asks whether anything actually invokes the audit. That used to be a
+// substring question over the whole workflow file, which answers `ok` for a
+// workflow naming the script only in a comment (#170). It is the same mistake
+// `triggerBlock` above fixed, in the opposite and more expensive direction:
+// that one accused a correct workflow, this one told a repository it had the
+// detection layer when what it had was a paragraph about one. Layer 3 is the
+// only one of the four that detects rather than prevents, so its false `ok` is
+// the report going quiet about the thing the other three are checked against.
+//
+// The route in is not exotic. This repository's own `provenance.yml` names the
+// script in a comment above the step that runs it, so any repository copying
+// that file as a template and dropping the step keeps the comment and the `ok`.
+//
+// So the question is asked of the `run:` values, which is where a workflow
+// invokes anything. A text scan and not a parse, judged enough here for the
+// reason the `on:`-block scan was judged enough for #160: the alternative is a
+// YAML parser written in this file, which is a second thing to be wrong about,
+// and ADR 0029 keeps this to one file with nothing beside it.
+//
+// Block scalars are the half `triggerBlock` did not need. `run: |` carries the
+// command on the lines below it, indented past the key, and that is the shape
+// any step longer than one command is written in.
+//
+// **Comments are stripped from the plain form and not from a block body**, and
+// the asymmetry is deliberate. On the `run:` line itself a `#` is YAML's, the
+// same as everywhere else in the file. Inside a block body the text is the
+// shell's, `#` is the shell's comment character, and stripping it would mean
+// deciding which shell. What is left wrong, said out loud: a shell comment
+// inside a `run:` block naming the audit reads as running it. That is #170's
+// residual rather than its fix, and it is a shape nobody writes by accident,
+// where a header comment above a step is one this repository wrote itself.
+//
+// Also left wrong: a plain scalar continued onto the next line reads as its
+// first line only. Both residuals fail toward saying a script is not run,
+// except the shell-comment one, and the caller separates "no workflow names it"
+// from "a workflow names it somewhere that does not run it" so the second
+// arrives with a remedy instead of as a flat MISSING.
+const RUN_KEY = /^(\s*)(-\s+)?run:(.*)$/
+
+function runScalars(text) {
+  const lines = text.split('\n')
+  const values = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const key = RUN_KEY.exec(lines[i])
+    if (key === null) continue
+    const column = key[1].length + (key[2]?.length ?? 0)
+    if (!/^\s*[|>]/.test(key[3])) {
+      values.push(uncommented(key[3]))
+      continue
+    }
+    // A block body is every following line indented past the key, blank lines
+    // included, which is what lets a `run:` block hold a paragraph break.
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (lines[j].trim() === '') continue
+      if (/^\s*/.exec(lines[j])[0].length <= column) break
+      values.push(lines[j])
+      i = j
+    }
+  }
+  return values.join('\n')
 }
 
 // `pull_request_target` is named as well, because it is the same trigger for
@@ -838,7 +1006,21 @@ function wiringProblems({ file, entry }) {
 const BRANCH = CHECKLIST === OWNED ? defaultBranch() : null
 const DEFAULT = BRANCH?.name ?? null
 const WORKFLOWS = workflows()
+
+// Two questions that look like one, kept apart because their risk profiles are
+// opposite and #170 is what happens when one helper answers both.
+//
+// `mentions` is layer 1's: do the check names in `merge-pr.mjs`'s REQUIRED
+// array turn up anywhere in CI at all. It only ever prints an advisory note, a
+// name legitimately appears in a comment beside the job that produces it, and a
+// check name is a job's `name:` rather than anything a `run:` line contains, so
+// narrowing it to `run:` values would make it answer nothing. Whole text is the
+// right read there and it is unchanged.
+//
+// `invokers` is layer 3's: does anything actually run this script. That decides
+// a verdict on the one detective layer, so it asks where invocation happens.
 const mentions = (needle) => WORKFLOWS.filter((w) => w.text.includes(needle))
+const invokers = (needle) => WORKFLOWS.filter((w) => runScalars(w.text).includes(needle))
 
 // Layer numbers match references/enforcement.md, weakest first, so this output
 // reads as that chapter rendered against the repo in front of you. The guest
@@ -933,35 +1115,55 @@ const LAYERS = [
     ],
     fix: `Copy guard-merge.mjs to scripts/ and add the PreToolUse block from references/enforcement.md to .claude/settings.json. Restart the session afterwards: settings are read at startup. Then \`${MERGE_PROBE}\`, which the guard refuses when it is loaded.`,
     run() {
-      const source = read(MERGE_GUARD)
-      if (source === null) return { status: MISSING, findings: [`${MERGE_GUARD} is absent`] }
-
-      // Present but unwired is the failure this whole script exists for, so it
-      // reports as MISSING rather than PARTIAL. A script nothing invokes is not
-      // a weaker layer than an absent one; it is the same layer, plus a file.
-      const { wired, unparseable } = preToolUseHooks('guard-merge')
+      const { wired, unparseable } = MERGE_HOOKS
+      if (GUARD.source === null) {
+        return {
+          status: MISSING,
+          findings:
+            GUARD.named.length > 0
+              ? [
+                  `${MERGE_GUARD} is absent, and the PreToolUse hook runs ${GUARD.named.join(', ')},`,
+                  'where there is no file either. A hook pointed at nothing loads nothing, so this',
+                  'is wired and absent rather than copied and unwired',
+                ]
+              : [`${MERGE_GUARD} is absent`],
+        }
+      }
       if (unparseable) {
         return { status: MISSING, findings: [`${unparseable} is not valid JSON, so no hook loads`] }
       }
+      // Present but unwired is the failure this whole script exists for, so it
+      // reports as MISSING rather than PARTIAL. A script nothing invokes is not
+      // a weaker layer than an absent one; it is the same layer, plus a file.
       if (wired.length === 0) {
         return {
           status: MISSING,
           findings: [
-            'the script is in scripts/ and no PreToolUse hook runs it, so nothing loads it.',
+            `the script is at ${GUARD.path} and no PreToolUse hook runs it, so nothing loads it.`,
             'This is the shape the layer takes when setup was read and not done',
           ],
         }
       }
 
       const findings = wiringProblems(wired[wired.length - 1])
-      const guards = source.match(/^const DEFAULT_BRANCH = ['"]([^'"]+)['"]/m)?.[1]
+      // A note rather than a problem, because the layer is installed and works.
+      // Making this move the status would trade #171's MISSING for a permanent
+      // PARTIAL, which is the same red line one shade lighter.
+      if (!GUARD.conventional) {
+        findings.push(
+          `note: the guard is at ${GUARD.path}, not the conventional ${MERGE_GUARD}. Read` +
+            ` from the hook in ${GUARD.file}, which is this repository's own record of where` +
+            ' it put the file, and the probe line below names that copy',
+        )
+      }
+      const guards = GUARD.source.match(/^const DEFAULT_BRANCH = ['"]([^'"]+)['"]/m)?.[1]
       if (DEFAULT && guards && guards !== DEFAULT) {
         findings.push(
           `DEFAULT_BRANCH is "${guards}" and this repo's default branch is "${DEFAULT}",` +
             ' so the guard protects a branch that does not exist',
         )
       }
-      return { status: findings.length > 0 ? PARTIAL : OK, findings }
+      return { status: findings.some((f) => !f.startsWith('note:')) ? PARTIAL : OK, findings }
     },
   },
   {
@@ -985,9 +1187,26 @@ const LAYERS = [
           ],
         }
       }
-      const runners = mentions('check-main-provenance')
+      const runners = invokers('check-main-provenance')
       if (runners.length === 0) {
-        return { status: MISSING, findings: ['no workflow runs it, so it detects nothing'] }
+        // Named but not run is its own state and gets its own sentence. It is
+        // the shape #170 was reported from, and it is also what a workflow
+        // reaching the script through an npm alias looks like from here, so a
+        // flat "no workflow runs it" would be read as wrong by the second
+        // reader and ignored by both. Naming the file is the contract either
+        // way: a check that cannot follow an alias has to be told.
+        const named = mentions('check-main-provenance')
+        if (named.length === 0) {
+          return { status: MISSING, findings: ['no workflow runs it, so it detects nothing'] }
+        }
+        return {
+          status: MISSING,
+          findings: [
+            `${named.map((w) => w.file).join(', ')} names it outside any run: line, so nothing`,
+            'invokes it and it detects nothing. Name the script in the run: line of a step,',
+            'rather than in a comment or an npm alias beside one',
+          ],
+        }
       }
 
       const findings = []
@@ -1249,7 +1468,7 @@ for (const layer of LAYERS) {
 // was costing before. The guest side was measured at the same time and is
 // unaffected: `guard-guest-writes.mjs` names itself and takes `--probe`, so the
 // derived line and the old fixed one are the same string.
-const PROBE_SOURCE = CHECKLIST === GUEST ? readCommon(GUEST_GATE) : read(MERGE_GUARD)
+const PROBE_SOURCE = CHECKLIST === GUEST ? readCommon(GUEST_GATE) : GUARD.source
 const PROBE_EXISTS = PROBE_SOURCE !== null
 const PROBE_LINE = CHECKLIST === GUEST ? probeCommand(GATE_AT, PROBE_SOURCE) : MERGE_PROBE
 const PROBE = [
