@@ -19,6 +19,12 @@ not ready for review.
 Never ask a reviewer to run these by hand. If a mechanical check is missing,
 adding it is cheaper than reviewing for it forever.
 
+**The `provenance` workflow is not on this list and must not be added to it.**
+It runs only on a push to `main`, so it has nothing to say about a branch under
+review, and it reports on whether the gate above held rather than holding it.
+A reviewer who waits for it is waiting for a run that will not happen until
+after they merge. ADR 0050.
+
 ## Lens 1: functionality, proven by interaction
 
 **The reviewer drives the running app.** For this repo the app is the skill, and
