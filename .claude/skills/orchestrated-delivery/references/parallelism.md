@@ -105,6 +105,70 @@ accurate until the other PR made it false, and a paragraph re-indented under the
 wrong heading so it read as part of another subject. None of that is caught by
 CI, by a test, or by reading the diff of your own change.
 
+## The version line fails in both directions, and one of them takes CI away
+
+A payload change usually has to move one version number, and a release check
+usually has to insist that it moved. It is the worst surface two branches can
+share, because it fails in opposite ways depending on whether they agree, and
+neither failure is the conflict you briefed.
+
+**Same number on both branches, and nothing conflicts.** Two branches once
+started from the same commit at `0.38.0`, both wrote `0.39.0`, and the rebase
+resolved silently because nothing disagreed. The second then carried a version
+the default branch had already released, and git had nothing to say about it.
+The more disciplined the agents, the more identical the edit and the quieter the
+failure. The net is the check and not the merge, and that is a property the
+check has to be built with: it must read the released version from **the tip of
+the default branch**, never from the merge base. Ask the merge base and a branch
+inherits somebody else's bump and calls it its own, because `0.1.0` to `0.2.0`
+looks like a bump no matter who made it.
+
+**Different numbers, the line conflicts, and a conflicting pull request has no
+CI at all.** Not stale, not red, absent. A `pull_request` run is dispatched
+against a merge ref the forge recomputes, and it stops recomputing that ref
+while the pull request conflicts, so the ref freezes at the last sha that ran
+and every push after that produces nothing. One branch sat there across five
+pushes, three of them empty commits added to nudge a run that could not start.
+Two of those nudges did produce a run, which is what made it read as flakiness,
+and both ran only because the default branch had meanwhile released the number
+the branch was holding: the one state in which the version check must fail. Its
+CI could start only when it was certain to be red.
+
+Both failures are the same line of the same file, so **satisfying the check is
+what stops the check from running**. Under a policy that requires branches to be
+up to date before merging, that makes payload work serial rather than merely
+rebase-prone: a payload branch is green only between its own rebase and the next
+merge.
+
+**Take a number that survives either merge order**, above the default branch and
+above every number claimed on an open branch, rather than the next free one. An
+agent did that unprompted, taking `0.17.0` while another open branch still held
+`0.16.0`, and its branch landed with nothing to change. It is the better default
+because the number is right whichever branch lands first, so a rebase is a
+resolution rather than a second round of edits, and there is no moment where the
+branch quietly claims a released version. Know what it does not buy: it saves no
+rebase, and it makes the conflict certain rather than likely, since a number
+nobody else holds is by construction a number that differs from whatever lands
+first. It trades a red check for no check, which is only a good trade alongside
+the next two.
+
+**Sequence payload work and say which branch is second.** Two payload branches
+open at once is enough to cause this, and three agents is this file's own
+default. Where they have to overlap, put it in both briefs: the second goes dark
+until the first lands, and that is expected rather than broken.
+
+**Teach the difference between "CI has not started" and "CI cannot start",**
+which read identically from inside a branch. One agent read the second as the
+first three times running. `gh pr view <n> --json mergeable` returning
+`CONFLICTING` is the answer, and it means no push produces a run until the
+branch is rebased. An empty commit cannot help, and it leaves a false
+explanation in the log for whoever reads it next.
+
+Do not hand version numbers out the way you hand out ADR numbers. An ADR number
+is compared against nothing; a version is compared against a branch that moves,
+and assigning them puts you in the coordination path of every payload pull
+request.
+
 ## Orchestrator hygiene while agents run
 
 Touch nothing they touch. Reviewing, filing issues, answering the owner and
