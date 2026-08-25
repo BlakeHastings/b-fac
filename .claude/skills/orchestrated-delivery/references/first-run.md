@@ -93,7 +93,7 @@ distinguishes an installed layer from a copied one.
 
 The first thing that run prints is `Write boundary: NOT RECORDED`, and for a
 long time that was the only thing an owned repo could ever print, because the
-one writer of `.factory/machine.md` was the guest gate's installer and it only
+one writer of the machine record was the guest gate's installer and it only
 ever writes `guest`. This repo printed it on every run from the day the report
 learned to read the mode until #100 gave the other answer a writer.
 
@@ -101,10 +101,13 @@ learned to read the mode until #100 gave the other answer a writer.
 node <this skill>/assets/check-setup.mjs --record-owned
 ```
 
-That writes the record, appends `/.factory/` to `.git/info/exclude` so it stays
-out of the tree, and does nothing else: owned mode has no gate, so there is
-nothing to install. It refuses if an answer is already there, and it refuses in
-a repo where the guest gate is installed.
+That writes `factory/machine.md` **inside the git common directory**, where every
+linked worktree of this repository reads the same answer, and does nothing else:
+owned mode has no gate, so there is nothing to install. **No line is added to
+`.git/info/exclude` and none is needed**, because git does not look inside
+`.git/`, so what ADR 0021 asked an ignore rule to achieve is now structural. It
+refuses if an answer is already there, and it refuses in a repo where the guest
+gate is installed.
 
 **It is worth the ten seconds for the same reason the check itself is.** An
 answer nobody records is indistinguishable from a question nobody asked, and

@@ -43,11 +43,30 @@
 // WHAT THIS IS NOT
 // It is not a `gh` front end and it never lands anything. It posts bodies to
 // artifacts that already exist. Landing is `node scripts/merge-pr.mjs <n>`.
-// Creating an issue or a pull request stays `gh`'s: create it with a
-// placeholder title and body, then set the real body through this. That is the
-// case worth being strictest about, because an escalation issue's body has
-// nobody waiting on it. A blank brief has an agent about to read it and
-// complain; a blank question to the owner can sit there for ever.
+//
+// CREATING ONE, WHICH IS THE PART THIS HEADER GOT WRONG
+// It said "create it with a placeholder title and body, then set the real body
+// through this". ADR 0050 corrected that and the correction never reached here.
+// That is most of the explanation for the placeholder form being used twelve
+// times on the day that ADR was written, eleven of them by its own author:
+// whoever is about to create an artifact is standing at this usage, not at
+// `references/reviewing.md`. Both routes:
+//
+//   gh issue create --title "..." --body-file body.md    # prints <n>
+//   node scripts/post-body.mjs issue-body:<n> body.md --check
+//
+//   gh issue create --title "..." --body "placeholder"   # prints <n>
+//   node scripts/post-body.mjs issue-body:<n> body.md
+//
+// Neither can eat the body, because neither puts it on a command line. The
+// first is better anyway: its window holds the real body where the second's
+// holds the placeholder, and an agent that dies between the two commands leaves
+// that placeholder live with nobody waiting on it, which is the property that
+// made #143's escalation issue the expensive one. A blank brief has an agent
+// about to read it and complain; a blank question to the owner can sit there
+// for ever. So the rule is the read-back rather than the form: the artifact is
+// not created until a read-back has passed against the file it was meant to
+// carry, `--check` in the first route and the ordinary post in the second.
 //
 // WHY THERE IS A FIFTH TARGET AND WHY IT IS NOT THE `create` ADR 0050 REFUSED
 // `comment:<id>` rewrites a comment that already exists. Until it landed, the
@@ -338,7 +357,14 @@ const USAGE = `Usage: node scripts/post-body.mjs <kind>:<number> <file> [--check
 Posts a body from a file, reads the artifact back, and exits non-zero when what
 is stored is not what was sent. comment:<id> replaces what that comment holds,
 which is not reversible, so read the id off the artifact you mean rather than
-off a note about it. See the header of this file, ADR 0049 and ADR 0052.`
+off a note about it.
+
+Creating an artifact is gh's, not this. "gh issue create --body-file body.md"
+prints the number and --check here reads it back; a placeholder create followed
+by an ordinary post here also works and leaves the placeholder live in between.
+Either way the creation is not done until a read-back has passed.
+
+See the header of this file, ADR 0049, ADR 0050 and ADR 0052.`
 
 function main(argv) {
   const args = argv.filter((arg) => arg !== '--check')

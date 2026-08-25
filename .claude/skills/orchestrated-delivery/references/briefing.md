@@ -318,6 +318,29 @@ The agent has zero conversation context, so the brief is self-contained. Pass
 artifacts **by path**, never pasted into the prompt body. Say explicitly whether
 this is "write code" or "research and report".
 
+**A path is an artifact only where nothing else can write to it.** Passing by
+path assumes the path is a stable identity, and a scratch directory several
+agents share is not one. Two agents dispatched into isolated worktrees were
+handed one session scratchpad between them, both wrote their pull request body
+to `pr-body.md` in it, and one overwrote the other's. The read-back is not what
+catches that. A body travels through two processes, the `gh ... create` that
+reads the file and the verified post that reads it again, and if the file
+changes in between then the second one posts what it read and reads back what it
+posted, so it reports the wrong body as posted and verified, entirely
+truthfully. The isolation was real everywhere except the one place the bodies
+lived.
+
+So **tell every agent to write body files inside its own worktree, with a
+distinct filename per artifact**: `pr-body-172.md` under the worktree it already
+owns, rather than `body.md` somewhere a second agent can reach. It costs a
+sentence in the dispatch, and leaving it to each dispatch is how it stayed
+unwritten while working every time.
+
+**What that does not cover.** It removes the collision the dispatch caused, not
+the class. Any two processes reading one mutable path have this, a person with
+the file open in an editor included, and no read-back can see it, because the
+wrong body is a perfectly well-formed body.
+
 **Never delegate understanding.** "Based on your findings, fix the bug" pushes
 synthesis onto the agent. A brief naming the exact file and the exact change
 proves the understanding is already on your side.
