@@ -52,6 +52,46 @@ the files to a brief that says "read the module", say which parts of a large
 file matter, and split an issue that needs the whole of two subsystems in one
 head rather than paying for it in a summary you never see.
 
+## Size a dispatch against the machine, too
+
+The section above is about the agent's head. This one is about the box, and
+until 2026-09-07 the loop had nothing to say about it.
+
+That day an owner stopped four running agents mid-work because the system had
+run out of resources. The orchestrator had no idea, and no reason to look: both
+dispatch inputs it knows about are collision surface and the context window.
+
+`assets/machine-load.mjs` is the input it was missing. Run it before a wave:
+
+```
+node <this skill>/assets/machine-load.mjs
+```
+
+**The number that matters is not your agents, it is everything.** When that
+machine was measured a minute after the stop, the largest consumer by far was
+**six `claude` sessions holding 2.7 GB between them**, more than every project
+on the box combined, and sixteen more processes belonged to a sibling checkout
+being orchestrated by a different session. A session counting its own agents
+would have counted three and concluded there was room.
+
+So the script groups by whose the processes look like, and a line you do not
+recognise is a colleague dispatching agents you cannot see. **Read the whole
+list, not your own rows.** Two sessions each behaving reasonably in isolation is
+how a machine fills up.
+
+**There is deliberately no threshold in it**, for the same reason there is none
+in the section above: a number invented here would be obeyed, would be wrong on
+different hardware, and would be believed because a script said it. It exits 0
+on a full machine as well as an empty one, because a busy machine is not an
+error and a gate here would refuse at the moment somebody most needs to
+override it.
+
+What a worktree costs is worth measuring rather than assuming, and it is not
+only memory. On that machine one worktree with `node_modules` installed was
+about 58 MB of disk, and 24 of them reached 1.4 GB inside a single repository,
+which is also what makes every tool that scans the tree slower. Removing the
+worktrees of agents that have finished is the cheapest thing in this file.
+
 ## Assign ADR numbers explicitly
 
 Three agents once claimed 0005 and 0006 between them, each taking "the next free

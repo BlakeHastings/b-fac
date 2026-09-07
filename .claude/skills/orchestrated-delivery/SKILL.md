@@ -178,6 +178,12 @@ Calibrations, not rules. Each has its reason, so you can tell when to deviate.
 - **Three agents per wave.** Three directories is comfortable; two agents in one
   module is a rebase you chose. The real variable is collision surface, not
   count.
+- **Read the machine before a wave**, with `assets/machine-load.mjs`. Collision
+  surface and the context window are the two inputs the loop knew about, and
+  neither is about the box. An owner once stopped four agents mid-work because
+  the system was out of resources, and the largest consumer turned out to be six
+  `claude` sessions and a sibling checkout that this session had no way to see.
+  Counting your own agents undercounts. `references/parallelism.md`.
 - **Batch by what would collide, not by theme.** Issues touching one registry go
   together. Unrelated surfaces go apart even when they sound like one feature.
 - **Hand out ADR numbers explicitly**, checked against the default branch *and*
