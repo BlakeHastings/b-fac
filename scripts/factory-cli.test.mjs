@@ -16,6 +16,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import vm from 'node:vm'
 import { fold, formatAge } from '../cli/lib/view.mjs'
 import { serve } from '../cli/lib/serve.mjs'
 
@@ -355,5 +356,30 @@ test('a second server steps to the next port instead of refusing', async () => {
     if (previous === undefined) delete process.env.FACTORY_HOME
     else process.env.FACTORY_HOME = previous
     box.cleanup()
+  }
+})
+
+// The page is a template literal, so nothing type-checks it and nothing parses
+// it at build time. A syntax error in that script renders a blank page with an
+// error only in a console nobody has open, which is this whole feature's own
+// failure mode arriving in its own front end. Compiling it here is the cheapest
+// thing that makes it loud.
+test('the page script compiles, so a blank page cannot ship silently', async () => {
+  const { page } = await import('../cli/lib/page.mjs')
+  const html = page()
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])
+  assert.ok(scripts.length > 0, 'the page is expected to carry inline script')
+  for (const source of scripts) {
+    new vm.Script(source, { filename: 'page-inline.js' })
+  }
+})
+
+test('the page defines every element id its script writes into', async () => {
+  const { page } = await import('../cli/lib/page.mjs')
+  const html = page()
+  const wanted = [...html.matchAll(/getElementById\('([^']+)'\)/g)].map((m) => m[1])
+  assert.ok(wanted.length > 0)
+  for (const id of new Set(wanted)) {
+    assert.ok(html.includes(`id="${id}"`), `the script writes into #${id} and the markup has no such element`)
   }
 })
