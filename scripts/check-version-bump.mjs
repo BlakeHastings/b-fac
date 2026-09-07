@@ -52,7 +52,22 @@ import { execFileSync } from 'node:child_process'
 // marketplace.json is deliberately absent. It is the catalogue entry, read
 // before install and not part of the installed plugin, so editing its blurb is
 // not a release.
-const PAYLOAD = [/^\.agents\/skills\//, /^\.claude\/skills\//, /^\.claude-plugin\/plugin\.json$/]
+//
+// `cli/`, `hooks/` and `commands/` joined the list when the observer landed.
+// ADR 0014 already said the plugin ships the whole repository, so those three
+// reach an installer exactly as the skills do: `commands/` becomes the slash
+// commands in their session, `hooks/hooks.json` wires hooks into every session
+// they start, and `cli/` is the code both of those run. A change to any of them
+// that shipped without a version bump would reach `claude plugin update` as no
+// change at all, which is the failure this whole file exists for.
+const PAYLOAD = [
+  /^\.agents\/skills\//,
+  /^\.claude\/skills\//,
+  /^\.claude-plugin\/plugin\.json$/,
+  /^cli\//,
+  /^hooks\//,
+  /^commands\//,
+]
 
 const MANIFEST = '.claude-plugin/plugin.json'
 

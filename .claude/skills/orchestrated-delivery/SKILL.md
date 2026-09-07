@@ -482,6 +482,7 @@ in the order its commits show rather than the order listed here.
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
+| `references/observability.md` | You want to see what the factory is doing, or a question went unanswered |
 
 ## What the loop is worth
 
