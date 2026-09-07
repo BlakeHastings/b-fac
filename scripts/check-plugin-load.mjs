@@ -45,6 +45,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // at an empty directory would expect nothing, find nothing, and pass.
 const CANONICAL_SKILLS = join(ROOT, '.agents', 'skills')
 
+// The plugin's slash commands. They land in the same `Skills (n)` line of the
+// inventory as the skills do, so the expectation has to include them or every
+// command added here reads as a stray skill and fails this check. Derived from
+// the directory for the same reason as above: reading the count off the
+// manifest would let an empty directory expect nothing and pass.
+const COMMANDS = join(ROOT, 'commands')
+
+// Hooks are a shipped component too, and until the observer landed this repo
+// shipped none, so nothing here looked at them. A hook that fails to load is
+// exactly as silent as a skill that fails to load, which is the whole argument
+// this file was written on.
+const HOOKS_MANIFEST = join(ROOT, 'hooks', 'hooks.json')
+
 // The skill this repo exists to ship. Named here so that deleting the entire
 // canonical tree fails loudly instead of passing with an empty expectation
 // matching an empty inventory. This repo has already shipped one check that
@@ -137,14 +150,28 @@ function parseTokens(text) {
 if (!existsSync(CANONICAL_SKILLS)) {
   fail(`${CANONICAL_SKILLS} does not exist. ADR 0003 says that is where skills live.`)
 }
-const expected = readdirSync(CANONICAL_SKILLS, { withFileTypes: true })
+const skills = readdirSync(CANONICAL_SKILLS, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && existsSync(join(CANONICAL_SKILLS, entry.name, 'SKILL.md')))
   .map((entry) => entry.name)
-  .sort()
 
-if (expected.length === 0) {
+if (skills.length === 0) {
   fail('No skill directory under .agents/skills/ contains a SKILL.md.')
 }
+
+// A command's invocation name is its `name:` frontmatter, and the basename only
+// where that is absent. Guessing from the filename alone would pass a command
+// whose frontmatter renames it to something nobody can type.
+const commands = existsSync(COMMANDS)
+  ? readdirSync(COMMANDS)
+      .filter((file) => file.endsWith('.md'))
+      .map((file) => {
+        const body = readFileSync(join(COMMANDS, file), 'utf8')
+        const named = /^name:\s*(\S+)\s*$/m.exec(body)
+        return named ? named[1] : file.replace(/\.md$/, '')
+      })
+  : []
+
+const expected = [...skills, ...commands].sort()
 if (!expected.includes(SENTINEL)) {
   fail(
     `.agents/skills/${SENTINEL}/SKILL.md is missing.`,
@@ -268,25 +295,55 @@ const missing = expected.filter((name) => !found.includes(name))
 const extra = found.filter((name) => !expected.includes(name))
 
 if (missing.length > 0 || extra.length > 0) {
-  console.error('The plugin loaded, but its skill inventory is not what this repo ships.\n')
+  console.error('The plugin loaded, but its inventory is not what this repo ships.\n')
   if (missing.length > 0) {
-    console.error(`  In .agents/skills/ but NOT loaded: ${missing.join(', ')}`)
+    console.error(`  Shipped but NOT loaded: ${missing.join(', ')}`)
   }
   if (extra.length > 0) {
-    console.error(`  Loaded but not in .agents/skills/: ${extra.join(', ')}`)
+    console.error(`  Loaded but not shipped: ${extra.join(', ')}`)
   }
   console.error(
     [
       '',
-      'Usual cause: the `skills` field in .claude-plugin/plugin.json no longer',
-      'points at the directory the skill is in. `plugin validate` passes either',
-      'way, which is why this check exists.',
+      'Usual cause: the `skills` or `commands` field in',
+      '.claude-plugin/plugin.json no longer points at the directory the',
+      'component is in. `plugin validate` passes either way, which is why this',
+      'check exists.',
       '',
       'Reproduce by hand:',
       '  claude --plugin-dir . plugin details ' + plugin.id,
     ].join('\n'),
   )
   process.exit(1)
+}
+
+// The hooks half. `hooks.json` naming an event the loader does not register is
+// the observer's version of a SKILL.md that validates and does nothing: the
+// file is right there on disk, the manifest is valid, and the hook never fires.
+// Nothing about a session says so, which is why this is a check and not a note.
+if (existsSync(HOOKS_MANIFEST)) {
+  const wanted = Object.keys(JSON.parse(readFileSync(HOOKS_MANIFEST, 'utf8')).hooks || {}).sort()
+  const hooksLine = /^\s*Hooks \((\d+)\)\s+([^(]*)/m.exec(details)
+  const loaded = hooksLine
+    ? hooksLine[2]
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .sort()
+    : []
+  const absent = wanted.filter((name) => !loaded.includes(name))
+  if (absent.length > 0) {
+    fail(
+      `hooks/hooks.json declares ${wanted.join(', ')} but the loader registered ` +
+        `${loaded.length ? loaded.join(', ') : 'nothing'}.`,
+      '',
+      'Missing: ' + absent.join(', '),
+      '',
+      'A hook that does not load is silent. Check the `hooks` field in',
+      '.claude-plugin/plugin.json and the event names in hooks/hooks.json.',
+    )
+  }
+  console.log(`All ${wanted.length} declared hooks registered: ${wanted.join(', ')}.`)
 }
 
 // `  orchestrated-delivery       ~290      ~3.1k` — the loader's own count of

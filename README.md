@@ -139,6 +139,7 @@ demand rather than all at once:
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` — the same eight verbs on beads, which is what guest mode uses |
 | `references/first-run.md` — setting this up in a repo that has none of it yet |
+| `references/observability.md` — seeing what the factory is doing, and what is waiting on you |
 
 That table and the one in `SKILL.md` are both written by hand, so
 `npm run check:references` holds them to the directory: a reference document

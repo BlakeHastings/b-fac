@@ -22,6 +22,16 @@ describe how work actually happens here, not an aspiration.
   `.agents/skills/orchestrated-delivery/references/backlog-port.md`.
 - **Agents do not merge.** Push the branch, open the PR, report, stop. Merging
   is the orchestrator's, through `node scripts/merge-pr.mjs <n>`.
+- **The observer never refuses anything.** `hooks/observe.mjs` loads for every
+  session of everyone who installs the plugin, so every path in it exits 0,
+  prints nothing, and emits no permission decision. Its tests weight the allow
+  direction for the same reason the merge guard's do: a gap loses an event, a
+  false positive breaks a stranger's session. ADR 0058.
+- **`cli/`, `hooks/` and `commands/` are payload, and an asset is not the same
+  thing.** An asset is copied into a target repo and belongs to it afterwards; a
+  command is invoked from wherever the plugin is installed and always belongs to
+  the plugin. Both are shipped, so both are in `check-version-bump.mjs`'s
+  `PAYLOAD`. ADR 0056.
 - **A skill body stays under ~500 lines**, with detail pushed into
   `references/`. Progressive disclosure is the whole reason the format works.
 
@@ -36,10 +46,20 @@ npm run check:plugin-load  # the real loader finds the skills, not just the JSON
 npm run check:bodies       # no issue, PR or comment here is storing a blank body
 npm run check:provenance   # every commit on main came through a PR. ADR 0051
 claude --plugin-dir .      # load this repo as a plugin without installing it
+
+node cli/factory.mjs status   # is the observer recording, and has it ever fired
+node cli/factory.mjs ui       # the front end, on 127.0.0.1
 ```
 
 The two `check:plugin*` scripts need the `claude` CLI, which is why `npm run
 check` leaves them out. CI runs all four.
+
+The two `factory` lines are the observer, and it records nothing until somebody
+runs `factory on`, here or anywhere else. It is off in a fresh clone on purpose:
+it ships in the plugin, so it loads for everyone who installs this, including
+people who wanted the skill and not a dashboard. `status` is the one to run
+first, because it separates "nobody switched it on" from "switched on and never
+once fired", and only the second is a fault.
 
 `check:bodies` is left out for a different reason: it reads this repository's
 issues and pull requests, so it needs a token and the network, and `npm run
@@ -78,6 +98,7 @@ context, which is what keeps it out of that duplication. ADR 0051.
 | How a version bump and a release happen | `docs/process/releasing.md` |
 | Why something is the way it is | `docs/architecture/decisions/` |
 | The workflow this repo ships | `.agents/skills/orchestrated-delivery/SKILL.md` |
+| Seeing what a run is doing | `.agents/skills/orchestrated-delivery/references/observability.md` |
 
 ## When something here is wrong
 
