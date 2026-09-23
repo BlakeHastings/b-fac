@@ -135,7 +135,10 @@ is itself a change to a repo you are a guest in.
 5. While they run, touch nothing they touch. Reviewing, filing, answering the
    owner and mining the record are safe. Editing is not.
 6. Review. `references/reviewing.md`.
-7. Post what you independently verified, then merge or send it back.
+7. Post what you independently verified, then merge or send it back. Keep
+   `assets/watch-prs.mjs` armed while any pull request of yours is open: each
+   review, red check or conflict it reports restarts this loop at step 6 on
+   that pull request. `references/watching.md`.
 8. File what surfaced and could not be fixed there, and top up the handoff with
    whatever this pass changed about where the work stands.
 9. Go to 1. The loop has no step that ends it, and reporting is not one. See
@@ -462,6 +465,7 @@ is silent, and one repository spent two days that way.
 | `handoff-hooks.mjs` | `scripts/`, wired to `PreCompact` and `SessionStart` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
+| `watch-prs.mjs` | **Any repo with a pull request open.** Run in place, as a Monitor command; state goes to `factory/` in the git common directory | Nothing |
 | `check-outward-writes.mjs` | **Guest mode, at publish.** Run in place. Reports what actually left, from the reflog; `--mark` after an authorised publish | Nothing |
 
 `references/first-run.md` walks this whole sequence as one repo actually ran it,
@@ -481,6 +485,7 @@ in the order its commits show rather than the order listed here.
 | `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
+| `references/watching.md` | A pull request of yours is open, or a watch line just arrived |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 
 ## What the loop is worth
