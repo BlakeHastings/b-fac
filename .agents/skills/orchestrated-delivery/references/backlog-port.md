@@ -13,7 +13,7 @@ whether a candidate tool can carry the loop, or when you are about to write
 **Guest mode is what forces the split.** A work repo's tracker holds the ticket
 and is not yours to write to, so the factory's own working items live in a local
 store until the publish step while the loop above them is unchanged. That is
-`SKILL.md`'s "Two questions before the loop", and ADR 0021.
+`SKILL.md`'s "Two questions before the loop", and b-fac ADR 0021.
 
 ## The port, as verbs
 
@@ -137,7 +137,7 @@ instead of a default.
 beads, meanwhile, already carries epic as a type (`bd create -t epic`), because
 it is free there. So the port asks only that **"this is an epic" be visible in
 the list without opening the item**, and lets each store use whatever it gives
-away. That is ADR 0022's adopt-rather-than-impose applied inside the port, and
+away. That is b-fac ADR 0022's adopt-rather-than-impose applied inside the port, and
 it is why the two implementations can spell one concept differently without
 either of them drifting.
 
@@ -210,7 +210,7 @@ tool. Worth knowing before anybody designs a seam from scratch.
 ## The ceiling, in the same breath
 
 **A pluggable backlog frees one of the four things this workflow uses GitHub
-for, not all four.** ADR 0021 has the table. The other three:
+for, not all four.** b-fac ADR 0021 has the table. The other three:
 
 - **The merge wrapper** reads a pull request's check rollup, so it needs GitHub
   both to produce the checks and to report them in one place. In guest mode
@@ -239,7 +239,7 @@ machinery bought with nothing. What pluggable costs here is two things:
 
 1. This file, saying what the loop needs.
 2. **One line in `AGENTS.md` naming the tool that provides it**, beside the
-   command that runs the checks. That is a repo fact in ADR 0021's sense, so it
+   command that runs the checks. That is a repo fact in b-fac ADR 0021's sense, so it
    is committable in owned mode and true for anyone who clones.
 
 The tool's own documentation supplies the commands. If the tool eventually

@@ -28,7 +28,7 @@ describe how work actually happens here, not an aspiration.
 ## Running things
 
 ```bash
-npm run check              # tests, mirror drift, vocabulary. The mechanical gate.
+npm run check              # tests, mirror drift, vocabulary, citations. The mechanical gate.
 npm run sync               # regenerate .claude/skills/ from .agents/skills/
 npm run check:version      # payload changed, so plugin.json's version must too
 npm run check:plugin       # claude plugin validate . --strict

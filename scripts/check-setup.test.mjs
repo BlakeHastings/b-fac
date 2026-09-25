@@ -919,7 +919,7 @@ test('a legacy record saying owned is told to record owned, and never to install
 
     assert.equal(code, 0, 'an unrecorded boundary was treated as a failure')
     assert.match(out, /Write boundary: NOT RECORDED/)
-    assert.match(out, /\.factory\/machine\.md is here from an install before #122/)
+    assert.match(out, /\.factory\/machine\.md is here from an install before BlakeHastings\/b-fac#122/)
     assert.match(out, /it says\n\s+"Write boundary: owned"/, 'the legacy record was never read')
     assert.match(out, RECORD_OWNED, 'the owned answer was not offered its own writer')
     // The defect. This is a repository the operator owns and is supposed to push
@@ -1013,7 +1013,7 @@ test('--record-owned refuses where the legacy gate is installed and its record i
     const { code, out } = recordOwned(root)
 
     assert.equal(code, 1, 'a repository with the guest gate installed was recorded as owned')
-    assert.match(out, /guard-guest-writes\.mjs is here from an install before #122/)
+    assert.match(out, /guard-guest-writes\.mjs is here from an install before BlakeHastings\/b-fac#122/)
     assert.equal(existsSync(join(root, `${FACTORY}/machine.md`)), false)
   })
 })
@@ -1226,11 +1226,11 @@ test('a legacy record is invisible from a worktree, which is why it is not the a
     write(root, '.factory/machine.md', 'Write boundary: owned\n')
     const worktree = worktreeOf(root)
 
-    assert.match(check(root).out, /\.factory\/machine\.md is here from an install before #122/)
+    assert.match(check(root).out, /\.factory\/machine\.md is here from an install before BlakeHastings\/b-fac#122/)
     // Same repository, same instant, and the file simply is not there.
     assert.equal(existsSync(join(worktree, '.factory/machine.md')), false)
     const { out } = check(worktree)
-    assert.doesNotMatch(out, /before #122/, "a worktree read the main checkout's legacy record")
+    assert.doesNotMatch(out, /before BlakeHastings\/b-fac#122/, "a worktree read the main checkout's legacy record")
     assert.match(out, /machine\.md does not exist/)
 
     // And the remedy closes that gap rather than restating it: recorded once

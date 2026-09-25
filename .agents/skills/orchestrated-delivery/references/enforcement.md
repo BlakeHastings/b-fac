@@ -102,14 +102,14 @@ of the two it found.
 place a report is allowed to read the write boundary off disk. It reads
 `factory/machine.md` inside the git common directory, which is where every
 checkout of a repository reads the same answer and a working-tree path does not
-(ADR 0037, and the guest gate's own section below). It prints one of three
+(b-fac ADR 0037, and the guest gate's own section below). It prints one of three
 answers there: owned, guest, or nobody having said. In guest mode the four
 layers above report `n/a` with the mode as the reason and the gate below is the
 only one judged; in owned mode the reverse. **An absent layer explained by the mode is not a failure and does not
 move the exit code**, because a permanently red line and a guard that cries wolf
 get switched off the same way.
 
-The third state is a finding rather than an error. ADR 0021 has the boundary
+The third state is a finding rather than an error. b-fac ADR 0021 has the boundary
 asked out loud at initialisation, so a repo where nobody wrote the answer down
 skipped the step. Worth printing, and not a reason to fail a setup that is
 otherwise complete. Such a repo is reported against the owned checklist, and the
@@ -118,7 +118,7 @@ wrong thing to install** and a silent default would be how that happens.
 
 **And it reports a layer you decided against as `declined` rather than as
 missing.** The revisit trigger at the end of this chapter tells you to delete
-layers as their drivers arrive, and until #156 the report had no way to say that:
+layers as their drivers arrive, and until BlakeHastings/b-fac#156 the report had no way to say that:
 a deliberate absence landed in `MISSING` beside genuine neglect, and the `FIX:`
 line under it closed with a recipe for doing the thing you decided not to do.
 
@@ -143,7 +143,7 @@ Four things about that line are worth knowing before you write one.
 - **Committed, both files.** A declaration in one working tree and in nobody's
   clone is refused. The whole reason this lives in the tree rather than beside
   the machine record is that everyone who clones has declined the layer, because
-  they clone the decision too. ADR 0054.
+  they clone the decision too. b-fac ADR 0054.
 - **What is installed wins.** Install a layer you had declined and the report
   says so and calls the declaration stale, rather than reporting `declined` over
   a control that is there. So the record retires itself by being contradicted.
@@ -152,7 +152,7 @@ Four things about that line are worth knowing before you write one.
   owned layers are already `n/a` there, and the gate is the mode rather than a
   layer of it.
 
-That the *report* may read the mode and the *gate* may not is ADR 0030, and the
+That the *report* may read the mode and the *gate* may not is b-fac ADR 0030, and the
 difference is position in time rather than trust: a hook runs before its command
 and cannot know where that command will land, while a report runs where you are
 standing with nothing in front of it. Neither of them infers the mode from the
@@ -371,7 +371,7 @@ whether the gate is about this repository at all. Two things make it sound where
 the branch lookup was not: the fact it reads is `--git-common-dir`, which answers
 identically from every checkout of a repository where `--abbrev-ref HEAD` does
 not, and being out of scope only ever means standing aside. The `cd` problem
-still applies and is written into the gate's own not-covered list. ADR 0037.
+still applies and is written into the gate's own not-covered list. b-fac ADR 0037.
 
 **The shipped guard broke that rule itself, and it was caught.** For a bare
 `git push` or `git merge` it shelled out to `git rev-parse --abbrev-ref HEAD`
@@ -456,7 +456,7 @@ agent session, so there is nothing for the gate to add to it.
 
 ### Where it lives, which is the harder half
 
-Two questions, and conflating them is what produced #122. **Where the gate and
+Two questions, and conflating them is what produced BlakeHastings/b-fac#122. **Where the gate and
 its facts live** is one. **Which sessions the gate is registered for** is the
 other, and it is the one that was wrong.
 
@@ -477,7 +477,7 @@ rather than believing it.
 
 This used to be `.factory/` at the working-tree root, kept out of sight with
 `.git/info/exclude`. That was the right instinct one directory short of its own
-reasoning, and ADR 0037 has the correction.
+reasoning, and b-fac ADR 0037 has the correction.
 
 #### The registration: measure which sessions it reaches, and say so
 
@@ -496,7 +496,7 @@ So there are two registrations and they do not cover the same sessions:
 | `~/.claude/settings.json`, carrying `--scope` | every session inside the repository it names, worktrees included, and worktrees that do not exist yet |
 
 `--install` writes the first and **prints** the second. That is not a
-formality: until #122 only the first existed, and **the sessions it did not
+formality: until BlakeHastings/b-fac#122 only the first existed, and **the sessions it did not
 reach were the ones doing the writing**. An orchestrator sits in the main
 checkout, where the gate is installed and works. Subagents sit in worktrees, and
 subagents are what push branches, open pull requests and comment on the host's
@@ -511,7 +511,7 @@ refusal is a false positive by construction. The printed block carries
 `--scope <git common dir>`, and the gate stands aside outside the repository it
 names. It is a literal in the wiring rather than a mode read off disk, so
 installing the gate is still the declaration, and the git fact it compares is
-the one that is identical from every checkout. ADR 0037.
+the one that is identical from every checkout. b-fac ADR 0037.
 
 Get the block again at any time:
 
@@ -546,7 +546,7 @@ node "$(git rev-parse --path-format=absolute --git-common-dir)/factory/guard-gue
 Being refused is the answer you want. If it prints, the gate is not in this
 process, and there are now three reasons rather than two: no hook, a process
 that predates the hook, or **a session started somewhere the gate is not
-registered for**. The third is the one #122 was about, and the remedy is not a
+registered for**. The third is the one BlakeHastings/b-fac#122 was about, and the remedy is not a
 restart. Alone on the line, for layer 2's reason: the whole tool call is
 refused, and this refusal reads as success too. This gate had the one-file probe
 first; layer 2's guard has it now too, and until it did, a repository installing
@@ -575,7 +575,7 @@ as well and has already broken the boundary it holds.
 
 The gate above refuses outward writes. What stands in for layers 1 and 3 is the
 host repository's own check command, run locally before work lands on your
-integration branch — ADR 0021's table, the row where owned mode reads a remote
+integration branch — b-fac ADR 0021's table, the row where owned mode reads a remote
 rollup and guest mode has none to read.
 
 That is a **check** in this chapter's sense and nothing about it refuses.
@@ -760,7 +760,7 @@ about the repository, and it is most convincing to the reader who has just set a
 ruleset up and feels well defended.
 
 The repository this skill ships from wrote both answers, deleting the layer in
-its ADR 0001 and putting it back in **ADR 0051** after the argument above. Read
+b-fac ADR 0001 and putting it back in **b-fac ADR 0051** after the argument above. Read
 0051 rather than this paragraph if you are about to delete the layer: the
 reasoning is three paragraphs long, it names what the audit still does not cover,
 and it took a reversal to arrive at. If you delete it anyway, declare it, which
@@ -814,7 +814,7 @@ state you can assume" above.
 **And that repository then decided the layer should have been there all along**,
 which is the other half of the story and the more uncomfortable one. The
 declaration mechanism would have stopped the report arguing with the decision; it
-would not have made the decision right, and ADR 0051 reverses it on the merits as
+would not have made the decision right, and b-fac ADR 0051 reverses it on the merits as
 well as on the noise. So declare what you decide, and hold the decision itself
 open to being wrong: the record you point the line at is the thing somebody
 revisits, which is why the check insists there be one rather than accepting a

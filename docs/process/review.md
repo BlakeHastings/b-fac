@@ -12,6 +12,7 @@ not ready for review.
 - the guard tests pass, in both the deny and the allow direction
 - `.claude/skills/` is in sync with `.agents/skills/`
 - no vocabulary from the original engagement has come back
+- the payload cites this repository's ADRs and issues by qualified name, never bare
 - the marketplace and plugin manifests validate under `--strict`
 - the Claude Code loader, given this repo as a plugin, reports every skill in
   `.agents/skills/` in its component inventory, with a body of real size

@@ -429,7 +429,7 @@ const declaredIn = (record) => /^Write boundary:\s*(\S+)/m.exec(record)?.[1].toL
 const nobodyAnswered = (...found) => [
   ...found.slice(0, -1),
   `${found[found.length - 1]}, so nobody has said whether this`,
-  'factory may write outward. ADR 0021 has that asked out loud at initialisation, so',
+  'factory may write outward. b-fac ADR 0021 has that asked out loud at initialisation, so',
   'this repository skipped the question rather than answered it. That is a finding and',
   'not an error: the layers below are reported as if owned.',
 ]
@@ -441,7 +441,7 @@ const nobodyAnswered = (...found) => [
 // state that ADR ended.
 const PER_CHECKOUT = [
   `${LEGACY_FACTORY}/ is in the working tree, so that answer is this checkout's and no`,
-  'other checkout of this repository can read it. ADR 0037 moved the record inside the',
+  'other checkout of this repository can read it. b-fac ADR 0037 moved the record inside the',
   'git common directory, which every checkout shares, and it has to be written there',
   'before it is the repository that has answered rather than this directory.',
 ]
@@ -459,7 +459,7 @@ function legacyBoundary(legacy) {
       mode: UNRECORDED,
       legacy: null,
       why: nobodyAnswered(
-        `${LEGACY_RECORD} is here from an install before #122 and answers neither`,
+        `${LEGACY_RECORD} is here from an install before BlakeHastings/b-fac#122 and answers neither`,
         `owned nor guest, and ${RECORD_AT} does not exist`,
       ),
     }
@@ -468,7 +468,7 @@ function legacyBoundary(legacy) {
     mode: UNRECORDED,
     legacy: said,
     why: [
-      `${LEGACY_RECORD} is here from an install before #122, it says`,
+      `${LEGACY_RECORD} is here from an install before BlakeHastings/b-fac#122, it says`,
       `"Write boundary: ${said}", and ${RECORD_AT} does not exist.`,
       ...PER_CHECKOUT,
       ...(said === OWNED
@@ -966,13 +966,13 @@ const RECORD_COLUMN = Math.max('check-setup.mjs'.length, MERGE_PROBE.length) + 3
 // worth is that it exists rather than what it holds.
 const OWNED_RECORD = `# Machine facts
 
-Not committed, and not committable. ADR 0021 splits the initialisation answers
+Not committed, and not committable. b-fac ADR 0021 splits the initialisation answers
 by who they are about: repo facts are true for anyone who clones and belong in
 \`AGENTS.md\`, and machine facts are about *this* operator on *this*
 repository. This file is the second kind, and it is inside the git common
 directory rather than in the working tree, so nobody who clones this repository
 inherits it, no ignore rule has to hold it out of anybody's \`git status\`, and
-every linked worktree reads the same copy. ADR 0037.
+every linked worktree reads the same copy. b-fac ADR 0037.
 
 Write boundary: owned
 
@@ -1040,7 +1040,7 @@ function recordOwned() {
   if (readCommon(GUEST_GATE) !== null) {
     refuse([
       `${GATE_AT} is installed here, and installing that gate is the guest`,
-      'declaration (ADR 0029). Recording this repository as owned would leave a control',
+      'declaration (b-fac ADR 0029). Recording this repository as owned would leave a control',
       'in place that the record says is unnecessary, which is the disagreement layer G',
       'reports rather than a state to write on purpose.',
       '',
@@ -1067,7 +1067,7 @@ function recordOwned() {
   const legacyRecord = read(LEGACY_RECORD)
   if (legacyGate || (legacyRecord !== null && declaredIn(legacyRecord) === GUEST)) {
     refuse([
-      `${legacyGate ? LEGACY_GATE : LEGACY_RECORD} is here from an install before #122 and`,
+      `${legacyGate ? LEGACY_GATE : LEGACY_RECORD} is here from an install before BlakeHastings/b-fac#122 and`,
       'declares this repository a guest. Recording it as owned would leave the repository',
       'holding two records that contradict each other, and the older one is the harder to',
       'notice, because nothing reads it any more.',
@@ -1085,7 +1085,7 @@ function recordOwned() {
     refuse([
       '`git` did not answer, so the git common directory cannot be resolved and there is',
       'nowhere to put this record that every checkout of this repository can read.',
-      'ADR 0037 keeps machine facts there rather than in a working tree, precisely so',
+      'b-fac ADR 0037 keeps machine facts there rather than in a working tree, precisely so',
       'that a worktree is not a second opinion. Run this from inside a git repository,',
       'with git on PATH.',
     ])
@@ -1339,7 +1339,7 @@ const LAYERS = [
     skipped: () => [
       'not reported: there is no remote check rollup to read, and landing means landing',
       "on your own integration branch. The gate is the host's own check command, run",
-      'locally. ADR 0021',
+      'locally. b-fac ADR 0021',
     ],
     fix: 'Copy merge-pr.mjs to scripts/ and set REQUIRED to the check names a real run reports.',
     run() {
@@ -1441,7 +1441,7 @@ const LAYERS = [
     covers: 'a commit that reached the default branch outside a PR. Does not cover prevention: it runs after the fact',
     skipped: () => [
       "not reported: a workflow is a change to somebody else's repository, and their CI",
-      'runs on the pull request after publish, unchanged. ADR 0021',
+      'runs on the pull request after publish, unchanged. b-fac ADR 0021',
     ],
     fix: 'Copy check-main-provenance.mjs to scripts/, set BASELINE to the commit that adds these scripts, and run it from a workflow on push to the default branch.',
     run() {
@@ -1517,7 +1517,7 @@ const LAYERS = [
         return [
           `not reported: ${RECORD_AT} records this repository as owned, so the factory`,
           'may write outward and there is no boundary for a gate to hold. Every command it',
-          'refuses is the workflow here. ADR 0029',
+          'refuses is the workflow here. b-fac ADR 0029',
           ...(copied
             ? [`but ${GATE_AT} exists anyway, in a repository recorded as owned. One of`,
                'those two facts is wrong and the file is the likelier one']
@@ -1620,7 +1620,7 @@ const LAYERS = [
         findings.push(
           `${machine.file} runs this gate with no --scope, so it refuses outward writes in` +
             ' every repository on this machine, including the operator\'s own. That is the false' +
-            ' positive by construction ADR 0029 refused a user-level hook over. Add --scope',
+            ' positive by construction b-fac ADR 0029 refused a user-level hook over. Add --scope',
         )
       }
 
@@ -1636,7 +1636,7 @@ const LAYERS = [
         if (committed.length > 0) {
           findings.push(
             `${committed.join(', ')} is tracked in this repository, so installing the gate` +
-              ' changed a repo you are a guest in. ADR 0021 keeps machine facts out of the tree',
+              ' changed a repo you are a guest in. b-fac ADR 0021 keeps machine facts out of the tree',
           )
         }
         if (seen.unignored.length > 0) {
@@ -1657,7 +1657,7 @@ const LAYERS = [
 
       if (read(LEGACY_RECORD) !== null) {
         findings.push(
-          `note: ${LEGACY_FACTORY}/ is still here from an install before #122 and nothing reads` +
+          `note: ${LEGACY_FACTORY}/ is still here from an install before BlakeHastings/b-fac#122 and nothing reads` +
             ' it now. Check what is in it, then remove it and its /.factory/ line from' +
             ' .git/info/exclude',
         )

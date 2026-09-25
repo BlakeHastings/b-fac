@@ -317,7 +317,7 @@ worktree alike.
 git rev-parse --path-format=absolute --git-common-dir
 ```
 
-ADR 0037 settled that, and `references/continuity.md` has the reasoning. Do not
+b-fac ADR 0037 settled that, and `references/continuity.md` has the reasoning. Do not
 invent a location for this one. The resumer is usually a fresh session standing
 in a different directory from the one that dispatched, which is the case the
 common directory exists for.
@@ -337,7 +337,7 @@ ago. Worse than absent: a resumer believes it.
 
 That is also what keeps the record small enough to be worth keeping current. It
 carries the queue and the parameters, which nothing else knows, and not the
-progress, which the output directory answers better. Same rule ADR 0036 gives
+progress, which the output directory answers better. Same rule b-fac ADR 0036 gives
 for specs, pointed at a different reader: carry only what cannot be derived.
 
 ### Give partial output a shape that reads as partial
@@ -384,7 +384,7 @@ Anything in it that outlives the fan-out was never the record's to hold: it
 belongs in the handoff, the backlog or a decision record, like everything else
 durable. If you find yourself topping one up in a session with no fan-out
 running, you have grown a second handoff, and two of those disagree eventually.
-ADR 0044.
+b-fac ADR 0044.
 
 ## After an agent finishes
 

@@ -39,7 +39,7 @@ tracked both, `git status` came back:
 Two modified tracked files in somebody else's repository, from a command whose
 own flag says invisible. The exclude list `bd init --stealth` writes covers
 `.claude/settings.local.json` and not those two. It is a boundary violation in
-ADR 0021's sense, so guest mode stops at `bd init --stealth`.
+b-fac ADR 0021's sense, so guest mode stops at `bd init --stealth`.
 
 **Owned mode is `bd init --skip-agents`.** Bare `bd init` is an integration
 installer wearing an init's name. In a scratch repo it wrote `AGENTS.md`,
@@ -261,7 +261,7 @@ sitting on top of the edge.
 **The backlog stops being reviewable in a diff.** Items live in Dolt, and
 `.beads/issues.jsonl` is an export for viewers rather than the source of truth,
 and is not written at all unless `bd config set export.auto true`. This is the
-same trade ADR 0018 accepted elsewhere, and it is easier here: in guest mode
+same trade b-fac ADR 0018 accepted elsewhere, and it is easier here: in guest mode
 there is no pull request to review the backlog in until the publish step, and
 the items being reviewed are the factory's own working notes rather than
 anything the host repo's reviewers will read.

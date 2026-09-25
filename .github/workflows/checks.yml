@@ -57,6 +57,11 @@ jobs:
       - name: Vocabulary
         run: npm run check:vocabulary
 
+      # A host repository has its own ADRs and issues, so a bare number in the
+      # payload names one of theirs. #202.
+      - name: Citations qualified in the payload
+        run: npm run check:citations
+
       # Only means anything against the merge result: a branch adding 0009 is
       # fine alone and collides once main has one too. `pull_request` checks
       # out the merge commit, which is what makes this catch anything.

@@ -670,7 +670,7 @@ if (pushes === FOUND) {
   console.log(
     boundary.mode === OWNED
       ? 'something; nothing here is wrong.'
-      : 'guest. Record the boundary and run this again. ADR 0021.',
+      : 'guest. Record the boundary and run this again. b-fac ADR 0021.',
   )
   for (const line of ['', ...PROBE, '', ...UNSAYABLE]) console.log(line)
   process.exit(EXIT_CLEAR)

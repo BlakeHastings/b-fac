@@ -68,7 +68,7 @@ If refinement has a core, it is finding **the one question whose answer inverts
 the design**, and not proceeding until it is answered. Everything else in a
 session is elaboration on it.
 
-The worked example is this repository's epic #60, "Own the whole process, or run
+The worked example is this repository's epic BlakeHastings/b-fac#60, "Own the whole process, or run
 as a guest in someone else's". It was opened carrying the owner's own framing:
 a backlog tool "like using the gh cli for issue management except it is all
 local instead". Prior-art research went into a comment a minute later, and it
@@ -92,8 +92,8 @@ holds the ticket. Neither is replaced.
 **Test both properties against that.** A local ruleset, a local Actions runner
 and a local issue forge were rejected, and the reason is recorded rather than
 implied. And the decomposition inverted with it: the children that got filed
-were a write boundary (#63), discovering a host repo's real checks (#68) and
-stacked pull requests as a named hard part held back for later (#64). The
+were a write boundary (BlakeHastings/b-fac#63), discovering a host repo's real checks (BlakeHastings/b-fac#68) and
+stacked pull requests as a named hard part held back for later (BlakeHastings/b-fac#64). The
 children the original framing would have produced do not appear anywhere,
 because they were never the work.
 
@@ -173,7 +173,7 @@ already knows before writing it.
 
 ## The gate
 
-In ADR 0025's vocabulary refinement is a **gate**, not a check: an item carrying
+In b-fac ADR 0025's vocabulary refinement is a **gate**, not a check: an item carrying
 it cannot be dispatched. That is assertable in a way most of what a spec phase
 could promise is not. *"Does this item have a spec?"* is a fact. *"Is this well
 understood?"* is a disposition, and this repository has learned what those are
@@ -217,7 +217,7 @@ The reason it is an instruction about order rather than an encouragement is that
 the failure has been measured, in this repository, on the epic used as the
 worked example above:
 
-- Epic #60 was opened at 14:46Z on 2026-08-12 and its premise was corrected at
+- Epic BlakeHastings/b-fac#60 was opened at 14:46Z on 2026-08-12 and its premise was corrected at
   16:59Z. **In those 2h13m nothing was dispatched and nothing merged.** Two
   issues sat open and dispatchable throughout, one of them a defect in the
   guard this project ships, filed 27 minutes before the session started. It was
@@ -227,7 +227,7 @@ worked example above:
   argued. Nothing about the second session was different in kind. The queue was
   simply full when it began, because the first session had filled it.
 
-The mechanism is ADR 0004's, in a new costume. There, finishing a good report
+The mechanism is b-fac ADR 0004's, in a new costume. There, finishing a good report
 read as finishing the turn. Here, **a spec conversation is the most absorbing
 thing an orchestrator does, and absorption reads as the loop being busy.** Both
 failures happen to someone who already agrees with the rule, which is why more
@@ -255,5 +255,5 @@ readers. A spec is written by the owner, whose hour is the scarce thing, for an
 orchestrator with the repository already open. A brief is written by that
 orchestrator, who has already read it, for an agent whose context is the scarce
 thing and whose context running out is what silently rewrites the brief. Same
-rule; different scarce resource. ADR 0046 has the evidence, including why the
+rule; different scarce resource. b-fac ADR 0046 has the evidence, including why the
 traps were never the exception they look like.
