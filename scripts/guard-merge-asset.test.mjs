@@ -209,12 +209,27 @@ const DENIED = [
   'gh api graphql -F query=@- < merge.graphql',
   'gh api graphql --input body.json',
   'gh api graphql -f query="$(cat merge.graphql)"',
+  // #219. `gh` and `git` spelled with a path or an extension are still `gh` and
+  // `git`. The `.cmd` and `.bat` forms were open until then.
+  '/usr/bin/gh pr merge 42',
+  '"C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 42',
+  '"C:/Program Files/GitHub CLI/gh.exe" pr merge 42',
+  'gh.exe pr merge 42',
+  'GH.EXE pr merge 42',
+  'gh.cmd pr merge 42',
+  '\\gh pr merge 42',
+  '/usr/bin/git push origin main',
+  'git.cmd push origin main',
 ]
 
 const ALLOWED = [
   // The sanctioned path must not match. If this ever fails, nothing can land in
   // any repository that installed this guard.
   'node scripts/merge-pr.mjs 42',
+  // #219's negatives. A program whose name only contains `gh` is another program.
+  'gh-dash pr merge 42',
+  'ghq pr merge 42',
+  '/opt/gh/bin/not-gh pr merge 42',
   'node ./scripts/merge-pr.mjs 42',
   'if gh pr checks 42; then node scripts/merge-pr.mjs 42; fi',
 

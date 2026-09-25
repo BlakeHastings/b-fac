@@ -178,9 +178,26 @@ const DENIED = [
   // one is still that word, and `$(true)` prints nothing.
   'git push$(true) origin HEAD',
   'gh issue create$(x) --title x',
+  // #219. A path or an extension does not make `gh` or `git` another program.
+  '/usr/bin/gh pr merge 42',
+  '/usr/bin/gh issue create --title t --body b',
+  '"C:\\Program Files\\GitHub CLI\\gh.exe" issue create --title t --body b',
+  '"C:/Program Files/GitHub CLI/gh.exe" pr create --fill',
+  'GH.EXE issue comment 45 --body x',
+  'gh.cmd pr create --fill',
+  'git.cmd push origin HEAD',
+  'git.bat push origin HEAD',
 ]
 
 const ALLOWED = [
+  // #219's negatives. A program whose name only contains `gh` is another
+  // program, and refusing it would be a false positive on somebody's tooling.
+  'gh-dash pr merge 42',
+  'ghq pr merge 42',
+  '/opt/gh/bin/not-gh pr merge 42',
+  'gh-dash issue create --title t',
+  'ghq issue create --title t',
+  '/opt/gh/bin/not-gh issue create --title t',
   // Reads are unrestricted. Pulling the host's ticket in is the normal case,
   // and a gate that made it awkward would be uninstalled within a day.
   'gh issue view 4102',
@@ -388,6 +405,10 @@ const OWNED_MODE_UNAFFECTED = [
   // there.
   'GIT_TRACE=1 git push origin HEAD',
   'GH_TOKEN=x gh pr create --fill',
+  // #219 made the owned guard read `gh` by its path too. That has to reach its
+  // merge rule and nothing else.
+  '/usr/bin/gh issue create --title t --body b',
+  '"C:\\Program Files\\GitHub CLI\\gh.exe" pr create --fill',
 ]
 
 for (const command of OWNED_MODE_UNAFFECTED) {

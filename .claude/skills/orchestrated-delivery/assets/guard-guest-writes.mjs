@@ -94,11 +94,14 @@
 // `env` is a program that runs another program, and the set of those has no
 // edge, while an assignment prefix is a shell form with a grammar.
 //
-// Where this gate is stronger than the merge guard, measured rather than
-// assumed: `\git push`, `/usr/bin/gh pr create` and `git.exe push` are all
-// DENIED here and allowed there, because every rule below asks `commandName`
-// instead of comparing the raw token. That is why this list was measured
-// against this file's own rules rather than copied from the merge guard's.
+// A program spelled with its path is still that program, measured rather than
+// assumed: `\git push`, `/usr/bin/gh issue create`, `git.exe push`, `git.cmd
+// push` and `"C:\Program Files\GitHub CLI\gh.exe" issue create` are all DENIED,
+// because every rule below asks `commandName` instead of comparing the raw
+// token. `gh-dash`, `ghq` and `/opt/gh/bin/not-gh` are other programs and are
+// not read as `gh`. The merge guards read a name the same way since #219. This
+// list was still measured against this file's own rules rather than copied from
+// theirs, because the rules differ.
 //
 // The gap is the point rather than an embarrassment. **The one thing this gate
 // refuses is exactly the one step guest mode reserves for the owner**, and a
@@ -723,18 +726,23 @@ function ghApiCall(args) {
 // END command reader
 
 // BEGIN shell payload
-// shell payload stamp: sha256 b6b4205db57edd81
+// shell payload stamp: sha256 ab29fad175b6dc61
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
 // the skill's as the reader's note above says. #201.
 
+// The name a shell runs, whatever path spelled it: `/usr/bin/gh`,
+// `C:\Program Files\GitHub CLI\gh.exe`, `gh.CMD`. The basename is compared
+// whole once a Windows executable extension is off, so `gh-dash`, `ghq` and
+// `/opt/gh/bin/not-gh` stay other programs. Lowercased everywhere: Windows
+// ignores the case, and a POSIX program called `GH` is not worth a hole. #219.
 const commandName = (token) =>
   token
     .split(/[\\/]/)
     .pop()
     .toLowerCase()
-    .replace(/\.exe$/, '')
+    .replace(/\.(exe|cmd|bat)$/, '')
 
 // This hook is wired to every shell-capable tool the harness offers, and each
 // of those shells can invoke the other one, so `pwsh -Command "git push"` from
@@ -760,12 +768,13 @@ const PUBLISH =
   'the owner takes that step themselves, at their own terminal, where no hook\n' +
   'of ours runs. See b-fac ADR 0021 and references/first-run.md.'
 
-// BEGIN command arguments
-// command arguments stamp: sha256 544defb2d57a7c4b
+// BEGIN git arguments
+// git arguments stamp: sha256 dabf07cef9e8c86e
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
-// the skill's as the reader's note above says. #201.
+// the skill's as the reader's note above says. #201. Split from `gh arguments`
+// by #219, because one of that region's copies is in a file that reads no `git`.
 
 // `git` takes its own flags before the subcommand, and two of them swallow the
 // next token. Returns the arguments from the subcommand onward, or null when
@@ -781,6 +790,15 @@ function gitArguments(tokens) {
   return tokens.slice(at)
 }
 
+// END git arguments
+
+// BEGIN gh arguments
+// gh arguments stamp: sha256 f8edf97722f2123e
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201 and #219.
+
 // `gh` takes its global flags before the subcommand and no positional argument
 // there, so skipping the flags lands on the subcommand path.
 const GH_FLAGS_WITH_VALUE = new Set(['--repo', '-R', '--hostname'])
@@ -794,7 +812,7 @@ function ghArguments(tokens) {
   return tokens.slice(at)
 }
 
-// END command arguments
+// END gh arguments
 
 // Reads are unrestricted in guest mode — pulling the host's ticket in is the
 // normal case — so `gh` is allowed by its verb and denied by default. Denying

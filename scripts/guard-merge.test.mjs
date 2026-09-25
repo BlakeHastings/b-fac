@@ -168,11 +168,25 @@ const DENIED = [
   'gh api graphql -F query=@- < merge.graphql',
   'gh api graphql --input body.json',
   'gh api graphql -f query="$(cat merge.graphql)"',
+  // #219. `gh` spelled with its path is `gh`. This copy compared the raw token
+  // and let every one of these merge while the shipped copy refused them.
+  '/usr/bin/gh pr merge 42',
+  '"C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 42',
+  '"C:/Program Files/GitHub CLI/gh.exe" pr merge 42',
+  'gh.exe pr merge 42',
+  'GH.EXE pr merge 42',
+  'gh.cmd pr merge 42',
+  '\\gh pr merge 42',
+  '/usr/bin/gh api -X PUT repos/o/r/pulls/42/merge',
 ]
 
 const ALLOWED = [
   // The sanctioned path must not match. If this ever fails, nothing can land.
   'node scripts/merge-pr.mjs 42',
+  // #219's negatives. A program whose name only contains `gh` is another program.
+  'gh-dash pr merge 42',
+  'ghq pr merge 42',
+  '/opt/gh/bin/not-gh pr merge 42',
   // Ordinary work.
   'git push origin intake/20-eligibility-gating',
   'git push -u origin HEAD',
