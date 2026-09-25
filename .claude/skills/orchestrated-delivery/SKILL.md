@@ -461,7 +461,7 @@ is silent, and one repository spent two days that way.
 | `working-an-issue.md` | `docs/process/` | Commands and check names |
 | `pull_request_template.md` | `.github/` | Nothing |
 | `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
-| `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
+| `merge-pr.mjs` | `scripts/` | `REQUIRED` check names, read when no ruleset names them |
 | `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
 | `handoff-hooks.mjs` | `scripts/`, wired to `PostToolUse`, `PreCompact` and `SessionStart`, with the threshold in settings `env` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |

@@ -30,6 +30,11 @@ import { fileURLToPath } from 'node:url'
 //   gh pr view <n> --json statusCheckRollup --jq '.statusCheckRollup[].name'
 // A name that never appears is treated as "never ran" and refuses the merge.
 // That is the safe direction, but a typo here looks like a broken script.
+//
+// Where a ruleset on the base branch requires checks, the wrapper reads their
+// names from it and this list is not consulted. It is the fallback: for a
+// repository with no ruleset, which on a private repository without a paid
+// plan is the usual case, and for a lookup that fails. Set it regardless.
 const REQUIRED = ['REPLACE_WITH_REQUIRED_CHECK_NAME', 'REPLACE_WITH_ANOTHER_CHECK_NAME']
 
 // SETUP: refuse a branch that is behind its base. On by default, and it has to
@@ -119,6 +124,19 @@ export async function run({
     return refuse(`it conflicts with ${base}. Send it back to rebase and re-verify.`)
   }
 
+  const { names: checks, from } = requiredChecks(gh, base, required)
+  if (from.failed) {
+    warn(
+      `Could not read the required checks from the ruleset on ${base}, so using REQUIRED\n` +
+        `in this script: ${checks.join(', ')}.\n  ${from.failed}\n` +
+        `  The call it made, to rerun by hand: gh api ${from.call}`,
+    )
+  } else if (from.ruleset) {
+    log(`Required checks, from the ruleset on ${base}: ${checks.join(', ')}.`)
+  } else {
+    log(`No ruleset on ${base} requires a check, so using REQUIRED in this script: ${checks.join(', ')}.`)
+  }
+
   // Latest conclusion per check name; a rerun should not be judged on its first result.
   const latest = new Map()
   for (const check of pr.statusCheckRollup ?? []) {
@@ -128,7 +146,7 @@ export async function run({
   }
 
   const problems = []
-  for (const name of required) {
+  for (const name of checks) {
     const state = latest.get(name)
     if (state === undefined) problems.push(`${name}: never ran`)
     else if (state !== 'SUCCESS' && state !== 'NEUTRAL') problems.push(`${name}: ${state}`)
@@ -166,14 +184,14 @@ export async function run({
 
   const staleRefusal = () =>
     refuse(
-      `the ${required.length} required check(s) are green, but the branch is behind\n` +
+      `the ${checks.length} required check(s) are green, but the branch is behind\n` +
         `  ${base}${behindPhrase}, so that green is stale. It was produced against the\n` +
         `  branch point, not against what would land.\n` +
         // BEHIND is what GitHub reports when the base requires up-to-date
         // branches, so there the merge would also fail, with a less useful message.
         (pr.mergeStateStatus === 'BEHIND'
           ? `  ${base} requires the checks to have run on an up-to-date branch, so merging\n` +
-            `  now returns HTTP 405, "${required.length} of ${required.length} required ` +
+            `  now returns HTTP 405, "${checks.length} of ${checks.length} required ` +
             `status checks are expected".\n`
           : '') +
         `\n  Send it back. The agent that owns the branch rebases it and re-verifies; you\n` +
@@ -188,7 +206,7 @@ export async function run({
   if (refuseWhenBehind && behind === null) {
     // Not knowing is refused, not waved through. ADR 0063.
     return refuse(
-      `the ${required.length} required check(s) are green, but this could not tell whether\n` +
+      `the ${checks.length} required check(s) are green, but this could not tell whether\n` +
         `  the branch is behind ${base}, so it cannot say that green is current. The\n` +
         `  compare failed:\n    ${blind}\n\n` +
         `  Refusing rather than guessing: a stale green is exactly what this line is\n` +
@@ -220,7 +238,7 @@ export async function run({
       `GitHub reports the merge state as BLOCKED, which is its answer for several\n` +
         `  different rules at once.\n\n` +
         `  If you have just pushed, that is the likely one: the rollup this script read\n` +
-        `  lags a push by seconds, so the ${required.length} check(s) above can be the ` +
+        `  lags a push by seconds, so the ${checks.length} check(s) above can be the ` +
         `previous head's\n  green while the new run has not started. Wait for it and try again.\n` +
         (clues.length > 0 ? `\n  ${clues.join('\n  ')}\n` : '') +
         `\n  Otherwise BLOCKED covers required reviews, unresolved review threads, code\n` +
@@ -264,7 +282,7 @@ export async function run({
     warn('Proceeding on the check rollup alone.')
   }
 
-  log(`All ${required.length} required check(s) green. Squash merging...`)
+  log(`All ${checks.length} required check(s) green. Squash merging...`)
 
   try {
     // The REST endpoint rather than `gh pr merge`, which the guard blocks by name.
@@ -301,6 +319,43 @@ export async function run({
   }
 
   return 0
+}
+
+// WHICH CHECKS ARE REQUIRED
+// The ruleset on the base branch is where GitHub itself keeps this list, so
+// read it there. REQUIRED is the fallback, for a repository with no ruleset or
+// a lookup that fails. Before this, renaming a CI job and updating the ruleset
+// still turned every merge into "never ran" until someone also edited REQUIRED,
+// a third copy of one fact. ADR 0065.
+//
+// Never an empty list. A ruleset that requires no check says nothing about
+// which checks matter here, and an empty list would pass every merge, so that
+// case falls back to REQUIRED exactly as a failed lookup does. Where REQUIRED
+// still holds its placeholders, both fall-backs refuse every merge, which is
+// the direction an unconfigured gate should fail.
+//
+// One page of 100 rather than --paginate: gh prints each page as its own JSON
+// array, which is not one JSON value, and a branch with a hundred active rules
+// is not a case worth that cost. A check bound to a specific app
+// (`integration_id`) is still matched by name, as REQUIRED always was.
+function requiredChecks(gh, base, fallback) {
+  const call = `repos/{owner}/{repo}/rules/branches/${base}?per_page=100`
+  let rules
+  try {
+    rules = JSON.parse(gh(['api', call]))
+    if (!Array.isArray(rules)) throw new Error(`the ruleset answered ${JSON.stringify(rules)}, not a list of rules`)
+  } catch (e) {
+    return { names: fallback, from: { failed: failure(e), call } }
+  }
+  const names = new Set()
+  for (const rule of rules) {
+    if (rule?.type !== 'required_status_checks') continue
+    for (const check of rule.parameters?.required_status_checks ?? []) {
+      if (typeof check?.context === 'string' && check.context !== '') names.add(check.context)
+    }
+  }
+  if (names.size === 0) return { names: fallback, from: {} }
+  return { names: [...names], from: { ruleset: true } }
 }
 
 async function main(argv) {

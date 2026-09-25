@@ -2,9 +2,10 @@
 # lens: if it is red the work is not ready to look at. See docs/process/review.md.
 #
 # The job `name:` below is what GitHub reports in the check rollup, and it is
-# what scripts/merge-pr.mjs matches on and what the ruleset requires. Renaming
-# the job silently turns "never ran" into a refused merge, so change all three
-# together.
+# what the ruleset requires and what scripts/merge-pr.mjs matches on, reading
+# the name from that ruleset. Renaming the job refuses every merge as "never
+# ran" until the ruleset is renamed too; REQUIRED in merge-pr.mjs is only its
+# fallback, but keep it in step. ADR 0065.
 name: checks
 
 on:

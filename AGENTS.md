@@ -64,8 +64,10 @@ No dependencies, no lockfile, Node 22 built-ins only. If that stops being true,
 add `npm ci` to `.github/workflows/checks.yml` and commit the lockfile.
 
 CI runs two jobs on a pull request, `Checks` and `Plugin`. Their names are
-matched by `scripts/merge-pr.mjs`, so renaming a job in the workflow without
-updating that script turns every merge into "never ran". A third job,
+matched by `scripts/merge-pr.mjs`, which reads them from the ruleset on `main`,
+so renaming a job means renaming it in the ruleset too, or every merge reads
+"never ran". The script's `REQUIRED` array is only the fallback for when the
+ruleset cannot be read; keep it in step anyway. ADR 0065. A third job,
 `Provenance`, runs only on a push to `main` and is never a pull request check
 context, which is what keeps it out of that duplication. ADR 0051.
 
