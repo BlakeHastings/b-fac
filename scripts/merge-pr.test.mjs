@@ -57,10 +57,60 @@ function pr(overrides = {}) {
 
 const ghError = (stderr) => Object.assign(new Error('Command failed: gh'), { stderr })
 
+// What `gh api repos/{owner}/{repo}/rules/branches/main` answered for this
+// repository on 2026-09-25, verbatim apart from the line breaks. Four rules from
+// one ruleset; only `required_status_checks` names checks, and the wrapper reads
+// `parameters.required_status_checks[].context` from it.
+const RULESET_SOURCE = { ruleset_source_type: 'Repository', ruleset_source: 'BlakeHastings/b-fac', ruleset_id: 20608052 }
+const THIS_REPOSITORY_RULES = [
+  { type: 'deletion', ...RULESET_SOURCE },
+  { type: 'non_fast_forward', ...RULESET_SOURCE },
+  {
+    type: 'pull_request',
+    parameters: {
+      required_approving_review_count: 0,
+      dismiss_stale_reviews_on_push: false,
+      required_reviewers: [],
+      require_code_owner_review: false,
+      require_last_push_approval: false,
+      required_review_thread_resolution: false,
+      require_extra_approval_for_unattributed_changes: true,
+      allowed_merge_methods: ['squash'],
+    },
+    ...RULESET_SOURCE,
+  },
+  {
+    type: 'required_status_checks',
+    parameters: {
+      strict_required_status_checks_policy: true,
+      do_not_enforce_on_create: false,
+      required_status_checks: [{ context: 'Checks' }, { context: 'Plugin' }],
+    },
+    ...RULESET_SOURCE,
+  },
+]
+
+const requiring = (...contexts) => [
+  {
+    type: 'required_status_checks',
+    parameters: { required_status_checks: contexts.map((context) => ({ context })) },
+    ...RULESET_SOURCE,
+  },
+]
+
 // A `gh` that answers each call the wrapper makes by what the call is, and
 // records every call so a test can say what was and was not attempted. `prs` is
-// a sequence for the UNKNOWN polling; the last answer repeats.
-function fakeGh({ prs = [pr()], behind = '0', merge = null, deleted = null, versions = ['1.0.0', '1.0.0'] } = {}) {
+// a sequence for the UNKNOWN polling; the last answer repeats. `rules` is the
+// ruleset answer: a value is sent as JSON, a string as the raw text, an Error
+// is thrown.
+function fakeGh({
+  prs = [pr()],
+  rules = THIS_REPOSITORY_RULES,
+  behind = '0',
+  merge = null,
+  deleted = null,
+  versions = ['1.0.0', '1.0.0'],
+} = {}) {
   const calls = []
   let views = 0
   let reads = 0
@@ -73,6 +123,10 @@ function fakeGh({ prs = [pr()], behind = '0', merge = null, deleted = null, vers
       return JSON.stringify(answer)
     }
     const path = args.find((arg) => arg.startsWith('repos/')) ?? ''
+    if (path.includes('/rules/branches/')) {
+      if (rules instanceof Error) throw rules
+      return typeof rules === 'string' ? rules : JSON.stringify(rules)
+    }
     if (path.includes('/compare/')) {
       if (behind instanceof Error) throw behind
       return `${behind}\n`
@@ -347,18 +401,159 @@ for (const copy of COPIES) {
     assert.equal((await drive(copy, gh, { refuseWhenBehind: false })).code, 1)
     assert.ok(!merged(calls))
   })
+
+  // WHICH CHECKS ARE REQUIRED, ADR 0065
+  // The ruleset names them. REQUIRED is read only when it cannot, and an empty
+  // list is never the answer.
+  test(`${copy.name}: the ruleset's required checks are the ones judged, not REQUIRED`, async () => {
+    const { gh, calls } = fakeGh()
+    const { code, text } = await drive(copy, gh, { required: ['Stale name nobody runs'] })
+    assert.equal(code, 0)
+    assert.ok(merged(calls))
+    assert.match(text, /Required checks, from the ruleset on main: Checks, Plugin\./)
+    const [rules] = calls.filter((args) => args.some((arg) => arg.includes('/rules/')))
+    assert.deepEqual(rules, ['api', 'repos/{owner}/{repo}/rules/branches/main?per_page=100'])
+  })
+
+  // The failure this issue was opened for, from the other side: a job renamed
+  // in the workflow and the ruleset, with REQUIRED left behind. It used to
+  // refuse every merge; now the rename is judged by its new name.
+  test(`${copy.name}: a check renamed in the ruleset is judged by its new name`, async () => {
+    const rollup = [
+      { name: 'Checks', conclusion: 'SUCCESS' },
+      { name: 'Plugin load', conclusion: 'FAILURE' },
+    ]
+    const { gh, calls } = fakeGh({ prs: [pr({ statusCheckRollup: rollup })], rules: requiring('Checks', 'Plugin load') })
+    const { code, text } = await drive(copy, gh)
+    assert.equal(code, 1)
+    assert.match(text, /Plugin load: FAILURE/)
+    assert.doesNotMatch(text, /Plugin: never ran/)
+    assert.ok(!merged(calls))
+  })
+
+  test(`${copy.name}: contexts from several rulesets are all required, once each`, async () => {
+    const rules = [...requiring('Checks'), ...requiring('Checks', 'Plugin')]
+    const rollup = [{ name: 'Checks', conclusion: 'SUCCESS' }]
+    const { gh, calls } = fakeGh({ prs: [pr({ statusCheckRollup: rollup })], rules })
+    const { code, text } = await drive(copy, gh)
+    assert.equal(code, 1)
+    assert.match(text, /from the ruleset on main: Checks, Plugin\./)
+    assert.match(text, /Plugin: never ran/)
+    assert.ok(!merged(calls))
+  })
+
+  test(`${copy.name}: the ruleset is asked about the PR's base, not a branch assumed to be main`, async () => {
+    const { gh, calls } = fakeGh({ prs: [pr({ baseRefName: 'release/2.x' })] })
+    await drive(copy, gh)
+    assert.ok(calls.some((args) => args.includes('repos/{owner}/{repo}/rules/branches/release/2.x?per_page=100')))
+  })
+
+  // A LOOKUP THAT FAILS falls back to REQUIRED, says so, and hands over the call.
+  for (const [why, rules, expected] of [
+    ['an error from gh', ghError('gh: Upgrade to GitHub Pro or make this repository public (HTTP 403)'), /HTTP 403/],
+    ['an answer that is not JSON', 'Not Found', /Unexpected token|not valid JSON/],
+    ['an answer that is not a list', { message: 'Not Found' }, /not a list of rules/],
+  ]) {
+    test(`${copy.name}: ${why} from the ruleset falls back to REQUIRED`, async () => {
+      const rollup = [{ name: 'Checks', conclusion: 'SUCCESS' }]
+      const { gh, calls } = fakeGh({ prs: [pr({ statusCheckRollup: rollup })], rules })
+      const { code, text } = await drive(copy, gh, { required: ['Checks', 'Fallback only'] })
+      assert.equal(code, 1)
+      assert.match(text, /Could not read the required checks from the ruleset on main, so using REQUIRED/)
+      assert.match(text, expected)
+      assert.match(text, /gh api repos\/\{owner\}\/\{repo\}\/rules\/branches\/main\?per_page=100/)
+      assert.match(text, /Fallback only: never ran/)
+      assert.ok(!merged(calls))
+    })
+  }
+
+  test(`${copy.name}: a failed ruleset lookup with REQUIRED green still merges`, async () => {
+    const { gh, calls } = fakeGh({ rules: ghError('gh: error connecting to api.github.com') })
+    const { code } = await drive(copy, gh, { required: ['Checks', 'Plugin'] })
+    assert.equal(code, 0)
+    assert.ok(merged(calls))
+  })
+
+  // A RULESET THAT REQUIRES NOTHING
+  // Read as "no checks", this would pass every merge whatever the rollup said.
+  // It falls back to REQUIRED instead, the same as a failure.
+  for (const [why, rules] of [
+    ['no rules at all', []],
+    ['rules, none of them required checks', THIS_REPOSITORY_RULES.slice(0, 3)],
+    ['a required_status_checks rule with an empty list', requiring()],
+    ['a required_status_checks rule with no parameters', [{ type: 'required_status_checks', ...RULESET_SOURCE }]],
+  ]) {
+    test(`${copy.name}: ${why} is not "accept anything", it falls back to REQUIRED`, async () => {
+      const rollup = [{ name: 'Checks', conclusion: 'FAILURE' }]
+      const { gh, calls } = fakeGh({ prs: [pr({ statusCheckRollup: rollup })], rules })
+      const { code, text } = await drive(copy, gh, { required: ['Checks', 'Plugin'] })
+      assert.equal(code, 1)
+      assert.match(text, /No ruleset on main requires a check, so using REQUIRED in this script: Checks, Plugin\./)
+      assert.match(text, /Checks: FAILURE/)
+      assert.match(text, /Plugin: never ran/)
+      assert.ok(!merged(calls))
+    })
+  }
 }
 
 // THE ASSET ALONE
 // An unedited copy has to fail safe: every merge refuses, and says why, rather
-// than matching nothing and treating that as green.
-test('assets/merge-pr.mjs: the shipped placeholders refuse every merge as never ran', async () => {
+// than matching nothing and treating that as green. That now means wherever
+// REQUIRED is read: no ruleset, a ruleset that requires nothing, and a lookup
+// that fails.
+for (const [why, rules] of [
+  ['no ruleset', []],
+  ['a ruleset that requires nothing', THIS_REPOSITORY_RULES.slice(0, 3)],
+  ['a ruleset lookup that fails', ghError('gh: Not Found (HTTP 404)')],
+]) {
+  test(`assets/merge-pr.mjs: with ${why}, the shipped placeholders refuse every merge as never ran`, async () => {
+    const { gh, calls } = fakeGh({ rules })
+    const { code, text } = await drive({ run: runAsset, options: {} }, gh)
+    assert.equal(code, 1)
+    assert.match(text, /REPLACE_WITH_REQUIRED_CHECK_NAME: never ran/)
+    assert.ok(!merged(calls))
+  })
+}
+
+// Where the host has a ruleset, it answers and the placeholders are not read.
+// That is the point of reading the ruleset, and check-setup.mjs still reports
+// the placeholders, because the fallback is still the host's to set.
+test('assets/merge-pr.mjs: a ruleset that names checks is used even with the placeholders unedited', async () => {
   const { gh, calls } = fakeGh()
   const { code, text } = await drive({ run: runAsset, options: {} }, gh)
-  assert.equal(code, 1)
-  assert.match(text, /REPLACE_WITH_REQUIRED_CHECK_NAME: never ran/)
-  assert.ok(!merged(calls))
+  assert.equal(code, 0)
+  assert.doesNotMatch(text, /REPLACE_WITH/)
+  assert.ok(merged(calls))
 })
+
+// AGAINST GITHUB, READ-ONLY
+// Everything above proves the decisions against a stub. This proves the stub:
+// the one call that reaches GitHub is the ruleset read, sent through the real
+// `gh` to this repository, and the rest stays stubbed, so no merge, delete or
+// write can leave. It needs a token and the network, and `npm run check` is
+// hermetic, so it runs only when asked for:
+//
+//   MERGE_PR_LIVE=1 node --test scripts/merge-pr.test.mjs
+test(
+  'scripts/merge-pr.mjs: this repository\'s ruleset, read through the real gh, names Checks and Plugin',
+  { skip: !process.env.MERGE_PR_LIVE && 'reads GitHub; set MERGE_PR_LIVE=1 to run it' },
+  async () => {
+    const { execFileSync } = await import('node:child_process')
+    const stub = fakeGh()
+    const real = []
+    const gh = (args) => {
+      if (!args.some((arg) => arg.includes('/rules/branches/'))) return stub.gh(args)
+      assert.deepEqual(args.slice(0, 1), ['api'])
+      assert.ok(!args.some((arg) => /^(-X|--method|-f|-F|--field|--raw-field|--input)$/.test(arg)), 'read-only')
+      real.push(args)
+      return execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    }
+    const { code, text } = await drive(COPIES[0], gh, { required: ['Stale name nobody runs'] })
+    assert.equal(real.length, 1)
+    assert.match(text, /Required checks, from the ruleset on main: Checks, Plugin\./)
+    assert.equal(code, 0)
+  },
+)
 
 // THIS REPOSITORY'S COPY ALONE
 // The release line, ADR 0017. It must never turn a merge that happened into a

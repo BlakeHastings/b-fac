@@ -202,11 +202,13 @@ loss instead of ending "Nothing is wrong". Run the probe alone anyway; the point
 is that forgetting to now produces something to read rather than a clean-looking
 success. ADR 0038.
 
-**Renaming a CI job breaks merging invisibly.** `scripts/merge-pr.mjs` matches
-job names as strings, and a name that never appears is treated as "never ran",
-which refuses the merge. The job `name:`, the `REQUIRED` array, and the
-ruleset's required contexts are three copies of the same fact. Change them
-together.
+**Renaming a CI job breaks merging until the ruleset follows.**
+`scripts/merge-pr.mjs` matches job names as strings, and a name that never
+appears is treated as "never ran", which refuses the merge. It reads the names
+from the ruleset's required contexts, so the job `name:` and the ruleset are
+the two that must change together; GitHub refuses the merge anyway until they
+agree. The `REQUIRED` array is read only when the ruleset cannot be, so keep it
+in step too, but a stale one no longer blocks anything. ADR 0065.
 
 ## Escalate to the owner
 
