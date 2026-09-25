@@ -297,7 +297,8 @@ function deny(reason, refused) {
 // have installed now. If they differ, running `--install` again from the skill
 // replaces the copy. If they match and somebody has edited the copy's code since,
 // the stamp no longer describes it, because nothing outside the skill recomputes
-// it. It covers this region only; the rest of the file is not stamped.
+// it. It covers this region only. The helper regions below carry stamps of their
+// own, and the rest of the file carries none.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` ends a command too, and when a `$(` opened it, it also
@@ -721,6 +722,13 @@ function ghApiCall(args) {
 
 // END command reader
 
+// BEGIN shell payload
+// shell payload stamp: sha256 b6b4205db57edd81
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
+
 const commandName = (token) =>
   token
     .split(/[\\/]/)
@@ -740,6 +748,8 @@ function shellPayload(tokens) {
   return at === -1 ? null : (tokens[at + 1] ?? null)
 }
 
+// END shell payload
+
 // ---------------------------------------------------------------------------
 // The rules
 // ---------------------------------------------------------------------------
@@ -748,7 +758,14 @@ const PUBLISH =
   'Guest mode writes the working tree and the local store, and nothing else.\n' +
   'Every outward write waits for the one publish step the owner asks for, and\n' +
   'the owner takes that step themselves, at their own terminal, where no hook\n' +
-  'of ours runs. See ADR 0021 and references/first-run.md.'
+  'of ours runs. See b-fac ADR 0021 and references/first-run.md.'
+
+// BEGIN command arguments
+// command arguments stamp: sha256 544defb2d57a7c4b
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
 
 // `git` takes its own flags before the subcommand, and two of them swallow the
 // next token. Returns the arguments from the subcommand onward, or null when
@@ -776,6 +793,8 @@ function ghArguments(tokens) {
   }
   return tokens.slice(at)
 }
+
+// END command arguments
 
 // Reads are unrestricted in guest mode — pulling the host's ticket in is the
 // normal case — so `gh` is allowed by its verb and denied by default. Denying
@@ -939,6 +958,14 @@ const SCOPE = scopeAt === -1 ? null : (process.argv[scopeAt + 1] ?? null)
 // a path that is not there, and a scope naming a repository that has since
 // moved is exactly that, so the part that exists is canonicalised and the rest
 // kept as written. #193.
+
+// BEGIN path comparison
+// path comparison stamp: sha256 26390098cb4f6d98
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
+
 function canonical(path) {
   const abs = resolve(path)
   try {
@@ -955,6 +982,8 @@ function samePath(a, b) {
     ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
     : normalise(a) === normalise(b)
 }
+
+// END path comparison
 
 function commonDir(from) {
   return resolve(from, git(from, ['rev-parse', '--path-format=absolute', '--git-common-dir']))
@@ -1055,7 +1084,7 @@ function judge(line, depth) {
 
 const machineRecord = (common) => `# Machine facts
 
-Not committed, and not committable. ADR 0021 splits the initialisation answers
+Not committed, and not committable. b-fac ADR 0021 splits the initialisation answers
 by who they are about: repo facts are true for anyone who clones and belong in
 \`AGENTS.md\`, and machine facts are about *this* operator on *this*
 repository. This file is the second kind, and it is inside the git common
@@ -1079,7 +1108,7 @@ Being refused is the answer you want. Which sessions it is registered for is a
 separate question from whether it is installed, and \`check-setup.mjs\` answers
 it: a wiring in one checkout's \`${SETTINGS}\` covers sessions started in that
 directory only, and the machine-wide block covers every session inside this
-repository. ADR 0037.
+repository. b-fac ADR 0037.
 
 A gate is prevention and prevention is a net, so at publish ask what actually
 happened rather than only what was refused:
@@ -1090,7 +1119,7 @@ It reads this repository's remote-tracking reflogs, which record a push however
 it was made, including by a session this gate was never loaded into. It also
 reads \`${join(common, REFUSALS)}\`, which this gate
 appends to every time it refuses something, so "the boundary held" stops reading
-the same as "the boundary was never tested". ADR 0021's promise, and #94.
+the same as "the boundary was never tested". b-fac ADR 0021's promise, and BlakeHastings/b-fac#94.
 `
 
 // The block the operator installs themselves, and the only thing that reaches a
@@ -1134,9 +1163,9 @@ open pull requests.
 \`--scope\` is what keeps it out of every other repository on this machine. The
 gate asks git for the common directory of wherever the session is standing and
 stands aside unless it is the one named above, so a refusal cannot happen in a
-repository this was not installed for. ADR 0029 refused a user-level hook partly
-because it would follow you everywhere; the scope is the answer to that, and ADR
-0037 has the argument and the measurement.
+repository this was not installed for. b-fac ADR 0029 refused a user-level hook partly
+because it would follow you everywhere; the scope is the answer to that, and b-fac
+ADR 0037 has the argument and the measurement.
 
 To remove it, delete that block and restart. Installing and removing it are a
 deliberate pair, and nothing here will do either for you.`)
@@ -1234,7 +1263,7 @@ function install() {
     done.push(`left ${join(common, RECORD)} alone, because it already exists`)
   } else {
     writeFileSync(join(common, RECORD), machineRecord(common))
-    done.push(`wrote ${join(common, RECORD)}, the machine facts ADR 0021 asks for`)
+    done.push(`wrote ${join(common, RECORD)}, the machine facts b-fac ADR 0021 asks for`)
   }
 
   // Only the wiring is in the working tree now, so only the wiring needs
@@ -1255,7 +1284,7 @@ function install() {
 
   if (existsSync(join(root, LEGACY_HOME))) {
     done.push(
-      `note: ${LEGACY_HOME}/ is still here from an install before #122. Nothing reads it` +
+      `note: ${LEGACY_HOME}/ is still here from an install before BlakeHastings/b-fac#122. Nothing reads it` +
         ' now. Check what is in it, then remove it and its /.factory/ line in' +
         ' .git/info/exclude',
     )

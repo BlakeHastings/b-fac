@@ -139,8 +139,8 @@ function deny(reason) {
 // the reader here is older or newer than the skill's, and copying the skill's
 // region over this one is how you bring it level. If they match and you have
 // edited the code here since, the stamp no longer describes it, because nothing
-// in your repository recomputes it. It covers this region only; the rest of
-// the file is not stamped.
+// in your repository recomputes it. It covers this region only. The helper regions below carry stamps of their
+// own, and the rest of the file carries none.
 //
 // Editing this region in your own checkout is fine and it is yours to do.
 
@@ -554,6 +554,13 @@ function ghApiCall(args) {
 
 // END command reader
 
+// BEGIN shell payload
+// shell payload stamp: sha256 b6b4205db57edd81
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
+
 const commandName = (token) =>
   token
     .split(/[\\/]/)
@@ -573,6 +580,8 @@ function shellPayload(tokens) {
   const at = tokens.findIndex((token) => SHELL_COMMAND_FLAGS.has(token))
   return at === -1 ? null : (tokens[at + 1] ?? null)
 }
+
+// END shell payload
 
 // The probe is this same file, run with `--probe`, and being refused is the
 // whole of its answer. A gate is the only kind of layer whose silence is
@@ -600,6 +609,27 @@ const USE_WRAPPER =
   'It refuses unless every required check is green, and always squash merges.\n' +
   'See docs/process/working-an-issue.md.'
 
+// BEGIN command arguments
+// command arguments stamp: sha256 544defb2d57a7c4b
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
+
+// `git` takes its own flags before the subcommand, and several of them swallow
+// the next token. Returns the arguments from the subcommand onward, or null
+// when this segment does not invoke git.
+const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--exec-path'])
+
+function gitArguments(tokens) {
+  if (commandName(tokens[0]) !== 'git') return null
+  let at = 1
+  while (at < tokens.length && tokens[at].startsWith('-')) {
+    at += GIT_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
+  }
+  return tokens.slice(at)
+}
+
 // `gh` takes its global flags before the subcommand and no positional argument
 // there, so skipping the flags lands on the subcommand path. Returns null when
 // this segment does not invoke `gh` at all.
@@ -617,19 +647,14 @@ function ghArguments(tokens) {
   return tokens.slice(at)
 }
 
-// `git` takes its own flags before the subcommand, and several of them swallow
-// the next token. Returns the arguments from the subcommand onward, or null
-// when this segment does not invoke git.
-const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--exec-path'])
+// END command arguments
 
-function gitArguments(tokens) {
-  if (commandName(tokens[0]) !== 'git') return null
-  let at = 1
-  while (at < tokens.length && tokens[at].startsWith('-')) {
-    at += GIT_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
-  }
-  return tokens.slice(at)
-}
+// BEGIN merge rule
+// merge rule stamp: sha256 e41bec80b425dbf6
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201.
 
 // A merge endpoint, as a whole path segment, so `branches/merge-queue-test`
 // does not trip it. `merge-async` is the asynchronous form of `pulls/<n>/merge`,
@@ -773,6 +798,8 @@ const GRAPHQL_UNREADABLE =
   'Variables can still come from `-F name=value`. Only the query has to be\n' +
   `inline, and one that calls none of ${[...MERGE_MUTATIONS].join(', ')}\n` +
   'is allowed.'
+
+// END merge rule
 
 // Where a refspec lands. `src:dst` writes `dst`, a bare ref writes the same name
 // at the far end, `:dst` deletes `dst`, and a leading `+` is force and says

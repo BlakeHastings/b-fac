@@ -48,7 +48,7 @@ const EXEMPT = new Set(['.agents/skills/orchestrated-delivery/references/first-r
 // are fixed, because other work held them when it landed (#202 lists why).
 // Unlike EXEMPT this expires by itself: a pending file with nothing left to fix
 // is a failure, so the entry is deleted in the change that clears it.
-export const PENDING = new Set(['.agents/skills/orchestrated-delivery/assets/guard-guest-writes.mjs'])
+export const PENDING = new Set([])
 
 // A number that is not a citation at all but a placeholder in an example: a
 // status line to copy, a brief from another project, a `gh` invocation. They

@@ -179,6 +179,15 @@ const readCommon = (rel) => {
 // calls them, keeping as written any tail that does not exist yet. Spelled out
 // again rather than shared with check-setup.mjs, for the reason ADR 0029 gives:
 // an asset is copied into a host repo on its own. #193.
+
+// BEGIN path comparison
+// path comparison stamp: sha256 26390098cb4f6d98
+//
+// The same two functions are in `guard-guest-writes.mjs` and
+// `check-setup.mjs`, and in the skill the test that holds the command
+// reader holds all three to one text and this stamp. If this file was copied
+// into your repository, compare this line with the skill's. #201.
+
 function canonical(path) {
   const abs = resolve(path)
   try {
@@ -195,6 +204,8 @@ function samePath(a, b) {
     ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
     : normalise(a) === normalise(b)
 }
+
+// END path comparison
 
 // Relative when the path is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point.
