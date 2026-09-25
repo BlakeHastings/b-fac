@@ -92,6 +92,50 @@ about 58 MB of disk, and 24 of them reached 1.4 GB inside a single repository,
 which is also what makes every tool that scans the tree slower. Removing the
 worktrees of agents that have finished is the cheapest thing in this file.
 
+### Your own commands are part of what it measures
+
+The script reports a moment, and the moment it is read is dispatch. After that
+the load question feels settled, and nothing says to ask it again, least of all
+before a command of your own. **A wave makes the machine busy in a way you
+cannot see from where you sit**: an agent in a worktree produces no output until
+it reports, so the only sign it is hammering the box is a number nobody re-reads.
+
+"Touch nothing they touch" is a rule about files, and this is the same rule
+about CPU. **The orchestrator's safe work is safe because it is light.**
+Reviewing, filing, answering the owner and mining the record cost almost
+nothing. Running a test suite, a build or a container does not, and the moment
+your work stops being light it stops being safe.
+
+Measured once, on one project. The orchestrator had read the script at dispatch,
+seen 64% memory used, and sized the wave down to two agents on the strength of
+it. An hour later it ran the project's full check suite in the main checkout
+while an agent ran its own in a worktree:
+
+| | idle | during the wave |
+| --- | --- | --- |
+| failed tests | 0 in 28 runs | 27 |
+| failed test files | 0 | 5 |
+| node processes on the box | 30 | 147 |
+| memory used | 64% | 77% |
+
+Every failure was a five-second timeout in a timing-sensitive test, and none was
+real. The suite reported 128 seconds of wall clock against 539 seconds of summed
+test time, which is the tell. CI on a quiet runner came back green on all five
+checks. **The cost was not the two minutes.** The red was on recovered work, so
+it read as a verdict on somebody else's change, and working out that it was not
+is the same harm a flaky test does, self-inflicted.
+
+So, in order of cost:
+
+- **Prefer letting CI answer.** It runs on a machine nobody else is using, which
+  is the one thing a local run during a wave cannot offer. It is cheaper than
+  the rule below and it is what should have happened there.
+- **If you run something heavy locally, re-read `machine-load.mjs` first**, and
+  treat anything that forks workers as heavy. Your own command is part of what
+  it measures, and so is every agent that has not reported yet.
+- **A timeout-shaped red from a local run during a wave is not a verdict.**
+  Re-run it quiet or let CI decide before you send anybody's work back on it.
+
 ## Assign ADR numbers explicitly
 
 Three agents once claimed 0005 and 0006 between them, each taking "the next free

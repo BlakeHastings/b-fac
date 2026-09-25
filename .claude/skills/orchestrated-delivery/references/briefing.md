@@ -318,6 +318,20 @@ The agent has zero conversation context, so the brief is self-contained. Pass
 artifacts **by path**, never pasted into the prompt body. Say explicitly whether
 this is "write code" or "research and report".
 
+**Nor does it have what the repository ignores.** A worktree carries committed
+files and nothing else, so a gitignored dependency directory such as
+`node_modules` may be missing or, worse, **present but empty**. Absent at least
+looks like "install first". Empty does not, and the failure it causes points
+somewhere else: for one agent it failed twelve tests in a guard suite that had
+nothing to do with dependencies, which reads as a defect in a guard that was
+working. Two agents in one wave hit it independently, and neither was told to
+expect it. Tell every agent that builds or tests to
+expect it, and that the answer is a fresh install (`npm ci` or the host's
+equivalent) or a junction to the main checkout's directory, never a change to
+the test that failed. This repository has no dependencies, so it cannot happen
+here. It can in any host repo that has them, and whatever creates the worktree
+creates the directory, so it is out of the skill's reach to prevent.
+
 **A path is an artifact only where nothing else can write to it.** Passing by
 path assumes the path is a stable identity, and a scratch directory several
 agents share is not one. Two agents dispatched into isolated worktrees were
