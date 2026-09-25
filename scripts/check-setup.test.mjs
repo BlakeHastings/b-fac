@@ -32,13 +32,13 @@ const GATE = join(ASSETS, 'guard-guest-writes.mjs')
 // case here sets it. The report reads `~/.claude/settings.json` now, because
 // that is where the registration that reaches a worktree lives, and a test suite
 // whose answer depends on whoever is running it is not a test suite.
-function run(script, args, root, configDir = join(root, '.no-such-config')) {
+function run(script, args, root, configDir = join(root, '.no-such-config'), env = process.env) {
   try {
     const stdout = execFileSync('node', [script, ...args], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
+      env: { ...env, CLAUDE_CONFIG_DIR: configDir },
     })
     return { code: 0, out: stdout }
   } catch (error) {
@@ -829,18 +829,30 @@ test('it refuses to record owned where the guest gate is installed', () => {
   })
 })
 
-test('it refuses rather than writing a record where no checkout can be sure of finding it', () => {
-  const root = mkdtempSync(join(tmpdir(), 'check-setup-'))
+// #180. An empty directory named `.git` is not a repository, and git says so.
+// This case used to lean on the opposite: the root search asked the filesystem,
+// stopped at the empty `.git`, and only the later common-directory lookup found
+// that git would not answer. It now asks git first and refuses at the door,
+// before anything could be written. `GIT_CEILING_DIRECTORIES` stops git walking
+// up past the temp directory, so a repository above it on some machine cannot
+// become the place the record lands.
+test('an empty directory named .git is not a repository, so it refuses and writes no record', () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'check-setup-')))
+  const env = { ...process.env, GIT_CEILING_DIRECTORIES: dirname(root) }
   try {
-    // A `.git` that stops the root search without being a repository git can
-    // answer for. There is then no common directory to resolve, so there is
-    // nowhere to put a record every checkout of the repository reads, and a
-    // per-checkout record is the thing ADR 0037 exists to stop.
     mkdirSync(join(root, '.git'))
-    const { code, out } = recordOwned(root)
-
-    assert.equal(code, 1)
-    assert.match(out, /`git` did not answer/)
+    mkdirSync(join(root, 'inner'))
+    for (const [where, args] of [
+      [root, ['--record-owned']],
+      [join(root, 'inner'), ['--record-owned']],
+      [join(root, 'inner'), []],
+    ]) {
+      const { code, out } = run(CHECK, args, where, join(root, '.no-such-config'), env)
+      assert.equal(code, 1, `${args.join(' ') || 'the report'} from ${where}: ${out}`)
+      assert.match(out, /Not inside a git repository/)
+      assert.match(out, /not a git repository/, 'the refusal does not carry what git said')
+      assert.doesNotMatch(out, /Enforcement layers in/, 'it reported on a directory git refuses')
+    }
     assert.equal(existsSync(join(root, `${FACTORY}/machine.md`)), false, 'it wrote the record anyway')
   } finally {
     rmSync(root, { recursive: true, force: true })

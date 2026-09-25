@@ -17,7 +17,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,9 +29,9 @@ const GATE = join(ASSETS, 'guard-guest-writes.mjs')
 // The exit code is read off the child process. This repository has lost one to
 // a pipeline five times, and the difference between 1 and 2 here is the whole
 // difference between "you pushed" and "I could not look".
-function run(root, args = []) {
+function run(root, args = [], env = process.env) {
   try {
-    return { code: 0, out: execFileSync('node', [CHECK, ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
+    return { code: 0, out: execFileSync('node', [CHECK, ...args], { cwd: root, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }) }
   } catch (error) {
     return { code: error.status, out: `${error.stdout}${error.stderr}` }
   }
@@ -199,12 +199,60 @@ test('reflogs switched off is UNCHECKED and exit 2, never a clean report', () =>
   }
 })
 
+// A temporary directory git will not walk up out of. Nothing promises that no
+// repository sits above the temp directory, and #180 was a machine where one
+// appeared to: a test that assumes otherwise asserts a fact about the machine
+// rather than about the code. `GIT_CEILING_DIRECTORIES` is git's own way of
+// saying "stop walking up here". The real path, because git compares the
+// ceiling with the directory it resolved, and `tmpdir()` on Windows can be the
+// 8.3 short name of it. #193.
+function outside(prefix) {
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), prefix)))
+  return { dir, env: { ...process.env, GIT_CEILING_DIRECTORIES: dirname(dir) } }
+}
+
 test('outside a git repository it exits 2 rather than reporting nothing found', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'outward-bare-'))
+  const { dir, env } = outside('outward-bare-')
   try {
-    const { code, out } = run(dir)
+    const { code, out } = run(dir, [], env)
     assert.equal(code, 2)
     assert.match(out, /Not inside a git repository/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// #180. An empty directory named `.git` is not a repository, git says so, and
+// an earlier copy of this file asked the filesystem instead and reported on the
+// directory above it. Only git can tell those two apart.
+test('an empty directory named .git above it is not a repository, because git says it is not', () => {
+  const { dir, env } = outside('outward-empty-dotgit-')
+  try {
+    mkdirSync(join(dir, 'outer/.git'), { recursive: true })
+    mkdirSync(join(dir, 'outer/inner'))
+    const { code, out } = run(join(dir, 'outer/inner'), [], env)
+    assert.equal(code, 2, out)
+    assert.match(out, /Not inside a git repository/)
+    assert.match(out, /not a git repository/, 'the refusal does not carry what git said')
+    assert.doesNotMatch(out, /Outward writes from/, 'it reported on a directory git refuses')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// The same question from the other side: a real repository above, and git told
+// not to walk up into it. A filesystem walk ignores the ceiling; git does not.
+test('it honours GIT_CEILING_DIRECTORIES, because the question goes to git', () => {
+  const { dir, env } = outside('outward-ceiling-')
+  try {
+    const outer = join(dir, 'outer')
+    mkdirSync(join(outer, 'inner'), { recursive: true })
+    execFileSync('git', ['init', '--quiet', outer])
+    const walked = run(join(outer, 'inner'), [], env)
+    assert.match(walked.out, /Outward writes from/, 'the repository above was not found without a ceiling')
+    const stopped = run(join(outer, 'inner'), [], { ...env, GIT_CEILING_DIRECTORIES: outer })
+    assert.equal(stopped.code, 2, stopped.out)
+    assert.match(stopped.out, /Not inside a git repository/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

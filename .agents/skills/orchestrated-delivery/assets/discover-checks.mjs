@@ -71,18 +71,36 @@ const overrides = process.argv
 // The repo root comes from the working directory, never from this file's own
 // location, so the first run can happen from inside the installed skill before
 // anything has been copied anywhere. Same reasoning as `check-setup.mjs`.
+//
+// Whether that is inside a repository is git's question, so git answers it. An
+// earlier copy walked up asking the filesystem for anything named `.git`, and
+// an empty directory by that name, which git itself refuses, made it report on
+// a home directory as a repository. It also meant GIT_CEILING_DIRECTORIES,
+// which git honours, was silently ignored here. #180.
 const rootArg = process.argv.find((arg) => arg.startsWith('--root='))
-let ROOT = resolve(rootArg ? rootArg.slice('--root='.length) : process.cwd())
-for (;;) {
-  if (existsSync(join(ROOT, '.git'))) break
-  const up = dirname(ROOT)
-  if (up === ROOT) {
-    console.error('Not inside a git repository, so there is no repository to discover.')
-    console.error('Run this from the root of the repo you are working in, or pass --root=.')
-    process.exit(1)
+const START = resolve(rootArg ? rootArg.slice('--root='.length) : process.cwd())
+const ROOT = (() => {
+  let said = 'no working tree'
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: START,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+    if (top) return resolve(top)
+  } catch (error) {
+    said = String(error.stderr ?? '').trim().split('\n')[0]
+    if (!said) {
+      console.error(`Could not run git from ${START}, so there is no telling whether it is a repository.`)
+      console.error(`  ${error.message}`)
+      process.exit(1)
+    }
   }
-  ROOT = up
-}
+  console.error('Not inside a git repository, so there is no repository to discover.')
+  console.error(`  git, asked from ${START}: ${said}`)
+  console.error('Run this from the root of the repo you are working in, or pass --root=.')
+  process.exit(1)
+})()
 
 const read = (rel) => {
   try {
