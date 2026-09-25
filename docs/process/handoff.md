@@ -28,7 +28,7 @@ landed on 25 Aug (#156, #157, #162, #163, #170, #171, #174, #176), then #181
 (`assets/machine-load.mjs`, read the box before a wave) on 7 Sep and #192
 (compaction at 85%, a warning ten points before, resume from this file) today.
 
-**Topped up 2026-09-25, later the same day, at `dfdbc00`, 0.54.6.**
+**Topped up twice on 2026-09-25, last at `387942f`, 0.54.12.**
 
 Merged this session, each verified independently before merge (the review record is on each PR):
 
@@ -39,7 +39,15 @@ Merged this session, each verified independently before merge (the review record
 - **#208** (#199) the merge guard let `gh api --silent .../merge -X PUT` through. One `ghApiCall` in the stamped region; ADR 0062. The guest gate had three holes of its own, all closed.
 - **#209** (#200) `merge-pr.mjs` tested in both copies, and refuses what it cannot see. ADR 0063. **The shipped copy deleted the base repository's branch named after a fork's head**, so a host repository with an older copy can lose its `main`.
 
-**In flight:** #210 (a GraphQL `mergePullRequest` passes the merge guard; 0.54.7), #205 (required checks read from the ruleset; 0.54.8), #202 (bare ADR and issue citations in shipped text, plus a lint; 0.54.9). Each brief is on its issue.
+Then, in the second half of the day:
+
+- **#213** (#210) the merge guard refuses the GraphQL merge mutations (`mergePullRequest`, `enablePullRequestAutoMerge`, `enqueuePullRequest`, `mergeBranch`), any GraphQL query it cannot read, and REST `merge-async`, which #208 had missed. ADR 0064. **Four distinct routes past the merge guard were allowed on this morning's `main`**, which is the evidence under #189.
+- **#214** (#205) `merge-pr.mjs` reads the required checks from the ruleset, and never falls back to an empty list. ADR 0065.
+- **#212** (#202) shipped text cites `b-fac ADR NNNN` and `BlakeHastings/b-fac#N`, and `check:citations` fails on a bare one. `guard-guest-writes.mjs` holds 8 bare citations under a `PENDING` entry, folded into #201.
+- **#215** (#206) the provenance baseline moved past the two 9 August commits. A bare `check:provenance` now exits 0. ADR 0066.
+- **#216** (#204) twelve ADR status lines point at what changed them, and `check:collisions` fails on a declared change that is not pointed back to.
+
+**In flight:** #201 (the helpers copied outside the stamped region, the GraphQL rule #213 duplicated, and the 8 pending citations; **0.54.13**). Its brief is on the issue. **#203** (trim `SKILL.md`) waits for it, because both would edit `references/enforcement.md`.
 
 **Adversarial review, 2026-09-25**, asked for by the owner: four read-only agents covering code, skill and docs, process, and factory-CLI prior art. The reports are **outside the repository** at `C:\Users\bhastings\source\repos\personal\b-fac-critique\`. The findings kept became #199 to #206 and #210. The headline: **omitting `version` is supported** and would remove the version line, which is on #151 with a recommendation. Refuted: the three reader copies, the no-dependencies rule for assets, making the mirror a symlink, and the skill's style.
 
@@ -83,13 +91,19 @@ operator's style rule), and **#151** (omit the plugin version; recommendation ye
 
 ## Dispatchable
 
-#201, #203, #204 and #206 from the review (#201 collides with #210's region), the field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
+#203 once #201 lands, then the field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
 #64, #7. Blocked: #78 and #79 behind #28, #123.
 
 ## Traps that cost something
 
-Carried forward from the fourth edition, all still true, plus one new at the top.
+Carried forward from the fourth edition, all still true, plus two new at the top.
 
+- **Remove a worktree only after the merge line prints.** Twice on 2026-09-25
+  the orchestrator removed an agent's worktree in the same command as a
+  `merge-pr.mjs` run that then refused: once on a pending check, once on a
+  branch behind `main`. Nothing was lost only because the work was pushed. The
+  second time cost a fresh agent to rebase. Gate the removal on
+  `grep -q '^Merged into main'` against the wrapper's output.
 - **`gh` may be logged in as the wrong account.** This machine holds two, and
   the work account `bhastings-t3` has read on this repository. With it active,
   `gh issue create` succeeds (issues need only read, so #193 carries the wrong
@@ -112,9 +126,8 @@ Carried forward from the fourth edition, all still true, plus one new at the top
   count against a case you know before believing it.
 - **`assets/check-setup.mjs` exits 0 here, as of #159.** Layer 3 was deliberately
   absent under ADR 0001 and is now installed under **ADR 0051**.
-  `npm run check:provenance` audits the whole history and is red on purpose,
-  naming two commits from 9 August that predate the ruleset. The workflow judges
-  only what each push adds, so it is green until a real violation.
+  A bare `npm run check:provenance` exits 0 since #215 moved the baseline past
+  the two examined 9 August commits (ADR 0066), so any red from it is real.
 - **A session that ends mid-flight leaves worktrees locked onto its branches.**
   Ten were inherited, five locked, four holding branches this session needed,
   including the only open pull request's. The first dispatch failed on it.
