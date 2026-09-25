@@ -505,7 +505,8 @@ function legacyBoundary(legacy) {
         : [
             'The layers below are reported as if owned, which is what an unrecorded boundary',
             'has always done here. This record says guest, so do not install them: every one',
-            'is a change to a repository somebody has written down that they are a guest in.',
+            'is a change to a repository somebody has written down that they are a guest in,',
+            'and no row below offers a way to.',
           ]),
     ],
   }
@@ -543,6 +544,25 @@ const BOUNDARY = writeBoundary()
 // checked, and the summary tells anyone in a repository that is not theirs to
 // install the guest gate instead of the four layers it just listed.
 const CHECKLIST = BOUNDARY.mode === GUEST ? GUEST : OWNED
+
+// A hint this report can neither adopt nor ignore (#134, b-fac ADR 0070). A legacy
+// record saying guest is a per-checkout answer, so it does not set the mode:
+// that is ADR 0037 and `legacyBoundary()` above. But it is somebody having
+// written down that this repository is not theirs, and the two directions of
+// being wrong are not the same size. Offering guest fixes in an owned repository
+// costs a confused minute; offering owned fixes in a guest one is an agent
+// opening a pull request that configures somebody else's CI.
+//
+// So the verdicts stay exactly what the owned checklist makes them and only the
+// recommendation goes: every owned `FIX:` line is withheld and the failing
+// summary stops saying "install them". This is ADR 0054's third rule, "once a
+// claim has been made about a layer, the report stops printing a recipe for
+// it", applied to a claim that fails validation the way a dangling `declined`
+// pointer does. It falls back to MISSING, never to a status of its own, which
+// is why this is not a fifth state. The paragraph under `Write boundary:` said
+// this already; the table and the summary are what a reader in a hurry reads.
+const HINTED_GUEST = BOUNDARY.mode === UNRECORDED && BOUNDARY.legacy === GUEST
+const WITHHELD = `withheld. ${LEGACY_RECORD} says this repository is not yours, so installing this would change somebody else's repository. This report cannot take that record as the repository's answer (b-fac ADR 0037) and does not argue with it either: record the boundary with the command at the end, and this row stops applying.`
 
 // ---------------------------------------------------------------------------
 // A layer the repository decided against, and why the record is in the tree
@@ -1788,6 +1808,9 @@ for (const layer of LAYERS) {
     findings = [...findings, ...contradicts(claim)]
     if (status === OK) status = PARTIAL
   }
+  // After the declaration, so a row carrying a broken `declined` claim keeps the
+  // remedy for that claim. Either way it is not an install recipe.
+  if (HINTED_GUEST && status === MISSING && claim === undefined) fix = WITHHELD
 
   if (status === DECLINED) declined += 1
   else if (applies) {
@@ -1970,6 +1993,19 @@ if (CHECKLIST === GUEST) {
   console.error('states and only one of them is fixed by installing it again. Then restart')
   console.error('the harness, run the probe, and paste both outputs into your first status')
   console.error('update.')
+} else if (HINTED_GUEST) {
+  // Still red, and that is the decision rather than an oversight (b-fac ADR 0070).
+  // ADR 0001's objection is to a red nobody can act on, and this one has a single
+  // remedy printed below it: the guest install, after which this repository is
+  // reported against gate G and exits 0. Going green here instead would let an
+  // unrecorded boundary pass as a finished setup, which is the one state this
+  // report exists to make somebody answer.
+  console.error('They are not offered here, and nothing on this screen says how to install them.')
+  console.error(`${LEGACY_RECORD} says this repository is not yours, so each of them would be`)
+  console.error("a change to somebody else's repository and its CI. This report cannot take that")
+  console.error('record as the answer for the whole repository, and it will not argue with it')
+  console.error('either. Record the boundary with the one command below: the layers above then')
+  console.error('stop applying, and the gate that does apply is reported instead.')
 } else {
   console.error(`${until} nothing here mechanically stops an agent landing code, and`)
   console.error('nothing tells you afterwards that one did. Install them from the skill\'s')
