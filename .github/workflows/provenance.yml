@@ -49,10 +49,10 @@ on:
   # are stripped rather than merely skipped over.
   #
   # A dispatched run has no `before`, so it audits the whole history above the
-  # baseline and is red today: two commits from this repository's first
-  # twenty-four minutes have no pull request behind them. That is the true
-  # answer to the question this workflow asks, not a defect. ADR 0051 records
-  # the commits and why the baseline sits below them rather than above.
+  # baseline, and it is green unless something real has arrived. Two commits
+  # from this repository's first twenty-four minutes have no pull request behind
+  # them; ADR 0051 records them, and ADR 0066 moved the baseline past them once
+  # they had been examined.
   workflow_dispatch:
 
 # `gh api repos/{owner}/{repo}/commits/<sha>/pulls` is the whole check, and it
@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           # The script exits 1 and says so when the baseline commit is not in
-          # the checkout. The baseline is the repository's first commit, so
+          # the checkout. The baseline is the repository's third commit, so
           # anything shallow fails loudly rather than auditing a short window
           # and reporting green.
           fetch-depth: 0
