@@ -55,10 +55,11 @@ which is the one thing the four original targets could not reach. ADR 0052 and
 ADR 0053.
 
 `check:provenance` is out for that second reason too, one API call per commit.
-Run bare it audits the whole history and exits 1, naming two commits from 9
-August that predate the ruleset. That is the true answer and not a broken
-script. The `provenance` workflow passes it the range a push added, so the run
-that matters is green until something real arrives. ADR 0051.
+Run bare it audits every commit above the baseline and exits 0, so a red from it
+is a real finding, not noise to look past. The baseline sits just above two
+bootstrap commits from 9 August that predate the ruleset; ADR 0051 examined and
+recorded them, and ADR 0066 moved the line past them. The `provenance` workflow
+passes it the range a push added, so it judges only what that push brought.
 
 No dependencies, no lockfile, Node 22 built-ins only. If that stops being true,
 add `npm ci` to `.github/workflows/checks.yml` and commit the lockfile.

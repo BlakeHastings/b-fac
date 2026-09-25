@@ -1,6 +1,9 @@
 # 0051. The provenance audit comes back, because a ruleset is configuration and not a fact
 
-Status: accepted
+Status: accepted, and amended by ADR 0066, which moves `BASELINE` to `dadeae4`
+past the two commits examined below. The decision to start below them, and the
+record of what they are, stand as written; the "full-history run is therefore
+red" consequence no longer does.
 
 Supersedes the "Drop `check-main-provenance.mjs`" decision in ADR 0001. The rest
 of 0001 stands unchanged.
