@@ -31,7 +31,7 @@ What counts is what each command takes, read from `git status`:
 
 | command | judged on | counts |
 | --- | --- | --- |
-| `reset --hard`, `checkout -f`, `switch -f` | the tree | tracked changes and untracked files |
+| `reset --hard`, `checkout -f`, `switch -f` | the tree | tracked changes, and untracked files the target commit tracks |
 | `checkout -- <paths>`, `checkout .`, `restore` | the paths it names | tracked changes |
 | `clean -f` | the paths it names | untracked files, and ignored ones with `-x` or `-X` |
 | `stash drop` with no entry, `stash clear` | the stash | its entries |
@@ -64,9 +64,19 @@ not a failure of the guard.
   then `drop` is refused because the apply dirtied the tree, and a drop in a
   linked worktree is allowed although the stack is shared. They are judged on
   the stash instead, and a drop that names its entry is allowed.
-- **Paths and kinds.** `checkout -- <paths>`, `restore` and `clean` are judged
-  on the paths they name and on the kind of file they touch, so an unrelated
-  edit does not refuse a restore of another file.
+- **Each command counts only what it destroys.** `checkout -- <paths>`,
+  `restore` and `clean` are judged on the paths they name and on the kind of
+  file they touch, so an unrelated edit does not refuse a restore of another
+  file. The brief said to count everything for `reset --hard` and
+  `checkout -f`, and the first version of this change did. Review found the
+  cost: a main checkout holding nothing but an untracked draft or log, its
+  normal state, refused both, although neither touches an untracked file. They
+  now count tracked changes, and an untracked file only where the commit they
+  move to (`HEAD` when none is named) tracks the same path, since that one is
+  overwritten. The guard reads that commit's tree with `git ls-tree`; when the
+  target does not resolve, every untracked file counts, which refuses rather
+  than loses. `worktree remove --force` still counts everything, because it
+  deletes the directory.
 - **`git switch -f`** is added. It is `checkout -f` by its newer name.
 
 ## Consequences

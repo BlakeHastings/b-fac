@@ -24,6 +24,14 @@
 // and the stash on the stash, which every worktree shares. The refusal lists
 // what would be lost and how to keep it.
 //
+// Each command counts only what it destroys. A reset or a forced checkout
+// counts tracked changes, and an untracked file only where the commit it moves
+// to tracks the same path, because every other untracked file survives it. A
+// main checkout holding a stray draft is its normal state, and refusing a
+// harmless reset there is how this rule would get switched off. A clean counts
+// untracked files; a restore, tracked changes; `worktree remove --force`,
+// everything, because it deletes the directory.
+//
 // The override is `git -c guard.destructive=ok ...`, on the command line where
 // a reviewer sees it, and it exists for a person who has read the refusal. **An
 // override an agent adds on its own is a finding for review, not a failure of
@@ -100,6 +108,9 @@
 //     above, and a git alias that expands to one of these commands.
 //   - `git checkout <path>` without `--` and without `.`: on the command line it
 //     is indistinguishable from switching to a branch of that name.
+//   - which untracked files a reset or forced checkout overwrites, when its
+//     target does not resolve here (`-`, a variable). Every untracked file is
+//     counted then, which refuses where it may not have needed to.
 //   - a Git Bash path the process cannot open. `/c/...` is read as `C:/...`,
 //     but another MSYS mount, `/tmp` among them, names a directory this process
 //     cannot find, and the rule allows a directory it cannot find.
@@ -924,7 +935,7 @@ const GRAPHQL_UNREADABLE =
 // END merge rule
 
 // BEGIN uncommitted work
-// uncommitted work stamp: sha256 7c68d7a310802c3a
+// uncommitted work stamp: sha256 e4a4b9c7125a7e4b
 //
 // The second rule, #188 and ADR 0069. Held to one text with its other copy by
 // the test that holds the reader, and stamped the same way. What it does not
@@ -995,27 +1006,41 @@ function operands(args, valued = '', longValued = []) {
 }
 
 // What a git command would destroy, or null when it destroys nothing this rule
-// is about. `lose` is which entries of `git status` count: `all`, `tracked`
-// (a restore from the index never touches an untracked file), or `untracked`
-// (a clean never touches a tracked one). `paths` narrows the tree to what the
-// command names, so `git checkout -- a.txt` is judged on `a.txt` and an
-// unrelated edit elsewhere does not refuse it.
+// is about. `lose` is which entries of `git status` count, because each command
+// counts only what it destroys:
+//
+//   `tracked`    tracked changes. A restore from the index never touches an
+//                untracked file.
+//   `untracked`  untracked files. A clean never touches a tracked one.
+//   `rewrite`    tracked changes, and the untracked files that `target` tracks.
+//                A reset or a forced checkout rewrites tracked files and leaves
+//                untracked ones alone, except where the commit it moves to has
+//                a file at the same path, which it overwrites without a word.
+//                Counting every untracked file refused both in a main checkout
+//                holding nothing but a stray draft, which is its normal state.
+//   `all`        everything, for a worktree whose directory is being deleted.
+//
+// `paths` narrows the tree to what the command names, so `git checkout -- a.txt`
+// is judged on `a.txt` and an unrelated edit elsewhere does not refuse it.
 function destructiveAction(args) {
   const [sub, ...rest] = args
   if (sub === 'reset') {
-    return rest.includes('--hard') ? { lose: 'all', paths: [] } : null
+    if (!rest.includes('--hard')) return null
+    return { lose: 'rewrite', target: operands(rest).before[0] ?? 'HEAD', paths: [] }
   }
   if (sub === 'checkout') {
     const { before, after } = operands(rest, 'bB', ['--orphan'])
     if (after.length > 0) return { lose: 'tracked', paths: after }
     if (before.includes('.')) return { lose: 'tracked', paths: ['.'] }
-    return hasFlag(rest, '--force', 'f', 'bB') ? { lose: 'all', paths: [] } : null
+    if (!hasFlag(rest, '--force', 'f', 'bB')) return null
+    return { lose: 'rewrite', target: before[0] ?? 'HEAD', paths: [] }
   }
   // `git switch` is `checkout -f`'s newer spelling, and leaving it open would
   // make the rule a matter of which verb an agent learned.
   if (sub === 'switch') {
     const force = hasFlag(rest, '--force', 'f', 'cC') || hasFlag(rest, '--discard-changes', null)
-    return force ? { lose: 'all', paths: [] } : null
+    if (!force) return null
+    return { lose: 'rewrite', target: operands(rest, 'cC').before[0] ?? 'HEAD', paths: [] }
   }
   if (sub === 'restore') {
     const staged = hasFlag(rest, '--staged', 'S', 's')
@@ -1100,6 +1125,15 @@ function isLinkedWorktree(dir) {
   return resolve(gitDir) !== resolve(commonDir)
 }
 
+// The paths the commit `target` tracks, from the repository root, or null when
+// the target does not read as a commit here: a ref the guard cannot resolve, a
+// variable only the shell knows. Then every untracked file counts, which is the
+// direction that refuses rather than the one that loses a file.
+function trackedAt(dir, target) {
+  const out = gitRead(dir, ['ls-tree', '-r', '--name-only', '--full-tree', '-z', '--end-of-options', target])
+  return out === null ? null : new Set(out.split('\0').filter(Boolean))
+}
+
 // The entries of `git status` the action would destroy, as `{ code, path }`.
 function atRisk(dir, action) {
   const untracked = action.lose === 'tracked' ? 'no' : action.lose === 'untracked' && !action.directories ? 'normal' : 'all'
@@ -1107,16 +1141,22 @@ function atRisk(dir, action) {
   if (action.ignored) args.push('--ignored=matching')
   const out = gitRead(dir, [...args, '--', ...(action.paths ?? [])])
   if (out === null) return []
-  return out
+  const entries = out
     .split('\0')
     .filter((entry) => entry.length > 3)
     .map((entry) => ({ code: entry.slice(0, 2), path: entry.slice(3) }))
-    .filter(({ code, path }) => {
-      if (action.lose !== 'untracked') return true
+  if (action.lose === 'untracked') {
+    return entries.filter(({ code, path }) => {
       // Without `-d`, a clean leaves untracked directories alone.
       if (!action.directories && path.endsWith('/')) return false
       return code === '??' || code === '!!'
     })
+  }
+  if (action.lose === 'rewrite' && entries.some(({ code }) => code === '??')) {
+    const tracked = trackedAt(dir, action.target)
+    return entries.filter(({ code, path }) => code !== '??' || tracked === null || tracked.has(path))
+  }
+  return entries
 }
 
 const LISTED = 20

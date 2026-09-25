@@ -131,6 +131,42 @@ for (const [name, guard] of Object.entries(GUARDS)) {
     git(MAIN, 'reset', '--quiet', '--hard', 'HEAD~1')
   })
 
+  // A reset or a forced checkout rewrites tracked files and leaves untracked
+  // ones alone, so a main checkout holding only a stray draft or log is not a
+  // loss, and refusing it there would refuse harmless commands all day. The
+  // exception is an untracked file the target tracks, which gets overwritten.
+  test(`${name}: a reset or forced checkout over untracked files only is allowed, unless the target tracks one`, () => {
+    reset()
+    writeFileSync(join(MAIN, 'draft.md'), 'a PR body\n')
+    for (const command of [
+      'git reset --hard',
+      'git reset --hard HEAD',
+      'git checkout -f',
+      'git switch -f',
+      'git switch --discard-changes',
+      'git checkout -f side',
+    ]) {
+      assert.equal(run(guard, MAIN, command).denied, false, command)
+    }
+    // `side` gains a tracked `draft.md`; checking it out or resetting to it
+    // would overwrite the untracked one in main.
+    git(LINKED, 'config', 'user.name', 'test')
+    git(LINKED, 'config', 'user.email', 'test@example.invalid')
+    writeFileSync(join(LINKED, 'draft.md'), 'side\n')
+    git(LINKED, 'add', 'draft.md')
+    git(LINKED, 'commit', '--quiet', '-m', 'draft on side')
+    try {
+      for (const command of ['git reset --hard side', 'git checkout -f side', 'git switch -f side']) {
+        const { denied, reason } = run(guard, MAIN, command)
+        assert.equal(denied, true, command)
+        assert.match(reason, /\?\? draft\.md/)
+      }
+      assert.equal(run(guard, MAIN, 'git clean -fd').denied, true)
+    } finally {
+      git(LINKED, 'reset', '--quiet', '--hard', 'HEAD~1')
+    }
+  })
+
   test(`${name}: \`git clean -x\` counts ignored files, and a plain clean does not`, () => {
     reset()
     mkdirSync(join(MAIN, 'node_modules'))
