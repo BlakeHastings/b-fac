@@ -1,6 +1,8 @@
 # 0030. A report may read the write boundary; a gate may not
 
-Status: accepted
+Status: accepted, and amended by ADR 0039, which gave owned mode the writer this
+filed and replaced the reason an unrecorded mode does not move the exit code,
+and by ADR 0054, which narrows the refusal to read `AGENTS.md`.
 
 Parent epic #60, issue #92. ADR 0021 defines the boundary, ADR 0029 gives it a
 gate and refuses to let that gate read it, ADR 0010 is why `check-setup.mjs`

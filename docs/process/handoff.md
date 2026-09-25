@@ -163,7 +163,8 @@ Three, all recorded on the issues themselves.
 
 ## How this owner works
 
-Unchanged, and still not written down anywhere else.
+Unchanged. The first two are also rules in `SKILL.md`, under "Working without the
+owner" and "How to ask"; the last two are written down only here.
 
 - **Keep working while questions are outstanding.** Their words: *"your objective
   is to keep working even when you need to ask me questions unless there's no

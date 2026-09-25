@@ -1,6 +1,8 @@
 # 0001. Enforcement rests on a ruleset, not on the substitute layer
 
-Status: accepted
+Status: accepted, and partly superseded by ADR 0051, which reverses the decision
+to drop the provenance audit. The notices below mark the two paragraphs it
+replaces.
 
 ## Context
 

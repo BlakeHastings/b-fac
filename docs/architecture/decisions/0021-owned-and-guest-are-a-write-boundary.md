@@ -1,6 +1,8 @@
 # 0021. Owned and guest are a write boundary, and the factory asks which
 
-Status: accepted
+Status: accepted, and amended by ADR 0029, which gave the boundary a gate, and by
+ADR 0037, which moved machine facts into the git common directory. The
+correction at the end says which sentences each one changed.
 
 Parent epic #60. ADR 0022 defines the second axis, which this one deliberately
 does not cover.

@@ -186,9 +186,10 @@ Calibrations, not rules. Each has its reason, so you can tell when to deviate.
   Counting your own agents undercounts. `references/parallelism.md`.
 - **Batch by what would collide, not by theme.** Issues touching one registry go
   together. Unrelated surfaces go apart even when they sound like one feature.
-- **Hand out ADR numbers explicitly**, checked against the default branch *and*
-  every open PR. Agents taking "the next free number" collide, and a caught
-  collision still costs a rebase.
+- **Hand out ADR numbers explicitly**, checked against the default branch, every
+  open PR *and* every worktree, where an unpushed ADR is invisible to the other
+  two. Agents taking "the next free number" collide, and a caught collision
+  still costs a rebase.
 - **Three lenses for done**: functionality proven by driving the app, code
   proven by comprehension, architecture proven by entropy accounting. Mechanical
   checks are the price of admission, not a lens. Install the full text as a

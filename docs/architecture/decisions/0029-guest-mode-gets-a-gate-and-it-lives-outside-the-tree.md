@@ -1,6 +1,7 @@
 # 0029. Guest mode gets a gate, and it lives outside the tree
 
-Status: accepted
+Status: accepted, and amended by ADR 0037, whose `--scope` answers the second of
+the two refusals of a user-level hook. The section near the end says which.
 
 Parent epic #60, issue #76. ADR 0021 defines the boundary this one enforces.
 ADR 0025 supplies the two nouns, ADR 0004 the argument for a shape over a

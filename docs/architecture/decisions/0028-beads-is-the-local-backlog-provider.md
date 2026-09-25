@@ -1,6 +1,7 @@
 # 0028. beads is the local implementation of the backlog port
 
-Status: accepted
+Status: accepted, and amended by ADR 0035, under which the port concedes the
+computed ready state this recorded beads offering unasked.
 
 Parent epic #60, issue #77. ADR 0024 defined the port and deliberately did not
 choose a tool. ADR 0021 defines the write boundary this has to respect. The

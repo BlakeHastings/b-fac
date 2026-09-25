@@ -78,9 +78,11 @@ If a change introduces a new pattern deliberately, record it in
 `docs/architecture/decisions/` as a short ADR. Three sentences is a fine ADR.
 The point is that the decision is findable later, not that it is ceremonious.
 
-Take the next number after everything on the default branch **and** everything
-in an open pull request. Work runs in parallel here, so the next free number on
-your branch is usually already claimed on someone else's.
+Take the next number after everything on the default branch, everything in an
+open pull request, **and** everything in a worktree (`git worktree list`), where
+a running agent's unpushed ADR is invisible to the other two. Work runs in
+parallel here, so the next free number on your branch is usually already claimed
+on someone else's.
 `[the collision check]` fails a duplicate, and CI runs it on the merge
 commit, so a collision that does not exist on your branch yet still turns the PR
 red.

@@ -1,6 +1,7 @@
 # 0050. Creation stays `gh`'s, and a blank body is found by scanning what is stored
 
-Status: accepted
+Status: accepted, and amended by ADR 0053, which makes the scan say how far back
+it looked and adds a run that reads the whole history.
 
 Issue #149, which split the gap out of #143 rather than leaving it as a
 paragraph in ADR 0049. ADR 0049 is the mechanism this extends and, in one place,
