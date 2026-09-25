@@ -207,12 +207,19 @@ function samePath(a, b) {
 
 // END path comparison
 
+// BEGIN path display
+// path display stamp: sha256 53da66d338517398
+//
+// The same in `check-setup.mjs`, and held to it the same way. #201.
+
 // Relative when the path is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point.
 const show = (abs) => {
   const path = relative(canonical(ROOT), canonical(abs)).replace(/\\/g, '/')
   return path !== '' && !path.startsWith('..') ? path : abs
 }
+
+// END path display
 
 // The same three paths `guard-guest-writes.mjs` spells, plus the two this file
 // adds. Written out again rather than shared, for the reason ADR 0029 gives:

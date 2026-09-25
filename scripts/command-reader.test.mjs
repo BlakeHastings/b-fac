@@ -64,7 +64,8 @@ const FILES = {
 // its markers, where nothing compared them: `canonical` and `samePath` in three
 // assets from #194, `commandName` and `shellPayload` in all three guards,
 // `gitArguments` and `ghArguments` in the two guards that read both the same
-// way, and the merge rule, REST and GraphQL, in the two merge guards from #213.
+// way, the merge rule, REST and GraphQL, in the two merge guards from #213, and
+// `show`, which prints a path the same way in the two check scripts.
 //
 // Each helper group is a region of its own with a stamp of its own, rather than
 // a wider reader region, for two reasons. The groups live in different sets of
@@ -121,6 +122,19 @@ const REGIONS = [
       "import { basename, dirname, join, resolve } from 'node:path'\n",
     exports: ['canonical', 'samePath'],
   },
+  {
+    name: 'path display',
+    stamp: 'path display stamp',
+    files: ['assets/check-setup.mjs', 'assets/check-outward-writes.mjs'],
+    needs: ['path comparison'],
+    // `show` reads the file's `ROOT`, which each file works out in its own way
+    // and is not a copy. The module stands one in.
+    prelude:
+      "import { realpathSync } from 'node:fs'\n" +
+      "import { basename, dirname, join, relative, resolve } from 'node:path'\n" +
+      'const ROOT = globalThis.__regionRoot\n',
+    exports: ['show'],
+  },
 ]
 
 const regionNamed = (name) => REGIONS.find((region) => region.name === name)
@@ -166,6 +180,12 @@ const codeLines = (text) =>
 
 // Every region's module, per file. Importing is itself the check that each
 // region still declares what it is supposed to hold.
+// A real directory for the path regions to compare, and the `ROOT` that
+// `show` is imported with.
+const scratch = mkdtempSync(join(tmpdir(), 'b-fac-paths-'))
+after(() => rmSync(scratch, { recursive: true, force: true }))
+globalThis.__regionRoot = scratch
+
 const modules = {}
 for (const region of REGIONS) {
   modules[region.name] = Object.fromEntries(
@@ -306,9 +326,6 @@ for (const [file, m] of Object.entries(modules['merge rule'])) {
   })
 }
 
-const scratch = mkdtempSync(join(tmpdir(), 'b-fac-paths-'))
-after(() => rmSync(scratch, { recursive: true, force: true }))
-
 for (const [file, m] of Object.entries(modules['path comparison'])) {
   test(`${file}'s path comparison names a directory by what the filesystem calls it`, () => {
     const real = realpathSync.native(scratch)
@@ -322,6 +339,15 @@ for (const [file, m] of Object.entries(modules['path comparison'])) {
     assert.equal(m.samePath(join(scratch, 'gone'), join(real, 'gone')), true)
     assert.equal(m.samePath(join(scratch, 'a'), join(scratch, 'b')), false)
     assert.equal(m.samePath(scratch.toUpperCase(), scratch.toLowerCase()), process.platform === 'win32')
+  })
+}
+
+for (const [file, m] of Object.entries(modules['path display'])) {
+  test(`${file}'s path display is relative inside the checkout and absolute outside it`, () => {
+    assert.equal(m.show(join(scratch, 'factory', 'machine.md')), 'factory/machine.md')
+    assert.equal(m.show(scratch), scratch)
+    const outside = join(scratch, '..', 'elsewhere')
+    assert.equal(m.show(outside), outside)
   })
 }
 

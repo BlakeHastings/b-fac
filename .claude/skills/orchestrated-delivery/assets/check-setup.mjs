@@ -197,6 +197,11 @@ function samePath(a, b) {
 
 // END path comparison
 
+// BEGIN path display
+// path display stamp: sha256 53da66d338517398
+//
+// The same in `check-outward-writes.mjs`, and held to it the same way. #201.
+
 // Relative when the file is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point: a path leading
 // out of this directory is the visible form of "this fact is the repository's,
@@ -205,6 +210,8 @@ const show = (abs) => {
   const path = relative(canonical(ROOT), canonical(abs)).replace(/\\/g, '/')
   return path !== '' && !path.startsWith('..') ? path : abs
 }
+
+// END path display
 
 // ---------------------------------------------------------------------------
 // The write boundary
