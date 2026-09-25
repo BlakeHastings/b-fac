@@ -24,12 +24,14 @@ describe how work actually happens here, not an aspiration.
   is the orchestrator's, through `node scripts/merge-pr.mjs <n>`.
 - **A skill body stays under ~500 lines**, with detail pushed into
   `references/`. Progressive disclosure is the whole reason the format works.
+  `npm run check:size` fails above 500 and prints the count.
 
 ## Running things
 
 ```bash
 npm run check              # tests, mirror drift, vocabulary, citations. The mechanical gate.
 npm run sync               # regenerate .claude/skills/ from .agents/skills/
+npm run check:size         # every SKILL.md within 500 lines
 npm run check:version      # payload changed, so plugin.json's version must too
 npm run check:plugin       # claude plugin validate . --strict
 npm run check:plugin-load  # the real loader finds the skills, not just the JSON

@@ -75,6 +75,11 @@ jobs:
       - name: Reference tables match the directory
         run: npm run check:references
 
+      # AGENTS.md's "a skill body stays under ~500 lines", held rather than
+      # stated. A step for the same reason as the two either side of it. #203.
+      - name: Skill body within its line budget
+        run: npm run check:size
+
       # A step inside this job rather than a job of its own, deliberately. A new
       # job name becomes a third required check context, which is a third copy
       # of a string already duplicated across this file, merge-pr.mjs's
