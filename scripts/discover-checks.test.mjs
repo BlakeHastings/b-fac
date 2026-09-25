@@ -17,16 +17,16 @@
 //
 // The commands here are `node -e` and `npm run`, so the suite depends on the
 // two tools it is already running under. Where a case needs a tool to be
-// *absent*, it hands the child an empty PATH rather than hoping the runner
-// lacks `make`, which ubuntu-latest does not.
+// *absent*, it hands the child a PATH holding git and nothing else rather than
+// hoping the runner lacks `make`, which ubuntu-latest does not.
 //
 //   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const DISCOVER = fileURLToPath(
@@ -82,10 +82,41 @@ function repo(files) {
 
 const pkg = (scripts) => `${JSON.stringify({ name: 'host', version: '1.0.0', private: true, scripts }, null, 2)}\n`
 
-// PATH with nothing on it, so a tool probe is deterministic on every platform.
-// `node` is already running and is not looked up, so emptying PATH costs the
-// script nothing it needs.
-const noTools = () => ({ ...process.env, PATH: mkdtempSync(join(tmpdir(), 'empty-path-')) })
+// PATH with nothing on it but git, so a tool probe is deterministic on every
+// platform. `node` is already running and is not looked up. git is, because
+// whether the working directory is inside a repository is git's question and
+// the script asks it (#180): a filesystem walk took an empty `.git` directory
+// for one.
+//
+// On POSIX that is a one-line shim in an otherwise empty directory, since git's
+// own directory is usually /usr/bin and holds everything else too. On Windows
+// the spawn needs a real `.exe` and Git for Windows keeps its launchers in a
+// directory of their own, so that directory is used, and checked to hold none
+// of the runners these cases ask about.
+const onParentPath = (name) =>
+  (process.env.PATH ?? '')
+    .split(delimiter)
+    .filter(Boolean)
+    .map((dir) => join(dir, name))
+    .find((path) => existsSync(path))
+
+const GIT = onParentPath(process.platform === 'win32' ? 'git.exe' : 'git')
+
+function noTools() {
+  assert.ok(GIT, 'git is not on PATH, and the script under test needs it')
+  if (process.platform === 'win32') {
+    const dir = dirname(GIT)
+    for (const runner of ['make', 'just', 'task', 'cargo', 'npm', 'python']) {
+      for (const ext of ['.exe', '.cmd', '.bat']) {
+        assert.equal(existsSync(join(dir, runner + ext)), false, `${dir} holds ${runner}${ext}, so it is not git alone`)
+      }
+    }
+    return { ...process.env, PATH: dir }
+  }
+  const dir = mkdtempSync(join(tmpdir(), 'git-only-path-'))
+  writeFileSync(join(dir, 'git'), `#!/bin/sh\nexec '${GIT}' "$@"\n`, { mode: 0o755 })
+  return { ...process.env, PATH: dir }
+}
 
 const porcelain = (root) =>
   execFileSync('git', ['status', '--porcelain', '-uall'], { cwd: root, encoding: 'utf8' })
@@ -147,15 +178,38 @@ test('a general task runner beside a manifest is the manifest wearing names, so 
     Makefile: 'check:\n\tcargo test\n\nrelease:\n\tcargo build --release\n',
     'Cargo.toml': '[package]\nname = "host"\n',
   })
-  // Empty PATH, so `make` is absent by construction and the run stops at the
-  // tool probe. Which candidate it *would* have proposed is the assertion, and
-  // it is the one that separates tier 1 from tier 2.
+  // A PATH with only git on it, so `make` is absent by construction and the
+  // run stops at the tool probe. Which candidate it *would* have proposed is
+  // the assertion, and it is the one that separates tier 1 from tier 2.
   const { code, out } = discover(root, [], noTools())
 
   assert.equal(code, 1)
   assert.match(out, /`make` is not on PATH on this machine/)
   assert.match(out, /What it would have proposed: make check/)
   assert.doesNotMatch(out, /would have proposed: cargo test/)
+})
+
+// #180. An empty directory named `.git` is not a repository, and git says so.
+// An earlier copy asked the filesystem and discovered checks in the directory
+// above one, with a manifest there to make it look plausible. The ceiling stops
+// git walking up past the temp directory, so the answer is the code's and not
+// the machine's.
+test('an empty directory named .git above it is not a repository, because git says it is not', () => {
+  const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'discover-checks-empty-dotgit-')))
+  try {
+    mkdirSync(join(dir, 'outer/.git'), { recursive: true })
+    mkdirSync(join(dir, 'outer/inner'))
+    write(join(dir, 'outer'), 'package.json', pkg({ check: 'node -e "process.exit(0)"' }))
+    const env = { ...process.env, GIT_CEILING_DIRECTORIES: dirname(dir) }
+    const { code, out } = discover(join(dir, 'outer/inner'), [], env)
+
+    assert.equal(code, 1, out)
+    assert.match(out, /Not inside a git repository/)
+    assert.match(out, /not a git repository/, 'the refusal does not carry what git said')
+    assert.doesNotMatch(out, /Check entry point in/, 'it discovered checks in a directory git refuses')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('two task runners that both name a check target is an ambiguity it refuses to resolve', () => {
