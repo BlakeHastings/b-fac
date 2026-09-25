@@ -1,6 +1,7 @@
 # The first hour, in a repo that had nothing
 
-`SKILL.md`'s setup section is a checklist. This is the same setup as a sequence,
+The last section here, "Setting this up in a new repo", is a checklist; it was
+`SKILL.md`'s until it moved here. The rest is the same setup as a sequence,
 from one repo that ran it: `github.com/BlakeHastings/b-fac`, which packages this
 skill and is also run by it. Every commit, issue, pull request and ADR named
 below is public, so nothing here has to be taken on trust.
@@ -28,7 +29,7 @@ hours later.
 | 11:03 | `e67a110`, PR #1 | The guard hook wired into `.claude/settings.json`, and `orchestrating.md` |
 | 11:09 | `18f6138`, PR #2 | The backlog, generated from the seeder |
 
-**That is not the order `SKILL.md` lists**, and the differences are the useful
+**That is not the order the checklist lists**, and the differences are the useful
 part of this document.
 
 ## Copy everything first, unedited
@@ -410,3 +411,70 @@ node <this skill>/assets/check-outward-writes.mjs --mark
 
 It bookmarks the moment and does not hide what is below it, for the reason the
 provenance audit refuses to let a baseline move forward to silence a failure.
+
+## Setting this up in a new repo
+
+Everything below is the owned-and-ours corner: a repo you may write to that has
+no conventions to defer to. In any other corner, install what the host repo
+lacks and adopt what it has, and put nothing outward until the publish step.
+
+Discovery first, if anything is derived from something outside the repo: measure
+it, commit the measurement, then derive from it. Never let an agent eyeball a
+source. Doing this yourself is one of the few times you should touch the code.
+
+Then `AGENTS.md` for invariants and how to run things, the two process docs from
+`assets/`, a seeded backlog, and the enforcement layer. Write `orchestrating.md`
+last, from what you actually did.
+
+**Setup ends with printed output, not with this table having been read.** Before
+installing anything, run `node <this skill>/assets/check-setup.mjs` from the repo
+root: it names every layer MISSING and exits non-zero. Install, run it again,
+and put both outputs in your first status update. It needs Node and `git`, no
+network and no `gh`, and if Node is absent that is its first finding, because
+layers 1 to 3 are Node scripts. Its `LAYERS` table is the same checklist by eye.
+
+**It reports the layers that apply to the write boundary**, which it reads from
+the machine record. That is the one place a report may read it, since unlike a
+hook it runs where you are standing (b-fac ADR 0030). In guest mode the four owned layers read
+`n/a` with the mode as the reason and the gate is the only one judged, so a
+guest repo with the gate installed exits 0. Where nobody recorded a boundary it
+says so and reports the owned set, which is a finding rather than a failure and
+a prompt to answer the question b-fac ADR 0021 asks at initialisation.
+
+**A layer you decided against is `declined`, not missing.** Record the decision,
+then say so in `AGENTS.md`: `Enforcement layer 3: declined, recorded in <path>`.
+The row keeps its *does not cover* line and stops moving the exit code. Without
+that, a deliberate absence reports MISSING with a recipe under it, and this repo
+proved where that ends: the decision was written down three times and the layer
+was installed anyway within a day. b-fac ADR 0054, `references/enforcement.md`.
+
+**Copying is not installing**, which is the half it exists to catch: a guard
+script no `settings.json` invokes, a `REQUIRED` list still holding its
+placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch
+this repo does not have. Where only the instruction stood, one project skipped
+setup outright and 20 merges went through raw `gh pr merge`.
+
+**And wired is not loaded**, which no report can see. Hooks are read once at
+process start, so ask the guard itself after the restart:
+`node scripts/guard-merge.mjs --probe`. Being refused is the answer you want; if
+it prints, nothing intercepted it and the guard is not in this process. A gate
+that was never loaded is silent in exactly the way a gate with nothing to deny
+is silent, and one repository spent two days that way.
+
+| Asset | Goes to | Edit first |
+| --- | --- | --- |
+| `check-setup.mjs` | `scripts/`, and run it first | `LAYERS` paths, if they differ |
+| `review.md` | `docs/process/` | The bracketed commands |
+| `working-an-issue.md` | `docs/process/` | Commands and check names |
+| `pull_request_template.md` | `.github/` | Nothing |
+| `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
+| `merge-pr.mjs` | `scripts/` | `REQUIRED` check names, read when no ruleset names them |
+| `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
+| `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
+| `handoff-hooks.mjs` | `scripts/`, wired to `PostToolUse`, `PreCompact` and `SessionStart`, with the threshold in settings `env` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
+| `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
+| `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
+| `check-outward-writes.mjs` | **Guest mode, at publish.** Run in place. Reports what actually left, from the reflog; `--mark` after an authorised publish | Nothing |
+
+The sections above walk this whole sequence as one repo actually ran it,
+in the order its commits show rather than the order listed here.

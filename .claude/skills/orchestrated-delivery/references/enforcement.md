@@ -678,6 +678,30 @@ If you cannot say the remaining three, say precisely what you did instead. ADR
 promise and the other three are still somebody's word, which is worth stating
 plainly rather than letting a green report imply otherwise.
 
+## Guest mode in one paragraph
+
+The whole guest stack in the order it goes in. The sections above are the
+detail behind each clause.
+
+**Install the thing that refuses before you do anything
+else** — `assets/guard-guest-writes.mjs --install` refuses a push, a non-read
+`gh` verb, a `gh api` write and the beads commands that write tracked files,
+and it installs into untracked local files so that saying it changed nothing is
+true. **Then, at publish, run the thing that checks**, because the fourth
+constraint applies to this gate like any other and its not-covered list is long:
+`assets/check-outward-writes.mjs` reads the remote-tracking reflogs, which
+record a push made by `sudo`, by a human at a terminal, or by a session the gate
+never loaded into, and distinguish it from a colleague's. It answers the *no
+branch pushed* clause and no other; whether an issue was opened or a comment
+posted is still yours to state, because `gh` leaves no local record.
+`references/first-run.md` for the order.
+Guest mode has no remote rollup either, so **its gate is the host repo's own
+check command, run locally** — which somebody has to establish in a repo the
+factory did not create. `assets/discover-checks.mjs` gathers the evidence,
+proposes, and records nothing it has not executed.
+`references/host-checks.md`, including the limit that a local gate runs a
+subset of their pipeline and never their environment.
+
 ## The provenance baseline
 
 Pin a baseline commit: the one that first made the PR-only rule a control rather

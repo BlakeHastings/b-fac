@@ -51,7 +51,8 @@ holds it: one `AGENTS.md` claimed sensitive fields were masked before anything
 implemented it, and an invariant that is not true is worse than an absent one
 because the next person builds against it.
 
-Everything else in this skill is calibration.
+These five and the format in "Before you stop" are mandatory. The rest of this
+skill is calibration.
 
 ## Two questions before the loop
 
@@ -65,24 +66,10 @@ Reading external systems is normal — pulling a ticket in is the usual case —
 every outward write waits for **one explicit publish step** the owner asks for.
 Guest is a boundary rather than a temperament, which is the point: "no external
 writes happened" is a claim something can check afterwards, and "the agent was
-careful" never was. **Install the thing that refuses before you do anything
-else** — `assets/guard-guest-writes.mjs --install` refuses a push, a non-read
-`gh` verb, a `gh api` write and the beads commands that write tracked files,
-and it installs into untracked local files so that saying it changed nothing is
-true. **Then, at publish, run the thing that checks**, because the fourth
-constraint applies to this gate like any other and its not-covered list is long:
-`assets/check-outward-writes.mjs` reads the remote-tracking reflogs, which
-record a push made by `sudo`, by a human at a terminal, or by a session the gate
-never loaded into, and distinguish it from a colleague's. It answers the *no
-branch pushed* clause and no other; whether an issue was opened or a comment
-posted is still yours to state, because `gh` leaves no local record.
-`references/enforcement.md`, and `references/first-run.md` for the order.
-Guest mode has no remote rollup either, so **its gate is the host repo's own
-check command, run locally** — which somebody has to establish in a repo the
-factory did not create. `assets/discover-checks.mjs` gathers the evidence,
-proposes, and records nothing it has not executed.
-`references/host-checks.md`, including the limit that a local gate runs a
-subset of their pipeline and never their environment.
+careful" never was. **In guest mode, install the gate before anything else, and
+run the outward-writes check at publish**: `references/enforcement.md` has both
+halves and what each does not cover, `references/first-run.md` the order, and
+`references/host-checks.md` the local check command that stands in for CI.
 
 **Convention authority: ours or theirs.** Whose patterns govern? **Conform where
 the host repo has a convention, fall back to ours where it does not.** Absence
@@ -408,70 +395,9 @@ incrementally.
 
 ## Setting this up in a new repo
 
-Everything below is the owned-and-ours corner: a repo you may write to that has
-no conventions to defer to. In any other corner, install what the host repo
-lacks and adopt what it has, and put nothing outward until the publish step.
-
-Discovery first, if anything is derived from something outside the repo: measure
-it, commit the measurement, then derive from it. Never let an agent eyeball a
-source. Doing this yourself is one of the few times you should touch the code.
-
-Then `AGENTS.md` for invariants and how to run things, the two process docs from
-`assets/`, a seeded backlog, and the enforcement layer. Write `orchestrating.md`
-last, from what you actually did.
-
-**Setup ends with printed output, not with this table having been read.** Before
-installing anything, run `node <this skill>/assets/check-setup.mjs` from the repo
-root: it names every layer MISSING and exits non-zero. Install, run it again,
-and put both outputs in your first status update. It needs Node and `git`, no
-network and no `gh`, and if Node is absent that is its first finding, because
-layers 1 to 3 are Node scripts. Its `LAYERS` table is the same checklist by eye.
-
-**It reports the layers that apply to the write boundary**, which it reads from
-the machine record. That is the one place a report may read it, since unlike a
-hook it runs where you are standing (b-fac ADR 0030). In guest mode the four owned layers read
-`n/a` with the mode as the reason and the gate is the only one judged, so a
-guest repo with the gate installed exits 0. Where nobody recorded a boundary it
-says so and reports the owned set, which is a finding rather than a failure and
-a prompt to answer the question b-fac ADR 0021 asks at initialisation.
-
-**A layer you decided against is `declined`, not missing.** Record the decision,
-then say so in `AGENTS.md`: `Enforcement layer 3: declined, recorded in <path>`.
-The row keeps its *does not cover* line and stops moving the exit code. Without
-that, a deliberate absence reports MISSING with a recipe under it, and this repo
-proved where that ends: the decision was written down three times and the layer
-was installed anyway within a day. b-fac ADR 0054, `references/enforcement.md`.
-
-**Copying is not installing**, which is the half it exists to catch: a guard
-script no `settings.json` invokes, a `REQUIRED` list still holding its
-placeholder, a matcher naming one shell tool, a `DEFAULT_BRANCH` naming a branch
-this repo does not have. Where only the instruction stood, one project skipped
-setup outright and 20 merges went through raw `gh pr merge`.
-
-**And wired is not loaded**, which no report can see. Hooks are read once at
-process start, so ask the guard itself after the restart:
-`node scripts/guard-merge.mjs --probe`. Being refused is the answer you want; if
-it prints, nothing intercepted it and the guard is not in this process. A gate
-that was never loaded is silent in exactly the way a gate with nothing to deny
-is silent, and one repository spent two days that way.
-
-| Asset | Goes to | Edit first |
-| --- | --- | --- |
-| `check-setup.mjs` | `scripts/`, and run it first | `LAYERS` paths, if they differ |
-| `review.md` | `docs/process/` | The bracketed commands |
-| `working-an-issue.md` | `docs/process/` | Commands and check names |
-| `pull_request_template.md` | `.github/` | Nothing |
-| `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
-| `merge-pr.mjs` | `scripts/` | `REQUIRED` check names, read when no ruleset names them |
-| `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
-| `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
-| `handoff-hooks.mjs` | `scripts/`, wired to `PostToolUse`, `PreCompact` and `SessionStart`, with the threshold in settings `env` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
-| `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
-| `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
-| `check-outward-writes.mjs` | **Guest mode, at publish.** Run in place. Reports what actually left, from the reflog; `--mark` after an authorised publish | Nothing |
-
-`references/first-run.md` walks this whole sequence as one repo actually ran it,
-in the order its commits show rather than the order listed here.
+Read `references/first-run.md` before installing anything: it holds the
+checklist, the asset table, and `assets/check-setup.mjs`, whose output is
+where setup ends.
 
 ## References
 
