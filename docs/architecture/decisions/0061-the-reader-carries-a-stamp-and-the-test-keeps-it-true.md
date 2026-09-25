@@ -1,6 +1,7 @@
 # 0061. The reader carries a stamp, and the test keeps it true
 
-Status: accepted
+Status: accepted, and amended by ADR 0067, which gives the helpers copied beside
+the reader marked regions and stamps of their own.
 
 Issue #185. ADR 0029 refuses a shared module; ADR 0031 holds the copies
 together with `scripts/command-reader.test.mjs`.

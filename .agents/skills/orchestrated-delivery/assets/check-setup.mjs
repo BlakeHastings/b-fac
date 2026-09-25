@@ -169,6 +169,15 @@ const readCommon = (rel) => (COMMON === null ? null : readAt(COMMON, rel))
 // compared path can legitimately be absent, so the part that exists is
 // canonicalised and the missing tail is kept as written. Only comparisons go
 // through this: the report still prints a directory the way you named it.
+
+// BEGIN path comparison
+// path comparison stamp: sha256 26390098cb4f6d98
+//
+// The same two functions are in `guard-guest-writes.mjs` and
+// `check-outward-writes.mjs`, and in the skill the test that holds the command
+// reader holds all three to one text and this stamp. If this file was copied
+// into your repository, compare this line with the skill's. #201.
+
 function canonical(path) {
   const abs = resolve(path)
   try {
@@ -179,6 +188,20 @@ function canonical(path) {
   }
 }
 
+function samePath(a, b) {
+  const normalise = (path) => canonical(path).replace(/[\\/]+$/, '')
+  return process.platform === 'win32'
+    ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
+    : normalise(a) === normalise(b)
+}
+
+// END path comparison
+
+// BEGIN path display
+// path display stamp: sha256 53da66d338517398
+//
+// The same in `check-outward-writes.mjs`, and held to it the same way. #201.
+
 // Relative when the file is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point: a path leading
 // out of this directory is the visible form of "this fact is the repository's,
@@ -187,6 +210,8 @@ const show = (abs) => {
   const path = relative(canonical(ROOT), canonical(abs)).replace(/\\/g, '/')
   return path !== '' && !path.startsWith('..') ? path : abs
 }
+
+// END path display
 
 // ---------------------------------------------------------------------------
 // The write boundary
@@ -1194,13 +1219,6 @@ function preToolUseHooks(needle, root = ROOT) {
 // ---------------------------------------------------------------------------
 const userSettingsFile = () =>
   join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
-
-function samePath(a, b) {
-  const normalise = (path) => canonical(path).replace(/[\\/]+$/, '')
-  return process.platform === 'win32'
-    ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
-    : normalise(a) === normalise(b)
-}
 
 function machineWideHooks() {
   const file = userSettingsFile()

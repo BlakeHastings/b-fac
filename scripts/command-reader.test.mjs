@@ -15,6 +15,11 @@
 // that it was a generation behind — still scanning the text of the line — and
 // nothing here noticed, because nothing here looked.
 //
+// The same thing then happened one step outside the markers. Helpers copied
+// beside the reader, and the path helpers copied between assets, had nothing
+// comparing them until #201. They are marked regions now too, each with its own
+// stamp, listed in REGIONS below, and held to one text by the same test.
+//
 // WHAT IT COMPARES, AND WHAT IT DELIBERATELY DOES NOT
 // The *reader*: how a line becomes segments and tokens, and since #199 how a
 // `gh api` call's arguments read, which every guard asks. Not the verdicts. The
@@ -36,47 +41,134 @@
 // end is #93's question and this does not answer it.
 //
 //   npm test
-import { test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const BEGIN = '// BEGIN command reader'
-const END = '// END command reader'
+const ASSETS = '../.agents/skills/orchestrated-delivery/assets/'
 
-const GUARDS = {
+const FILES = {
   'scripts/guard-merge.mjs': new URL('./guard-merge.mjs', import.meta.url),
-  'assets/guard-guest-writes.mjs': new URL(
-    '../.agents/skills/orchestrated-delivery/assets/guard-guest-writes.mjs',
-    import.meta.url,
-  ),
-  'assets/guard-merge.mjs': new URL(
-    '../.agents/skills/orchestrated-delivery/assets/guard-merge.mjs',
-    import.meta.url,
-  ),
+  'assets/guard-guest-writes.mjs': new URL(`${ASSETS}guard-guest-writes.mjs`, import.meta.url),
+  'assets/guard-merge.mjs': new URL(`${ASSETS}guard-merge.mjs`, import.meta.url),
+  'assets/check-setup.mjs': new URL(`${ASSETS}check-setup.mjs`, import.meta.url),
+  'assets/check-outward-writes.mjs': new URL(`${ASSETS}check-outward-writes.mjs`, import.meta.url),
 }
+
+// Every marked region, #201. The reader was the first and is still the one the
+// corpus below walks. The others are helpers that had been copied just outside
+// its markers, where nothing compared them: `canonical` and `samePath` in three
+// assets from #194, `commandName` and `shellPayload` in all three guards,
+// `gitArguments` and `ghArguments` in the two guards that read both the same
+// way, the merge rule, REST and GraphQL, in the two merge guards from #213, and
+// `show`, which prints a path the same way in the two check scripts.
+//
+// Each helper group is a region of its own with a stamp of its own, rather than
+// a wider reader region, for two reasons. The groups live in different sets of
+// files: the path helpers are in two files that carry no reader at all, and the
+// merge rule is not in the guest gate. One region would have meant shipping dead
+// code into the files that lack a group, or not covering it. And the reader's
+// stamp is the line a host already compares; a helper change should not tell a
+// host its reader moved when it did not.
+//
+// `needs` names regions of the same file that a region's code calls, so the
+// module a region is imported as can be assembled from that one file. `prelude`
+// is the imports a region would otherwise take from its file's header.
+// `exports` is what proves the markers enclose the thing: a name the region no
+// longer declares fails to import, rather than shrinking the comparison.
+//
+// `scripts/guard-merge.mjs`'s `ghArguments` is left out of its region on
+// purpose. It compares the raw token where the other two ask `commandName`, so
+// `/usr/bin/gh pr merge` reads as a merge in the shipped guard and not in this
+// repository's. ADR 0031 records that as a difference in the rules, not in the
+// reading, and this does not change it.
+const REGIONS = [
+  {
+    name: 'command reader',
+    stamp: 'reader stamp',
+    files: ['scripts/guard-merge.mjs', 'assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
+    exports: ['segmentsOf', 'ghApiCall'],
+  },
+  {
+    name: 'shell payload',
+    stamp: 'shell payload stamp',
+    files: ['scripts/guard-merge.mjs', 'assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
+    exports: ['commandName', 'shellPayload'],
+  },
+  {
+    name: 'command arguments',
+    stamp: 'command arguments stamp',
+    files: ['assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
+    needs: ['shell payload'],
+    exports: ['gitArguments', 'ghArguments'],
+  },
+  {
+    name: 'merge rule',
+    stamp: 'merge rule stamp',
+    files: ['scripts/guard-merge.mjs', 'assets/guard-merge.mjs'],
+    needs: ['command reader'],
+    exports: ['mergesThroughApi', 'graphqlMerge', 'GRAPHQL_MERGE', 'GRAPHQL_UNREADABLE'],
+  },
+  {
+    name: 'path comparison',
+    stamp: 'path comparison stamp',
+    files: ['assets/guard-guest-writes.mjs', 'assets/check-setup.mjs', 'assets/check-outward-writes.mjs'],
+    prelude:
+      "import { realpathSync } from 'node:fs'\n" +
+      "import { basename, dirname, join, resolve } from 'node:path'\n",
+    exports: ['canonical', 'samePath'],
+  },
+  {
+    name: 'path display',
+    stamp: 'path display stamp',
+    files: ['assets/check-setup.mjs', 'assets/check-outward-writes.mjs'],
+    needs: ['path comparison'],
+    // `show` reads the file's `ROOT`, which each file works out in its own way
+    // and is not a copy. The module stands one in.
+    prelude:
+      "import { realpathSync } from 'node:fs'\n" +
+      "import { basename, dirname, join, relative, resolve } from 'node:path'\n" +
+      'const ROOT = globalThis.__regionRoot\n',
+    exports: ['show'],
+  },
+]
+
+const regionNamed = (name) => REGIONS.find((region) => region.name === name)
+
+// The reader's copies, which the corpus below walks.
+const GUARDS = Object.fromEntries(regionNamed('command reader').files.map((file) => [file, FILES[file]]))
 
 // Neither guard can be imported: both read stdin at the top level and one of
-// them installs itself. So the reader is lifted out by its markers instead. A
-// marker that goes missing fails here rather than shrinking what is compared.
-function readerSource(url) {
-  const source = readFileSync(fileURLToPath(url), 'utf8')
-  const from = source.indexOf(BEGIN)
-  const to = source.indexOf(END)
-  assert.notEqual(from, -1, `${url} carries no \`${BEGIN}\` marker`)
-  assert.notEqual(to, -1, `${url} carries no \`${END}\` marker`)
-  assert.equal(from < to, true, `${url} has the reader markers the wrong way round`)
-  return source.slice(from + BEGIN.length, to)
+// them installs itself. The two checks run on import too. So a region is lifted
+// out by its markers instead. A marker that goes missing, or appears twice, fails
+// here rather than shrinking what is compared.
+function regionSource(file, name) {
+  const lines = readFileSync(fileURLToPath(FILES[file]), 'utf8').split('\n')
+  const at = (marker) => lines.flatMap((line, i) => (line.trimEnd() === marker ? [i] : []))
+  const begins = at(`// BEGIN ${name}`)
+  const ends = at(`// END ${name}`)
+  assert.equal(begins.length, 1, `${file} should carry exactly one \`// BEGIN ${name}\` line, and carries ${begins.length}`)
+  assert.equal(ends.length, 1, `${file} should carry exactly one \`// END ${name}\` line, and carries ${ends.length}`)
+  assert.equal(begins[0] < ends[0], true, `${file} has the ${name} markers the wrong way round`)
+  return lines.slice(begins[0] + 1, ends[0]).join('\n')
 }
 
-async function readerOf(url) {
-  const module = `${readerSource(url)}\nexport { segmentsOf, ghApiCall }\n`
+async function importRegion(file, name) {
+  const region = regionNamed(name)
+  const parts = [region.prelude ?? '']
+  for (const needed of region.needs ?? []) parts.push(regionSource(file, needed))
+  parts.push(regionSource(file, name))
+  parts.push(`export { ${region.exports.join(', ')} }`)
+  const module = parts.join('\n')
   return import(`data:text/javascript;base64,${Buffer.from(module).toString('base64')}`)
 }
 
 // Whole lines that are entirely a comment, and blank ones. Comments are the one
-// thing the two copies are free to disagree about, and they should: the guest
+// thing the copies are free to disagree about, and they should: the guest
 // gate's reader explains itself to somebody reading it in a repository that is
 // not ours. Stripping by whole line never reaches inside a string, which a
 // cleverer stripper would eventually get wrong.
@@ -86,9 +178,22 @@ const codeLines = (text) =>
     .map((line) => line.trimEnd())
     .filter((line) => line.trim() !== '' && !line.trim().startsWith('//'))
 
-const readers = Object.fromEntries(
-  await Promise.all(Object.entries(GUARDS).map(async ([name, url]) => [name, await readerOf(url)])),
-)
+// Every region's module, per file. Importing is itself the check that each
+// region still declares what it is supposed to hold.
+// A real directory for the path regions to compare, and the `ROOT` that
+// `show` is imported with.
+const scratch = mkdtempSync(join(tmpdir(), 'b-fac-paths-'))
+after(() => rmSync(scratch, { recursive: true, force: true }))
+globalThis.__regionRoot = scratch
+
+const modules = {}
+for (const region of REGIONS) {
+  modules[region.name] = Object.fromEntries(
+    await Promise.all(region.files.map(async (file) => [file, await importRegion(file, region.name)])),
+  )
+}
+
+const readers = modules['command reader']
 const [FIRST, ...REST] = Object.keys(GUARDS)
 
 // The drift control. It is a text comparison rather than a behavioural one on
@@ -101,28 +206,40 @@ const [FIRST, ...REST] = Object.keys(GUARDS)
 test('the marked region is big enough to be the reader', () => {
   for (const name of Object.keys(GUARDS)) {
     assert.equal(
-      codeLines(readerSource(GUARDS[name])).length > 50,
+      codeLines(regionSource(name, 'command reader')).length > 50,
       true,
       `${name}'s marked region is too small to be the reader`,
     )
   }
 })
 
-for (const name of REST) {
-  test(`${name} carries the same reader as ${FIRST}, comments aside`, () => {
-    assert.deepEqual(
-      codeLines(readerSource(GUARDS[name])),
-      codeLines(readerSource(GUARDS[FIRST])),
-      `The command reader has drifted between ${FIRST} and ${name}.\n` +
-        'Every copy answers the same question and a fix belongs in all of them, in\n' +
-        'one commit. ADR 0029 refuses a shared module; #93 holds the duplication.',
-    )
-  })
+for (const region of REGIONS) {
+  const [first, ...rest] = region.files
+  for (const file of region.files) {
+    test(`${file}'s ${region.name} region holds ${region.exports.join(', ')}`, () => {
+      for (const name of region.exports) {
+        assert.notEqual(modules[region.name][file][name], undefined, `${file}'s ${region.name} lost ${name}`)
+      }
+    })
+  }
+  for (const file of rest) {
+    const label = region.name === 'command reader' ? 'the same reader' : `the same ${region.name}`
+    test(`${file} carries ${label} as ${first}, comments aside`, () => {
+      assert.deepEqual(
+        codeLines(regionSource(file, region.name)),
+        codeLines(regionSource(first, region.name)),
+        `The ${region.name} region has drifted between ${first} and ${file}.\n` +
+          'Every copy answers the same question and a fix belongs in all of them, in\n' +
+          'one commit. ADR 0029 refuses a shared module; #93 holds the duplication.',
+      )
+    })
+  }
 }
 
 // The stamp, #185. A copy of the reader that leaves for a host repository is a
 // fourth copy nobody here can read, so each region carries a line naming the
-// code it holds, and an operator compares that one line with the skill's.
+// code it holds, and an operator compares that one line with the skill's. Since
+// #201 every marked region carries one, each under its own label.
 //
 // It hashes exactly what the drift control above compares, `codeLines`, and
 // that choice is forced rather than taste. The copies' comments differ on
@@ -137,32 +254,100 @@ for (const name of REST) {
 // already owns the region and its normalisation. A second script would be a
 // second copy of `codeLines`, and a second copy of a thing is how this whole
 // area keeps going wrong.
-const STAMP = /^\/\/ reader stamp: sha256 ([0-9a-f]+)$/
-
 const stampOf = (region) =>
   createHash('sha256').update(codeLines(region).join('\n')).digest('hex').slice(0, 16)
 
-for (const name of Object.keys(GUARDS)) {
-  test(`${name} carries a stamp that matches its reader`, () => {
-    const region = readerSource(GUARDS[name])
-    const stamps = region
-      .split('\n')
-      .map((line) => STAMP.exec(line.trim()))
-      .filter(Boolean)
-    const expected = stampOf(region)
-    assert.equal(
-      stamps.length,
-      1,
-      `${name} should carry exactly one \`// reader stamp: sha256 <hash>\` line inside the reader region, and carries ${stamps.length}.\n` +
-        `For the reader it holds now, the line is: // reader stamp: sha256 ${expected}`,
-    )
-    assert.equal(
-      stamps[0][1],
-      expected,
-      `${name}'s reader stamp does not match the code it stamps. The reader changed and the stamp did not,\n` +
-        'so a host repository comparing stamps would be told its copy is current when it is not.\n' +
-        `Update the line, in all three copies, to: // reader stamp: sha256 ${expected}`,
-    )
+for (const region of REGIONS) {
+  const pattern = new RegExp(`^// ${region.stamp}: sha256 ([0-9a-f]+)$`)
+  for (const file of region.files) {
+    test(`${file} carries a ${region.stamp} that matches its ${region.name}`, () => {
+      const source = regionSource(file, region.name)
+      const stamps = source
+        .split('\n')
+        .map((line) => pattern.exec(line.trim()))
+        .filter(Boolean)
+      const expected = stampOf(source)
+      assert.equal(
+        stamps.length,
+        1,
+        `${file} should carry exactly one \`// ${region.stamp}: sha256 <hash>\` line inside the ${region.name} region, and carries ${stamps.length}.\n` +
+          `For the code it holds now, the line is: // ${region.stamp}: sha256 ${expected}`,
+      )
+      assert.equal(
+        stamps[0][1],
+        expected,
+        `${file}'s ${region.stamp} does not match the code it stamps. The code changed and the stamp did not,\n` +
+          'so a host repository comparing stamps would be told its copy is current when it is not.\n' +
+          `Update the line, in all ${region.files.length} copies, to: // ${region.stamp}: sha256 ${expected}`,
+      )
+    })
+  }
+}
+
+// What each helper region is for, pinned in every copy. The text comparison
+// already makes the copies one; these make sure the one is right, and give
+// `canonical` and `samePath` a test of their own, which until #201 they had
+// only through their callers.
+for (const [file, m] of Object.entries(modules['shell payload'])) {
+  test(`${file}'s shell payload reads a nested shell's command line`, () => {
+    assert.equal(m.commandName('C:\\Program Files\\Git\\bin\\GIT.EXE'), 'git')
+    assert.equal(m.commandName('/usr/bin/gh'), 'gh')
+    assert.equal(m.shellPayload(['bash', '-c', 'gh pr merge 42']), 'gh pr merge 42')
+    assert.equal(m.shellPayload(['/usr/bin/pwsh.exe', '-Command', 'git push']), 'git push')
+    assert.equal(m.shellPayload(['cmd', '/C', 'git push']), 'git push')
+    assert.equal(m.shellPayload(['bash', 'script.sh']), null)
+    assert.equal(m.shellPayload(['bash', '-c']), null)
+    assert.equal(m.shellPayload(['node', '-c', 'x']), null)
+  })
+}
+
+for (const [file, m] of Object.entries(modules['command arguments'])) {
+  test(`${file}'s command arguments skip the global flags`, () => {
+    assert.deepEqual(m.gitArguments(['git', '-C', 'repo', '-c', 'a=b', '--no-pager', 'push', 'origin']), ['push', 'origin'])
+    assert.deepEqual(m.gitArguments(['/usr/bin/git.exe', 'push']), ['push'])
+    assert.equal(m.gitArguments(['gh', 'pr', 'merge']), null)
+    assert.deepEqual(m.ghArguments(['gh', '--repo', 'o/r', 'pr', 'merge', '42']), ['pr', 'merge', '42'])
+    assert.deepEqual(m.ghArguments(['/usr/bin/gh', '-R', 'o/r', 'api', 'x']), ['api', 'x'])
+    assert.equal(m.ghArguments(['git', 'push']), null)
+  })
+}
+
+for (const [file, m] of Object.entries(modules['merge rule'])) {
+  test(`${file}'s merge rule tells a merge from a read, REST and GraphQL`, () => {
+    assert.equal(m.mergesThroughApi(['repos/o/r/pulls/1/merge', '-X', 'PUT']), true)
+    assert.equal(m.mergesThroughApi(['--silent', 'repos/o/r/pulls/1/merge-async', '-X', 'PUT']), true)
+    assert.equal(m.mergesThroughApi(['repos/o/r/pulls/1/merge']), false)
+    assert.equal(m.mergesThroughApi(['repos/o/r/issues/1/comments', '-f', 'body=pulls/1/merge']), false)
+    assert.equal(m.graphqlMerge(['graphql', '-f', 'query=mutation { mergePullRequest(input: {}) { clientMutationId } }']), 'merge')
+    assert.equal(m.graphqlMerge(['graphql', '-f', 'query=query { search(query: "mergePullRequest") { issueCount } }']), null)
+    assert.equal(m.graphqlMerge(['graphql', '-F', 'query=@q.graphql']), 'unreadable')
+    assert.equal(m.graphqlMerge(['graphql', '--input', 'body.json']), 'unreadable')
+    assert.equal(m.graphqlMerge(['repos/o/r/issues']), null)
+  })
+}
+
+for (const [file, m] of Object.entries(modules['path comparison'])) {
+  test(`${file}'s path comparison names a directory by what the filesystem calls it`, () => {
+    const real = realpathSync.native(scratch)
+    // What the filesystem calls it, whichever spelling it was asked with.
+    assert.equal(m.canonical(scratch), real)
+    assert.equal(m.canonical(tmpdir()), realpathSync.native(tmpdir()))
+    // A tail that does not exist yet is kept as written, under the real head.
+    assert.equal(m.canonical(join(scratch, 'not', 'yet')), join(real, 'not', 'yet'))
+    assert.equal(m.samePath(scratch, real), true)
+    assert.equal(m.samePath(scratch, `${scratch}${sep}`), true)
+    assert.equal(m.samePath(join(scratch, 'gone'), join(real, 'gone')), true)
+    assert.equal(m.samePath(join(scratch, 'a'), join(scratch, 'b')), false)
+    assert.equal(m.samePath(scratch.toUpperCase(), scratch.toLowerCase()), process.platform === 'win32')
+  })
+}
+
+for (const [file, m] of Object.entries(modules['path display'])) {
+  test(`${file}'s path display is relative inside the checkout and absolute outside it`, () => {
+    assert.equal(m.show(join(scratch, 'factory', 'machine.md')), 'factory/machine.md')
+    assert.equal(m.show(scratch), scratch)
+    const outside = join(scratch, '..', 'elsewhere')
+    assert.equal(m.show(outside), outside)
   })
 }
 

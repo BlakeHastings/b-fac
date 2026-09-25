@@ -520,6 +520,13 @@ function ghArguments(tokens) {
   return tokens.slice(at)
 }
 
+// BEGIN shell payload
+// shell payload stamp: sha256 b6b4205db57edd81
+//
+// A second marked region, held to the same text in all three guards by the same
+// test as the reader, with a stamp of its own so that a change here does not
+// move the reader's. #201.
+
 const commandName = (token) =>
   token
     .split(/[\\/]/)
@@ -539,6 +546,8 @@ function shellPayload(tokens) {
   const at = tokens.findIndex((token) => SHELL_COMMAND_FLAGS.has(token))
   return at === -1 ? null : (tokens[at + 1] ?? null)
 }
+
+// END shell payload
 
 // How many shells deep the walk follows a payload. Two readers of the command
 // line now start from the top, and they have to agree on where the bottom is or
@@ -643,6 +652,15 @@ const USE_WRAPPER =
   'reviews and merges with:\n\n' +
   '  node scripts/merge-pr.mjs <pr-number>\n\n' +
   'See docs/process/working-an-issue.md.'
+
+// BEGIN merge rule
+// merge rule stamp: sha256 e41bec80b425dbf6
+//
+// How a `gh api` call is read as a merge, REST or GraphQL. This repository's
+// guard and the one it ships in `assets/guard-merge.mjs` carry it in two copies,
+// and `scripts/command-reader.test.mjs` holds them to one text and one stamp,
+// as it does the reader. The messages the rule prints are inside, so they stay
+// the same too. #201.
 
 // A merge endpoint, as a whole path segment, so `branches/merge-queue-test`
 // does not trip it. `merge-async` is the asynchronous form of `pulls/<n>/merge`,
@@ -784,6 +802,8 @@ const GRAPHQL_UNREADABLE =
   'Variables can still come from `-F name=value`. Only the query has to be\n' +
   `inline, and one that calls none of ${[...MERGE_MUTATIONS].join(', ')}\n` +
   'is allowed.'
+
+// END merge rule
 
 // `whole` is the command line the harness was handed, which is the same as
 // `line` until the walk steps into a shell payload. The probe's wording is the

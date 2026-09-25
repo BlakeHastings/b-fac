@@ -423,7 +423,10 @@ The copy a repository installed is one more, and nothing watches it. The line
 under the marker, `// reader stamp: sha256 <hash>`, is a hash of the reader's
 code, which the skill's own check keeps true. Compare it with the same line in
 the asset of the skill you have now: a different stamp means your reader is not
-the skill's.
+the skill's. The helpers beside the reader, and the merge rule itself, are
+marked regions with stamps of their own (`// merge rule stamp: ...` and the
+like), compared the same way, so a change to one of them does not move the
+reader's.
 
 ## The other gate: guest mode's write boundary
 
