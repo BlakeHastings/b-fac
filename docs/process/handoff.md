@@ -1,9 +1,8 @@
 # Handoff
 
-**Written 2026-08-25, at `d22d22e`, version 0.45.0.** Fourth edition. The third
-was written 2026-08-24 at `1a01485` and version 0.38.0, and was overtaken inside
-a day: four merges, a reversed decision record, and a trap note of its own that
-turned out to be the thing that misled the next orchestrator.
+**Written 2026-09-25, at `f45a658`, version 0.54.1.** Fifth edition. The fourth
+was written 2026-08-25 at `d22d22e`, version 0.45.0, and sat a month while
+everything it listed as in flight landed or closed.
 
 A snapshot, not a source of truth. Everything durable is in the issues, the
 ADRs, and `orchestrating.md`; this exists only to say where the work stopped and
@@ -12,151 +11,83 @@ repository, the repository is right.
 
 ## Where things stand
 
-This session opened at `1e0bdc4`, version 0.41.0, with **one pull request open
-that had never had a green check across seven pushes**. It stands at `d22d22e`,
-version **0.45.0**, after six merges, with `npm run check` green and
-`assets/check-setup.mjs` exiting **0 for the first time in this repository's
-history**.
+`main` is `f45a658`, **0.54.1**, CI green, `npm run check` green locally (811).
 
 | Epic | Closed | |
 | --- | --- | --- |
-| #4 Skill effectiveness | 33 of 44 | the live one, and it grew by fifteen this session |
-| #60 Own the process, or guest in someone else's | 19 of 26 | |
+| #60 Own the process, or guest in someone else's | 20 of 27 | |
 | #3 Harness coverage | 5 of 7 | |
 | #5 Distribution | 6 of 7 | |
-| #27 Agent visibility | 0 of 3 | parked behind #28, deliberately |
+| #27 Agent visibility | 0 of 3 | #183 is the first real answer to #28 |
 
-**Count epics from the edge, never from the `Parent: #N` body line**, and the
-last edition's warning was not strong enough. The orchestrator filed nine issues
-this session, wrote `Parent: #4` in every one, and created **zero edges**; two
-more filed by agents had the same gap. The count read `30 of 31`, which looks
-like an epic nearly finished; the truth was `31 of 40`.
-The line does not merely fail to earn its place: **writing it feels like doing
-the thing it describes.** Measurement and both commands are on #87.
+#4 Skill effectiveness is closed. **Count from the edge, never from a
+`Parent: #N` line**; #87 has why.
 
-`gh` here is 2.88.1, below the 2.94.0 that `--add-sub-issue` needs, so use the
-API form in `references/github-backlog.md`. It takes the child's internal `id`,
-not its number.
+Between the editions, 0.45.0 to 0.54.0: the fourth edition's held briefs all
+landed on 25 Aug (#156, #157, #162, #163, #170, #171, #174, #176), then #181
+(`assets/machine-load.mjs`, read the box before a wave) on 7 Sep and #192
+(compaction at 85%, a warning ten points before, resume from this file) today.
 
-## What happened this session
+This session: **#193 / PR #194**, `check-setup` read one directory as two when
+Windows named it by its 8.3 short form, so `npm run check` was red on `main` on
+any machine whose account name is over eight characters. The agent found the
+same defect in `check-outward-writes.mjs`, and in `guard-guest-writes.mjs
+--scope` it **failed open**. Verified by running the new tests against `main`'s
+assets with a long `TEMP`: exactly the four new tests fail.
 
-**The version line is the binding constraint on parallelism here, and nobody
-knew.** PR #147 sat across seven pushes with no green check, three of its commits
-empty ones pushed to nudge CI. The only conflict with `main` was one line, the
-version in `plugin.json`, and while a pull request conflicts the forge stops
-recomputing its merge ref, so `pull_request` runs are never dispatched. The
-branch was dark rather than red, and an absent check reads exactly like a queue
-that has not reached you. #151 has the measurement, #161 landed the advice, #105
-closed with it.
+## Open pull request
 
-Two corrections to that finding, both from agents checking rather than believing:
+**#183, factory observability** (`factory-observability`, two commits, 7 Sep).
+CLI, `/factory` commands, a plugin hook on five lifecycle events, a local page,
+ADRs 0056 to 0058. `CONFLICTING` and at 0.52.0, so it needs a rebase and a
+re-bump. **No review record yet.** It is the first thing that ships hooks into
+every installer's sessions, so it wants a full review, not a rebase and merge.
+Its own "not done": the page was never opened in a real browser.
 
-- The merge ref is not absent, it is **frozen**, at exactly the last sha that got
-  a run. `git ls-remote` shows it present, so a casual check reads as refutation.
-- Two of the three nudge commits **did** produce runs, both only because `main`
-  had just released the number the branch was holding. That is #105's quiet case
-  arriving by accident, and the one state in which the version check must fail.
-  **That branch's CI could start only when it was certain to be red.**
+**The owner rejected its decisions on 2026-09-25**, in their words: *"I don't like
+the decisions made for that. We need to use proper um, CLI framework for that."*
+And the CLI is a channel as well as a view: *"we will use the CLI for
+communication via the agent out as well ... when the agent is uh, waiting on
+something from the user, it needs to be able to ... put that on a queue that we
+can see in the front end."* That is the larger work, and it is in refinement.
+Do not rebase or merge #183 as it stands.
 
-**ADR 0001 was reversed on evidence, by #159 and ADR 0051.** Layer 3 was
-deliberately absent on the argument that a ruleset with no bypass actors makes a
-direct-push commit impossible. A ruleset is mutable configuration outside every
-checkout, and a token that can merge can disable it, push, and restore it leaving
-nothing behind. The audit found two real commits above the baseline, both
-verified independently as bootstrap commits from before PR #1 existed. The
-baseline sits **below** the finding rather than on the line that would have
-hidden it, which was the real test of that task.
+## The field reports of 7 and 8 September
 
-**The owner has not assented to that and should.** The weaker half of the
-argument is a threat model whose actor is the owner, and a control aimed at the
-owner's own bypass is a thing to agree to rather than discover. The stronger half
-is not a threat model at all: three documents asking readers to ignore a standing
-red line failed at least three times, most recently on the orchestrator.
+Filed from other repositories (`dbmd` among them), and the sharpest unworked
+material here:
 
-## In flight right now
-
-**Each brief is a comment on its issue rather than in the dispatch message**, so
-an agent that compacts recovers it with `gh issue view <n> --comments`. Keep it.
-It was load-bearing twice this session.
-
-**Landed**, in merge order, `main` from 0.41.0 to **0.45.0**:
-
-- **#147** (#135), the command-substitution probe hole. Unblocked by diagnosing
-  the version line rather than nudging CI a fourth time.
-- **#161** (#105 with #151), the version-line advice, both directions.
-- **#158** (#149), `scripts/check-bodies.mjs` and ADR 0050. Detection for the one
-  body-carrying call `post-body.mjs` cannot reach, which is creation.
-- **#159** (#152), layer 3 and ADR 0051, above.
-- **#169** (#160 with #153), five defects in the shipped enforcement assets. Layer
-  3 now reads a workflow's `on:` block rather than its whole text, and the report
-  prints the probe belonging to the guard actually installed. Verified end to end:
-  the printed line is refused in a session where the guard is loaded, where the
-  old one ran and exited 0 in silence.
-- **#168** (#164 with #165), `post-body.mjs comment:<id>` and ADRs 0052 and 0053.
-  The detector now prints each finding's own repair command and says how far it
-  looked.
-
-**Dispatched:** **#163**, repairing the seven blanked comments, against the
-target #168 built for it. Its first brief was wrong twice and both errors are
-recorded on the issue: it named a tool that cannot edit a comment, and it set a
-success condition reachable by waiting.
-
-**Held, briefs already written:** **#156**, which is the general form of the
-mistake this session made. **#157**, **#162**, **#170** and **#171**, all
-waiting on nothing but a dispatch.
-
-**#170 and #171 are the sharpest of those.** #170 is a false `ok`: a workflow
-naming the audit only in a comment reads as running it, so a repository is told
-it has a detection layer when what it has is a comment. #171 partly undoes #169,
-because the probe line is now derived from the guard, which only helps when the
-guard sits where the hard-coded constant says.
-
-**Expect a rebase chain.** The ruleset has `strict_required_status_checks_policy`,
-so every merge puts every other open pull request `BEHIND`. Rebases belong to the
-branch owner. **Sequence deliberately and say which branch is second**: this
-session put #158 ahead of #159 so their shared conflict in `AGENTS.md` and
-`package.json` fell to one branch once rather than to both.
+- **#189** an agent merged its own PR. Constraint 2 has never had a control.
+- **#188**, **#182** force flags destroyed uncommitted work three times in a
+  day, the owner's own layout edits among it; `git diff HEAD` hides untracked
+  files.
+- **#186** running the suite during a wave produced 27 failures from CPU alone.
+- **#187** an agent worktree gets an empty `node_modules`.
+- **#185** the shipped guard tells a host repo a test watches its copy.
+- **#184** machine-load buckets a session's own scratch work as unknown.
+- **#180** a test assumes a temp directory sits outside any repository.
 
 ## What needs the owner
 
-`needs-owner`, all with recommendations: **#14** a marketplace listing, **#28**
-the visibility surface, **#57** paying for usage testing, **#87** the
-`Parent: #N` line, which now has this session's eleven-for-eleven failure under
-it.
+`needs-owner`, unchanged: #14, #28, #57, #87, #141, **#150** (em dashes versus
+the operator's style rule). The larger piece of work the owner raised on
+2026-09-25 is the factory CLI rework above.
 
-**#150 is the live one**: the operator's standing rule forbids em dashes and this
-repository's shipped prose is full of them. Every artifact written this session
-follows the rule, so the seam is not growing, but it is a seam and every agent
-has to be told which side of it they are on. Three options and a recommendation
-are on the issue.
+## Dispatchable
 
-**#141** remains: whether the `PreCompact` refusal should be wired into this
-repository's tracked settings, which would refuse the owner's own manual
-`/compact`. Recommendation is yes, after #145.
-
-## Dispatchable now, in the order I would take them
-
-**#145** and **#134** first, because both were dispatched in the previous session
-and produced nothing, so the briefs are written and the work is untouched. Then
-**#130**, **#112**, **#114**, **#93**, **#91**, **#64**, **#7**.
-
-**#134** is still the sharpest of those: what should a report do when it holds a
-strong hint it cannot trust? Its own lean is "suppress rather than switch",
-weakly held. Read #131 and #133 first, and do not let a per-checkout legacy
-record set the repository's mode. That inversion is what ADR 0037 prevents.
-
-**#151** keeps its mechanism question open even though #161 landed its advice.
-The recommendation is direction 2, moving the bump out of the branch, with a hole
-that must be closed first: `merge-pr.mjs` is a convenience and not a control, so
-a bump living only there demotes the guarantee to a habit.
-
-**Blocked, with reasons:** #78 and #79 behind #28. #123, where per-repository
-factory state lives. #163 behind #164.
+The field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
+#64, #7. Blocked: #78 and #79 behind #28, #123.
 
 ## Traps that cost something
 
-Carried forward where still true, and the last four are new this session.
+Carried forward from the fourth edition, all still true, plus one new at the top.
 
+- **`gh` may be logged in as the wrong account.** This machine holds two, and
+  the work account `bhastings-t3` has read on this repository. With it active,
+  `gh issue create` succeeds (issues need only read, so #193 carries the wrong
+  author), while `gh pr create`, the sub-issue edge and `merge-pr.mjs` fail. A
+  sub-issue POST with its errors discarded fails in silence. Run `gh auth status`
+  before the first outward write, and never discard the error from an edge.
 - **`gh --body @-` writes the literal string `@-`.** It is a `curl` convention;
   `gh` takes `--body-file -`. The call exits 0 and prints a URL, and
   `gh issue view --comments` renders the stored body as `@-` with no sign
