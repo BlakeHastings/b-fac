@@ -960,6 +960,56 @@ test('a legacy record answering neither is the unrecorded case, and gets both wr
   })
 })
 
+// #134. The case above installs the owned layers first, so no row in it was ever
+// MISSING and no row printed a recipe. With them absent, the paragraph said not
+// to install them and every row under it said how to, and the failing summary
+// said "Install them from the skill's assets/ directory". A skimmer reads the
+// table and the summary, not the paragraph. Measured before the fix: four
+// `FIX: Copy ...` lines and that sentence, in a repository declared guest.
+//
+// The mode must not move while the recipes go: a per-checkout record is a hint,
+// not the repository's answer (b-fac ADR 0037), so the rows stay MISSING against
+// the owned checklist, gate G stays n/a, and only the recommendation is withheld.
+const OWNED_RECIPE = /FIX: Copy /
+const OWNED_SUMMARY = /Install them from the skill's/
+
+test('a legacy record saying guest withholds every owned recipe, and moves no verdict', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, '# Machine facts\n\nWrite boundary: guest\n')
+    const { code, out } = check(root)
+
+    assert.doesNotMatch(out, OWNED_RECIPE, 'a repository declared guest was told how to install an owned layer')
+    assert.doesNotMatch(out, OWNED_SUMMARY, 'the summary told a guest to install the owned layers')
+    for (const n of ['0', '1', '2', '3']) {
+      assert.equal(statusOf(out, n), 'MISSING', `layer ${n} changed verdict on a hint`)
+      assert.match(row(out, n), /FIX: withheld/, `layer ${n} says nothing about why it has no recipe`)
+    }
+    // The hint did not set the mode.
+    assert.match(out, /Write boundary: NOT RECORDED/)
+    assert.equal(statusOf(out, 'G'), 'n/a', 'the legacy record switched the checklist to guest')
+    // The one thing it may do is the remedy, and that is the guest one alone.
+    assert.match(out, INSTALL)
+    assert.doesNotMatch(out, RECORD_OWNED)
+    // Red, because one command turns it green. See the exit-code note in the source.
+    assert.equal(code, 1)
+  })
+})
+
+// The suppression is keyed to what the record says, not to its being there.
+// Without this, withholding every recipe whenever `.factory/` exists would pass
+// the test above and strand an owned repository with nothing to install from.
+test('a legacy record saying owned still gets every owned recipe', () => {
+  withRepo((root) => {
+    write(root, `${LEGACY}/machine.md`, 'Write boundary: owned\n')
+    const { code, out } = check(root)
+
+    assert.equal(code, 1)
+    for (const n of ['0', '1', '2', '3']) assert.doesNotMatch(row(out, n), /FIX: withheld/)
+    assert.match(row(out, '1'), OWNED_RECIPE)
+    assert.match(out, OWNED_SUMMARY)
+  })
+})
+
 // The second defect, and the reason it is measured on the rendered line rather
 // than on a string in the source: the legacy clause and the generic sentence
 // were written apart and joined by concatenation, so each read fine alone and
