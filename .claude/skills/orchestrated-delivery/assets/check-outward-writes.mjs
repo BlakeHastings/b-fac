@@ -95,8 +95,8 @@
 // Requires Node 18 or later and `git`. No network unless `--remote` is passed,
 // no `gh`, no dependencies.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 // Looked and saw nothing; looked and saw something; could not look. The third
 // is the one this file exists to keep separate from the first, and it is the
@@ -156,10 +156,33 @@ const readCommon = (rel) => {
   }
 }
 
+// One directory has more than one name, and git answers with a different one
+// from the one you stood in: an 8.3 short name on Windows, a junction, a `subst`
+// drive, a symlink. So two paths are compared by what `realpathSync.native`
+// calls them, keeping as written any tail that does not exist yet. Spelled out
+// again rather than shared with check-setup.mjs, for the reason ADR 0029 gives:
+// an asset is copied into a host repo on its own. #193.
+function canonical(path) {
+  const abs = resolve(path)
+  try {
+    return realpathSync.native(abs)
+  } catch {
+    const up = dirname(abs)
+    return up === abs ? abs : join(canonical(up), basename(abs))
+  }
+}
+
+function samePath(a, b) {
+  const normalise = (path) => canonical(path).replace(/[\\/]+$/, '')
+  return process.platform === 'win32'
+    ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
+    : normalise(a) === normalise(b)
+}
+
 // Relative when the path is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point.
 const show = (abs) => {
-  const path = relative(ROOT, abs).replace(/\\/g, '/')
+  const path = relative(canonical(ROOT), canonical(abs)).replace(/\\/g, '/')
   return path !== '' && !path.startsWith('..') ? path : abs
 }
 
@@ -542,7 +565,7 @@ if (process.argv.includes('--mark')) mark()
 // The report
 // ---------------------------------------------------------------------------
 console.log(`Outward writes from ${ROOT}`)
-if (COMMON !== null && resolve(COMMON) !== resolve(join(ROOT, '.git'))) {
+if (COMMON !== null && !samePath(COMMON, join(ROOT, '.git'))) {
   console.log(`This is a linked worktree. The repository is ${dirname(COMMON)}, and every`)
   console.log('fact below is the repository\'s, so it answers the same from any checkout.')
 }

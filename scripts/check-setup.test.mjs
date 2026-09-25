@@ -16,7 +16,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1073,7 +1073,57 @@ test('the write boundary is read from a worktree, so the owned checklist is not 
     assert.equal(statusOf(out, 'G'), 'PARTIAL')
     assert.equal(code, 1)
     assert.match(row(out, 'G'), /have no wiring/)
-    assert.match(row(out, 'G'), new RegExp(worktree.replace(/[\\/]/g, '.')))
+    // The list is git's, and git names a directory by its long physical path.
+    // `tmpdir()` on Windows can be the 8.3 short form of the same place. #193.
+    assert.match(row(out, 'G'), new RegExp(realpathSync.native(worktree).replace(/[\\/]/g, '.')))
+  })
+})
+
+// #193. One directory can have two names: an 8.3 short name on Windows, which
+// is what `%TEMP%` is on an account with a long user name, and a junction, a
+// `subst` drive or a symlink anywhere. Git answers with the long physical one,
+// so a report standing in the other called the main checkout a linked worktree
+// of itself and printed every repository path absolute.
+//
+// The five cases above caught that only on a machine whose temp path happens to
+// be short, and CI's is not. A junction is a second name every Windows account
+// can make without elevation, and on Linux the same call makes a directory
+// symlink; `--root` keeps the link spelling there, where a child's working
+// directory would already have been resolved. So this fails without the fix on
+// any machine this suite runs on.
+function secondName(root) {
+  const link = `${root}-link`
+  symlinkSync(root, link, 'junction')
+  return link
+}
+
+test('one directory by two names is one checkout, not a worktree of itself', () => {
+  withRepo((root) => {
+    install(root)
+    const link = secondName(root)
+    try {
+      const { code, out } = run(CHECK, [`--root=${link}`], link)
+      assert.doesNotMatch(out, /linked worktree/, 'a main checkout was reported as a worktree of itself')
+      assert.match(out, /Write boundary: guest, recorded in \.git\/factory\/machine\.md/)
+      assert.equal(statusOf(out, 'G'), 'ok')
+      assert.equal(code, 0, out)
+    } finally {
+      rmSync(link, { force: true })
+    }
+  })
+})
+
+test('a machine-wide scope written under the other name still covers the repository', () => {
+  withRepo((root) => {
+    install(root)
+    const link = secondName(root)
+    try {
+      const { code, out } = check(root, userConfig(root, join(link, '.git')))
+      assert.match(row(out, 'G'), /registered machine-wide/, 'the scope was read as another repository')
+      assert.equal(code, 0, out)
+    } finally {
+      rmSync(link, { force: true })
+    }
   })
 })
 

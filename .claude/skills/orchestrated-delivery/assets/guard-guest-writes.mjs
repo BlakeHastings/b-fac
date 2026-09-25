@@ -159,7 +159,7 @@
 //   node <path>/guard-guest-writes.mjs --install     # install into this repo
 //   node <path>/guard-guest-writes.mjs --user-hook   # print the machine-wide block
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -824,9 +824,27 @@ const SCOPE = scopeAt === -1 ? null : (process.argv[scopeAt + 1] ?? null)
 
 // Windows answers the same path in more than one spelling, and the two sides of
 // this comparison come from different places: one from `git rev-parse`, one
-// from a JSON string the operator pasted.
+// from a JSON string the operator pasted. Case is the spelling `resolve()` can
+// settle. An 8.3 short name (`C:\Users\BHASTI~1`, which is what `%TEMP%` is on
+// an account with a long name), a junction or a `subst` drive it cannot, and
+// git answers with the long physical name, so both sides go through
+// `realpathSync.native` first. The native one, because the JavaScript
+// `realpathSync` follows a junction and leaves a short name alone. It throws on
+// a path that is not there, and a scope naming a repository that has since
+// moved is exactly that, so the part that exists is canonicalised and the rest
+// kept as written. #193.
+function canonical(path) {
+  const abs = resolve(path)
+  try {
+    return realpathSync.native(abs)
+  } catch {
+    const up = dirname(abs)
+    return up === abs ? abs : join(canonical(up), basename(abs))
+  }
+}
+
 function samePath(a, b) {
-  const normalise = (path) => resolve(path).replace(/[\\/]+$/, '')
+  const normalise = (path) => canonical(path).replace(/[\\/]+$/, '')
   return process.platform === 'win32'
     ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
     : normalise(a) === normalise(b)
@@ -1101,7 +1119,7 @@ function install() {
   mkdirSync(join(common, HOME), { recursive: true })
   const self = fileURLToPath(import.meta.url)
   const destination = join(common, GUARD)
-  if (resolve(self) !== resolve(destination)) {
+  if (!samePath(self, destination)) {
     copyFileSync(self, destination)
     done.push(`copied the gate to ${destination}`)
   }
