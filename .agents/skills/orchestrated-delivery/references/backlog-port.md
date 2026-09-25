@@ -119,6 +119,33 @@ the edge field yourself unless you filter it on each blocker's state. A store
 that holds edges and cannot list by them has handed the loop the data instead of
 the answer, and that is worth knowing before you call it an implementation.
 
+**The two ready lists are not equally fresh, and the difference is where each
+one's answer is computed.** On GitHub the ready list is a search, and the index
+behind it lags the write: straight after an edge is written, the item it blocked
+can still come back from `-is:blocked`. That is the one place the rule above
+points the other way, since the field is right and the command is briefly wrong,
+so `references/github-backlog.md` makes the turn that wrote an edge re-read what
+it touched before dispatching it.
+
+beads has no such window for the writes the loop makes. `bd ready` trusts a
+denormalised `is_blocked` flag, and beads' own reference for `bd
+recompute-blocked` says local writes maintain that flag, so a `bd dep add`
+reaches the next `bd ready` on the same database. The flag can go stale in one
+place, which is a pull: the post-pull recompute is scoped to what the merge
+changed, and if it is skipped (a recompute failing after its merge committed, a
+conflicted pull resolved by hand) the flag is wrong until `bd recompute-blocked`
+runs, and a later pull that merges nothing will not fix it. A guest-mode
+database lives on one machine and is not pulled, so for the loop as it stands
+the beads list is current. A repo that syncs
+a beads database between machines inherits a staleness with a different cause
+and a different repair, and should run `bd recompute-blocked` after any pull it
+had to resolve by hand. That comes from beads' documentation, present from
+1.2.1, and was not reproduced here.
+
+So an implementation's file owes one more sentence than the ready command: how
+fresh that command's answer is straight after the loop's own write, and what the
+loop does when it is not.
+
 ## Epic is whatever the store already spells it as
 
 GitHub gained first-class issue types in the same release as the edges, and the

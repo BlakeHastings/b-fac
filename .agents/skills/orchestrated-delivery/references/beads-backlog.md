@@ -200,6 +200,14 @@ on", the blocked item leaves `bd ready`, and `bd blocked` names the blocker:
 item.** The decay the GitHub side pays for by hand is simply absent: there was
 never a mark to go stale, only an edge that stopped mattering.
 
+**And the answer is current straight after the write**, which GitHub's is not.
+`bd ready` reads a denormalised `is_blocked` flag that local writes maintain, so
+the turn that runs `bd dep add` can ask `bd ready` next and trust it, where
+GitHub's turn has to re-read what it touched. The flag's one way to go stale is
+a pull whose scoped recompute was skipped; `bd recompute-blocked` repairs it.
+That is from beads' own reference for that command, and
+`references/backlog-port.md` has the comparison.
+
 **Waiting on the owner is a gate**, and an ad-hoc one needs no formula:
 
 ```bash

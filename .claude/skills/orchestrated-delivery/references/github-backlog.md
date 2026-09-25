@@ -63,6 +63,69 @@ waiting to be written against work whose own body says no. That is how this
 requirement was found: two issues each ended with "do not build this yet" and
 neither said so anywhere the list could show it.
 
+### The list lags what you just wrote, so re-read what you touched
+
+**The edge is authoritative the moment the write returns. The search that reads
+it is not.** `is:blocked` is a search qualifier, and GitHub's search index is
+eventually consistent. Measured once, in BlakeHastings/b-fac#112: straight after two edges were
+written, `gh api .../dependencies/blocked_by` returned the blocker, `--search
+"is:open is:blocked"` returned nothing twice, and a little later it returned
+both. The window is short and it is somebody else's index, so no number is
+written down here. Assume it exists; do not assume its length.
+
+**It lands exactly where it does harm.** An orchestrator files a blocking edge
+and then, in the same turn, asks what to dispatch. For that one query the item
+it just blocked still reads as ready, which is the failure the edge was adopted
+to prevent, reappearing inside the gap between writing it and seeing it.
+
+The direction matters. A write that makes an item *un*dispatchable can leave it
+in the dispatch list for the window, and that is a wrong dispatch. A write that
+makes one dispatchable (closing its blocker, removing a label) can leave it out
+for the window, and that costs a turn, not a mistake. The two label exclusions
+in the query are search qualifiers too; their lag is unmeasured, so treat a
+label you just added the same way as an edge.
+
+**The rule: after a write this turn that could make an item undispatchable,
+the dispatch search is not trusted for that item. Re-read it before briefing
+it.** One read, for an item already in hand, and the read is of the issue, not
+the index:
+
+```bash
+gh issue view 78 --json state,blockedBy,labels --jq \
+  '{state, open_blockers: [.blockedBy.nodes[] | select(.state == "OPEN") | .number], labels: [.labels[].name]}'
+# {"labels":["area:visibility","blocked"],"open_blockers":[28],"state":"OPEN"}
+```
+
+Run on `gh` 2.101.0 against a real blocked issue, read-only. A non-empty
+`open_blockers`, or `needs-owner` or `needs-refinement` in `labels`, means not
+dispatchable, whatever the search said. The `select` is not optional: `blockedBy`
+lists closed blockers too, which is why this is a check on an item you already
+suspect and never a replacement for the list. What that measurement found immediate
+was the REST endpoint, which is also the read for a client older than 2.94.0:
+
+```bash
+gh api repos/{owner}/{repo}/issues/78/dependencies/blocked_by \
+  --jq '[.[] | select(.state == "open") | .number]'
+# [28]
+```
+
+`gh issue view` reads the issue record through GraphQL rather than through
+search, so it is on the authoritative side of the line; its timing straight
+after a write was not separately measured.
+
+**Why this and not the other two candidates.** Accepting the lag because the
+orchestrator knows what it wrote is true and not enough: the knowledge is in the
+context and the choice is made from the list, and the rule exists to make the
+first override the second mechanically instead of by remembering to. Waiting and
+re-querying puts a guess about somebody else's index into the loop. The re-read
+costs one call per item the turn already touched and closes the window exactly
+where the harm is.
+
+**What it does not cover.** An edge or label written by someone else (the owner
+in the web UI, another session) inside the window. The loop cannot know to
+re-read an item it did not touch, and the window is short enough that the next
+turn's list catches it.
+
 ## Behind another issue is an edge, and the edge is state-aware
 
 This is the port's `block` verb. From **`gh` 2.94.0** the write is a flag:
