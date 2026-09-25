@@ -318,19 +318,23 @@ is the right step. Then prove it held: the saved commit is not empty, and it
 contains every path `git status` listed.
 
 ```bash
-git -C "$w" status --porcelain --untracked-files=all --no-renames | cut -c4- | sort > before.txt
+git -C "$w" status --porcelain -z --untracked-files=all --no-renames | tr '\0' '\n' | cut -c4- | sort > before.txt
 git -C "$w" add -A
 git -C "$w" commit -m "WIP (unreviewed): preserved from a stopped agent"
-git -C "$w" diff --name-only --no-renames HEAD~1 HEAD | sort > saved.txt
+git -C "$w" diff -z --name-only --no-renames HEAD~1 HEAD | tr '\0' '\n' | sort > saved.txt
 test -s saved.txt && comm -23 before.txt saved.txt    # must print nothing
 ```
 
-`--untracked-files=all` matters: without it `git status` reports an untracked
-directory as `dir/`, which matches no file name and hides what is inside it.
+Both flags earn their place. Without `--untracked-files=all`, `git status`
+reports an untracked directory as `dir/`, which matches no file name and hides
+what is inside it. Without `-z`, `git status` quotes a name containing a space
+and `git diff --name-only` does not, so a good backup fails the check. A check
+that cries wolf gets ignored, and then it cannot catch the real miss. `-z`
+turns quoting off on both sides.
 Anything `comm` prints is a path you are about to lose. If you need a patch
 rather than a commit, `git add -A && git diff --cached --binary` is the form that
-includes untracked files, and the same check applies with
-`git diff --cached --name-only`. Prefer the commit to `git stash push -u`: it
+includes untracked files. The same check applies, with
+`git diff -z --cached --name-only --no-renames` as the saved side. Prefer the commit to `git stash push -u`: it
 keeps untracked files too, but the stash stack is shared by every worktree of
 the repository, so another session can pop or drop it. Ignored files (`.env`, a
 local database) are in none of these, which is right for secrets and worth one
