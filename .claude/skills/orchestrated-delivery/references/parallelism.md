@@ -218,6 +218,29 @@ has now happened on a second repo, which makes it a property of `git add -A` and
 not an accident: **put the worktree directory in `.gitignore`** so the root-level
 add cannot pick one up silently.
 
+That covers the worktrees. It does not cover everyone else writing to the main
+checkout, and **the orchestrator is not the only writer there.** In one session
+the owner was editing prose, a studio was writing layout coordinates as boxes
+were dragged, and the backlog tool rewrote a tracked export on every write. None
+of them announce it, and `git status` when you look is not `git status` when the
+command runs. That session destroyed uncommitted work three times with a force
+flag, the third time the owner's `README.md` and ten `layout:` lines, after writing
+a rule about reading what the refusal named. The refusal names one file and the
+reset takes all of them.
+
+So the main checkout gets a state rather than a judgement:
+
+- **In the main checkout:** edit, `git add` **by name**, commit, push. Bringing
+  it up to date with `git pull --ff-only` belongs here too, because it refuses
+  rather than overwrites. Nothing else.
+- **Everything else happens in a throwaway worktree:** switching branches,
+  rebasing, resetting, merging, and anything with `--force` or `--hard`. A fresh
+  worktree holds no one else's uncommitted work, so there is nothing in it to
+  lose.
+
+It costs one directory. If something was lost before you read this, the
+recovery path is under "After an agent finishes".
+
 ## Shared machine state is the parallelism hazard
 
 Any command acting on "the environment" needs telling **which** environment. A
@@ -281,6 +304,37 @@ nowhere else. Then, per worktree:
 2. If there is real work, commit it as clearly-labelled WIP on its branch. Do
    not push, do not merge, and say in the message that it is unreviewed.
 3. Resume or discard, deliberately. Do not silently finish it yourself.
+
+**Step 2 is the only copy, so check it before anything else happens to the
+worktree.** The tempting shortcut is `git diff HEAD > saved.patch`, and it
+omits every untracked file, which for an agent is usually everything it
+created. One agent's only file was untracked; the patch came out empty, the
+worktree was removed with `--force`, and the file was gone. A zero-byte backup
+that reports success is worse than none, because it is the reason you went
+ahead.
+
+`git add -A` stages untracked files and a commit keeps them, so the WIP commit
+is the right step. Then prove it held: the saved commit is not empty, and it
+contains every path `git status` listed.
+
+```bash
+git -C "$w" status --porcelain --untracked-files=all --no-renames | cut -c4- | sort > before.txt
+git -C "$w" add -A
+git -C "$w" commit -m "WIP (unreviewed): preserved from a stopped agent"
+git -C "$w" diff --name-only --no-renames HEAD~1 HEAD | sort > saved.txt
+test -s saved.txt && comm -23 before.txt saved.txt    # must print nothing
+```
+
+`--untracked-files=all` matters: without it `git status` reports an untracked
+directory as `dir/`, which matches no file name and hides what is inside it.
+Anything `comm` prints is a path you are about to lose. If you need a patch
+rather than a commit, `git add -A && git diff --cached --binary` is the form that
+includes untracked files, and the same check applies with
+`git diff --cached --name-only`. Prefer the commit to `git stash push -u`: it
+keeps untracked files too, but the stash stack is shared by every worktree of
+the repository, so another session can pop or drop it. Ignored files (`.env`, a
+local database) are in none of these, which is right for secrets and worth one
+look for anything else.
 
 Tell a resumed agent to re-orient from the code:
 
@@ -390,3 +444,32 @@ b-fac ADR 0044.
 
 Stop its environment **by path**, remove the worktree, prune. Otherwise the
 volume survives and the directory stays locked.
+
+**Remove it without `--force`.** `git worktree remove` refuses a worktree that
+holds modified or untracked files, and that refusal is the notification: it
+means the agent did not finish, or its work is not where you think, and the
+preservation step under "Resuming and recovering" comes first. A `--force` or a
+`--hard` exists to stop git saying so, and it reads as an obstacle at exactly the
+moment it is information.
+
+### When something was lost anyway
+
+`git fsck --unreachable` lists the objects nothing points to any more: blobs
+that were staged and then reset away, and the commits of a dropped stash along
+with their untracked files if it was pushed with `-u`. `git cat-file -p <oid>`
+reads any of them. **Search by content**, because a blob carries no file name
+and you will not know which object holds it:
+
+```bash
+git fsck --unreachable | awk '$2 == "blob" {print $3}' |
+  while read -r o; do git cat-file -p "$o" | grep -q 'a line you remember' && echo "$o"; done
+```
+
+That is how an owner's `README.md` came back after a `git reset --hard`, out of
+a dangling stash object. Do it before anything runs `git gc`, which
+prunes unreachable objects once they are old enough.
+
+**It cannot recover what was never staged.** An untracked file nobody added, or
+a tracked file edited and never added, was never written to the object store, so
+there is nothing for `fsck` to find. The ten layout files lost in that same
+reset were in that state, and they are gone.
