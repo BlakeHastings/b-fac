@@ -428,3 +428,32 @@ for (const [args, positionals, method] of GH_API) {
     })
   }
 }
+
+// #210. The fields, because a GraphQL call's verb is in its `query` field. gh
+// splits a field at its first `=`, and only `-F`/`--field` reads a value that
+// starts with `@` from a file, which leaves its text off the command line and
+// its value null. `--input` is the whole body from a file, and is named apart.
+const GH_API_FIELDS = [
+  ['graphql -f query=q', [{ key: 'query', value: 'q' }], null],
+  ['graphql -fquery=a=b', [{ key: 'query', value: 'a=b' }], null],
+  ['graphql --raw-field=query=q', [{ key: 'query', value: 'q' }], null],
+  ['graphql -f query=@q', [{ key: 'query', value: '@q' }], null],
+  ['graphql -F query=@q.graphql', [{ key: 'query', value: null }], null],
+  ['graphql --field query=@-', [{ key: 'query', value: null }], null],
+  ['graphql -F n=1 -f query=q', [{ key: 'n', value: '1' }, { key: 'query', value: 'q' }], null],
+  ['graphql -f query', [{ key: 'query', value: '' }], null],
+  ['graphql --input body.json', [], 'body.json'],
+  ['graphql --input=-', [], '-'],
+  ['repos/o/r/issues', [], null],
+]
+
+for (const [args, fields, input] of GH_API_FIELDS) {
+  for (const name of Object.keys(GUARDS)) {
+    test(`${name} reads the fields of gh api ${args}`, () => {
+      const [tokens] = readers[name].segmentsOf(`gh api ${args}`)
+      const call = readers[name].ghApiCall(tokens.slice(2))
+      assert.deepEqual(call.fields, fields)
+      assert.equal(call.input, input)
+    })
+  }
+}

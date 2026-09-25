@@ -84,6 +84,13 @@ const DENIED = [
   'gh api --method GET --silent graphql -f query=x',
   'gh api --paginate --method GET graphql -f query=x',
   'gh --repo o/r api graphql -f query=x',
+  // #210. A mutation the merge guards can now read is still refused here, merge
+  // or otherwise, and so is every other spelling of the endpoint gh accepts.
+  `gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -f query='mutation{addComment(input:{subjectId:"s",body:"hi"}){clientMutationId}}'`,
+  `gh api https://api.github.com/graphql -f query='query{viewer{login}}'`,
+  'gh api graphql --input body.json',
   // The home directory and the machine, which are outside the repository in
   // the most literal sense the boundary has.
   'git config --global user.email agent@example.com',

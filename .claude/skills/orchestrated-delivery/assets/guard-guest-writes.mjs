@@ -282,7 +282,7 @@ function deny(reason, refused) {
 // ---------------------------------------------------------------------------
 
 // BEGIN command reader
-// reader stamp: sha256 4447e4dfa9022e69
+// reader stamp: sha256 f10494400b6c6b94
 //
 // Everything between this marker and END is the command reader. In the skill
 // that ships this gate it is carried in three files, which a test there holds
@@ -624,6 +624,14 @@ const outerSegmentsOf = (line) =>
 // `--input` is a POST. Measured on gh 2.101.0 with `--verbose`: `-X GET -X
 // HEAD`, `-XHEAD`, `-X=HEAD` and `-iXHEAD` all send HEAD, and `--` ends the
 // flags.
+//
+// The fields are read because a GraphQL call's verb is in one of them (#210):
+// `gh api graphql -f query='mutation{mergePullRequest(...)}'` merges, and its
+// endpoint and method look like any other read. gh splits a field at its first
+// `=`, and a `-F`/`--field` value starting with `@` is read from that file,
+// or from stdin for `@-`, so its text is not on the command line and the
+// field's value is null. `-f`/`--raw-field` never reads a file: its `@` is
+// text. `--input` sends a file as the whole body, and `input` names it.
 const GH_API_VALUE_FLAGS = new Set([
   '--cache',
   '-F',
@@ -644,15 +652,27 @@ const GH_API_VALUE_FLAGS = new Set([
   '--template',
 ])
 const GH_API_BODY_FLAGS = new Set(['-F', '--field', '-f', '--raw-field', '--input'])
+const GH_API_TYPED_FIELDS = new Set(['-F', '--field'])
 const GH_API_READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 function ghApiCall(args) {
   const positionals = []
   let method = null
   let body = false
+  const fields = []
+  let input = null
   const take = (flag, value) => {
     if (flag === '-X' || flag === '--method') method = (value ?? '').toUpperCase()
     if (GH_API_BODY_FLAGS.has(flag)) body = true
+    if (flag === '--input') {
+      input = value ?? ''
+    } else if (GH_API_BODY_FLAGS.has(flag)) {
+      const text = value ?? ''
+      const equals = text.indexOf('=')
+      const raw = equals === -1 ? '' : text.slice(equals + 1)
+      const fromFile = GH_API_TYPED_FIELDS.has(flag) && raw.startsWith('@')
+      fields.push({ key: equals === -1 ? text : text.slice(0, equals), value: fromFile ? null : raw })
+    }
   }
   for (let at = 0; at < args.length; at += 1) {
     const token = args[at]
@@ -690,7 +710,13 @@ function ghApiCall(args) {
     positionals.push(token)
   }
   const effective = method ?? (body ? 'POST' : 'GET')
-  return { positionals, method: effective, writes: !GH_API_READ_METHODS.has(effective) }
+  return {
+    positionals,
+    method: effective,
+    writes: !GH_API_READ_METHODS.has(effective),
+    fields,
+    input,
+  }
 }
 
 // END command reader

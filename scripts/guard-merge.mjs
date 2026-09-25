@@ -78,7 +78,7 @@ function deny(reason) {
 }
 
 // BEGIN command reader
-// reader stamp: sha256 4447e4dfa9022e69
+// reader stamp: sha256 f10494400b6c6b94
 //
 // Everything between this marker and END is one reader carried in three files:
 // this one, the guest gate in `assets/guard-guest-writes.mjs`, and the guard
@@ -409,6 +409,14 @@ const outerSegmentsOf = (line) =>
 // `--input` is a POST. Measured on gh 2.101.0 with `--verbose`: `-X GET -X
 // HEAD`, `-XHEAD`, `-X=HEAD` and `-iXHEAD` all send HEAD, and `--` ends the
 // flags.
+//
+// The fields are read because a GraphQL call's verb is in one of them (#210):
+// `gh api graphql -f query='mutation{mergePullRequest(...)}'` merges, and its
+// endpoint and method look like any other read. gh splits a field at its first
+// `=`, and a `-F`/`--field` value starting with `@` is read from that file,
+// or from stdin for `@-`, so its text is not on the command line and the
+// field's value is null. `-f`/`--raw-field` never reads a file: its `@` is
+// text. `--input` sends a file as the whole body, and `input` names it.
 const GH_API_VALUE_FLAGS = new Set([
   '--cache',
   '-F',
@@ -429,15 +437,27 @@ const GH_API_VALUE_FLAGS = new Set([
   '--template',
 ])
 const GH_API_BODY_FLAGS = new Set(['-F', '--field', '-f', '--raw-field', '--input'])
+const GH_API_TYPED_FIELDS = new Set(['-F', '--field'])
 const GH_API_READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 function ghApiCall(args) {
   const positionals = []
   let method = null
   let body = false
+  const fields = []
+  let input = null
   const take = (flag, value) => {
     if (flag === '-X' || flag === '--method') method = (value ?? '').toUpperCase()
     if (GH_API_BODY_FLAGS.has(flag)) body = true
+    if (flag === '--input') {
+      input = value ?? ''
+    } else if (GH_API_BODY_FLAGS.has(flag)) {
+      const text = value ?? ''
+      const equals = text.indexOf('=')
+      const raw = equals === -1 ? '' : text.slice(equals + 1)
+      const fromFile = GH_API_TYPED_FIELDS.has(flag) && raw.startsWith('@')
+      fields.push({ key: equals === -1 ? text : text.slice(0, equals), value: fromFile ? null : raw })
+    }
   }
   for (let at = 0; at < args.length; at += 1) {
     const token = args[at]
@@ -475,7 +495,13 @@ function ghApiCall(args) {
     positionals.push(token)
   }
   const effective = method ?? (body ? 'POST' : 'GET')
-  return { positionals, method: effective, writes: !GH_API_READ_METHODS.has(effective) }
+  return {
+    positionals,
+    method: effective,
+    writes: !GH_API_READ_METHODS.has(effective),
+    fields,
+    input,
+  }
 }
 
 // END command reader
@@ -619,8 +645,10 @@ const USE_WRAPPER =
   'See docs/process/working-an-issue.md.'
 
 // A merge endpoint, as a whole path segment, so `branches/merge-queue-test`
-// does not trip it.
-const isMergeEndpoint = (endpoint) => /\/(merge|merges)(\/|$)/.test(endpoint)
+// does not trip it. `merge-async` is the asynchronous form of `pulls/<n>/merge`,
+// which GitHub's own GraphQL reference recommends over `mergePullRequest`, and
+// until #210 it walked past the segment test because it is a different segment.
+const isMergeEndpoint = (endpoint) => /\/(merge|merges|merge-async)(\/|$)/.test(endpoint)
 
 // A `gh api` call that writes, with a merge endpoint anywhere among its
 // arguments. `ghApiCall` in the reader says which arguments those are, and
@@ -637,6 +665,126 @@ function mergesThroughApi(args) {
   return call.writes && call.positionals.some(isMergeEndpoint)
 }
 
+// The GraphQL mutations that land a pull request or schedule one to land, read
+// off GitHub's schema by introspection on 2026-09-25 (#210). `mergePullRequest`
+// lands one. `enablePullRequestAutoMerge` and `enqueuePullRequest` land it later
+// with nobody present, which is the same act on a delay. `mergeBranch` is
+// `repos/<o>/<r>/merges`, refused above, by its other name. Left out on purpose:
+// `updatePullRequestBranch` merges the base *into* the pull request's branch,
+// `createDeployment`'s `autoMerge` merges the default branch into the ref being
+// deployed, and `dequeuePullRequest` and `disablePullRequestAutoMerge` undo.
+const MERGE_MUTATIONS = new Set([
+  'mergePullRequest',
+  'enablePullRequestAutoMerge',
+  'enqueuePullRequest',
+  'mergeBranch',
+])
+
+// gh sends `graphql` to the GraphQL endpoint, and measured on gh 2.101.0 so do
+// `/graphql`, `graphql?x=1` and the full `https://api.github.com/graphql`.
+// Case is ignored because the wrong way round costs a refusal and not a merge.
+const isGraphqlEndpoint = (endpoint) => /(^|\/)graphql([?#]|$)/i.test(endpoint)
+
+const GRAPHQL_NAME = /[_A-Za-z][_0-9A-Za-z]*/y
+
+// The names a GraphQL document selects, lexed the way GitHub's parser lexes it,
+// so a merge mutation's name in a comment, in a string such as an `addComment`
+// body or a search, or as an alias (`mergePullRequest: repository(...)`) is not
+// a call. Matching the bare word refused those, and a guard that refuses a
+// harmless read gets switched off (#58, #102). A name followed by `:` is an
+// alias or an argument, and one after `$` is a variable; a field is neither.
+//
+// Returns null when the text does not lex cleanly: a string left open, or a
+// backslash outside one. The second is how PowerShell passes a quote to a
+// native command, `\"`, and this reader tokenises the line as bash does, so
+// there the strings it would strip are not the strings GitHub sees. The caller
+// then matches the bare word, which refuses rather than guesses.
+function selectedNames(document) {
+  const tokens = []
+  let at = 0
+  while (at < document.length) {
+    const char = document[at]
+    if (char === '#') {
+      while (at < document.length && document[at] !== '\n' && document[at] !== '\r') at += 1
+    } else if (document.startsWith('"""', at)) {
+      let end = at + 3
+      while (end < document.length && !document.startsWith('"""', end)) {
+        end += document.startsWith('\\"""', end) ? 4 : 1
+      }
+      if (end >= document.length) return null
+      at = end + 3
+    } else if (char === '"') {
+      let end = at + 1
+      while (end < document.length && document[end] !== '"') {
+        if (document[end] === '\n' || document[end] === '\r') return null
+        end += document[end] === '\\' ? 2 : 1
+      }
+      if (end >= document.length) return null
+      at = end + 1
+    } else if (char === '\\') {
+      return null
+    } else {
+      GRAPHQL_NAME.lastIndex = at
+      const name = GRAPHQL_NAME.exec(document)
+      if (name !== null) {
+        tokens.push(name[0])
+        at += name[0].length
+      } else {
+        if (!/[\s,]/.test(char)) tokens.push(char)
+        at += 1
+      }
+    }
+  }
+  return tokens.filter(
+    (token, i) => /^[_A-Za-z]/.test(token) && tokens[i - 1] !== '$' && tokens[i + 1] !== ':',
+  )
+}
+
+function callsMergeMutation(document) {
+  const names = selectedNames(document)
+  if (names === null) {
+    return [...MERGE_MUTATIONS].some((name) => new RegExp(`\\b${name}\\b`).test(document))
+  }
+  return names.some((name) => MERGE_MUTATIONS.has(name))
+}
+
+// What a `gh api` call to GraphQL does about merging: 'merge', 'unreadable', or
+// null. The method plays no part, since a query and a mutation are both a POST.
+//
+// Unreadable is a query the command line does not carry: `-F query=@file`,
+// `-F query=@-`, `--input`, or a `$(...)` standing in for it. Those are refused,
+// because this guard cannot tell them from a merge. That costs any GraphQL read
+// written that way, and #210 measured the cost here before choosing: no script,
+// doc or skill file in this repository runs `gh api graphql` at all, so it is
+// nothing today. The refusal says how to put the query inline, which is always
+// possible and is then read like any other.
+function graphqlMerge(args) {
+  const call = ghApiCall(args)
+  if (!call.positionals.some(isGraphqlEndpoint)) return null
+  if (call.input !== null) return 'unreadable'
+  for (const field of call.fields) {
+    if (field.key !== 'query') continue
+    if (field.value === null || field.value.includes(SUBSTITUTION)) return 'unreadable'
+    if (callsMergeMutation(field.value)) return 'merge'
+  }
+  return null
+}
+
+const GRAPHQL_MERGE =
+  'Blocked: merging through GraphQL is still merging. The query calls one of\n' +
+  `${[...MERGE_MUTATIONS].join(', ')}, which land a pull request\n` +
+  'now or schedule it to land with nobody present.'
+
+const GRAPHQL_UNREADABLE =
+  'Blocked: this `gh api graphql` call reads its query from a file, stdin,\n' +
+  '`--input` or a `$(...)`, so the guard cannot see whether it merges, and it\n' +
+  'refuses rather than guess.\n\n' +
+  'Put the query on the command line and it is read like any other:\n\n' +
+  "  gh api graphql -f query='query { viewer { login } }'\n\n" +
+  'Variables can still come from `-F name=value`. Only the query has to be\n' +
+  `inline, and one that calls none of ${[...MERGE_MUTATIONS].join(', ')}\n` +
+  'is allowed.'
+
 // `whole` is the command line the harness was handed, which is the same as
 // `line` until the walk steps into a shell payload. The probe's wording is the
 // one verdict here that depends on what else the tool call would have run, and
@@ -650,6 +798,9 @@ function judge(line, depth, whole) {
     if (gh !== null && gh[0] === 'api' && mergesThroughApi(gh.slice(1))) {
       deny(`Blocked: merging through \`gh api\` is still merging.\n\n${USE_WRAPPER}`)
     }
+    const graphql = gh !== null && gh[0] === 'api' ? graphqlMerge(gh.slice(1)) : null
+    if (graphql === 'merge') deny(`${GRAPHQL_MERGE}\n\n${USE_WRAPPER}`)
+    if (graphql === 'unreadable') deny(GRAPHQL_UNREADABLE)
 
     if (isLivenessProbe(tokens)) {
       deny(probeIsTheWholeCall(whole, SHELL_DEPTH) ? PROBE_ALONE : PROBE_IN_COMPANY)

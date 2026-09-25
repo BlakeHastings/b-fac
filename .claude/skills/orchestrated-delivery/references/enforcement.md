@@ -59,7 +59,7 @@ evidence against one.
 gate's shape, and a refusal you can decline to ask for is advice.
 
 **2. The PreToolUse guard.** The only gate in the list. Denies `gh pr merge`, a
-merge through `gh api`, and a `git push` whose own arguments name the default
+merge through `gh api`, REST or GraphQL, and a `git push` whose own arguments name the default
 branch as the destination, before the command runs.
 *Does not cover:* any process the harness did not load it into at startup, and
 everything that process spawns for as long as it lives; any human at a terminal;
@@ -409,6 +409,15 @@ that assumed every flag before the endpoint takes a value read
 `gh api --silent repos/o/r/pulls/1/merge -X PUT` as no endpoint at all, and let
 it merge. A GET of that endpoint asks whether a pull request is merged, and is
 allowed.
+
+`ghApiCall` also returns the call's fields, because a GraphQL call's verb is in
+its `query` field. The merge guard refuses a GraphQL query that calls
+`mergePullRequest`, `enablePullRequestAutoMerge`, `enqueuePullRequest` or
+`mergeBranch`, and reads the query as GitHub does, so the same name in a
+comment, a string or an alias is not a call. It also refuses a GraphQL call
+whose query is not on the command line (`-F query=@file`, `--input`, a
+`$(...)`), because it cannot tell that from a merge. Put the query inline and it
+is read like any other.
 
 The copy a repository installed is one more, and nothing watches it. The line
 under the marker, `// reader stamp: sha256 <hash>`, is a hash of the reader's
