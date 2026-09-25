@@ -141,6 +141,33 @@ const DENIED = [
   'gh api -H "Accept: application/json" -X PUT repos/o/r/pulls/1/merge',
   // The branch-merge endpoint lands a commit on a base with no pull request.
   'gh api --silent repos/o/r/merges -f base=main -f head=feature',
+  // #210. The asynchronous merge is a segment of its own, and a PUT to it merges.
+  'gh api -X PUT repos/o/r/pulls/1/merge-async',
+  // #210. Every GraphQL mutation that lands a pull request or schedules one, in
+  // every way gh takes a query the guard can read.
+  `gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -f query='mutation{enqueuePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -f query='mutation{mergeBranch(input:{repositoryId:"x",base:"main",head:"f"}){clientMutationId}}'`,
+  `gh api graphql -F query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql --raw-field query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql --field=query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql -fquery='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  // An alias names the result, not the field, so the field is still called.
+  `gh api graphql -f query='mutation { x: mergePullRequest(input: {pullRequestId: "x"}) { clientMutationId } }'`,
+  // The endpoint spelled the other ways gh sends to GraphQL.
+  `gh api --silent https://api.github.com/graphql -f query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  `gh api graphql?x=1 -f query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  // PowerShell passes `\"` to a native command as a quote, so the strings this
+  // reader would strip are not the ones GitHub sees. That falls back to the
+  // bare word, and the merge behind the comment is refused.
+  `gh api graphql -f query='mutation{a:addComment(input:{subjectId:\\"s\\",body:\\"hi\\"}){clientMutationId} mergePullRequest(input:{pullRequestId:\\"x\\"}){clientMutationId}}'`,
+  // #210. A query the command line does not carry cannot be told from a merge.
+  'gh api graphql -F query=@merge.graphql',
+  'gh api graphql --field query=@merge.graphql',
+  'gh api graphql -F query=@- < merge.graphql',
+  'gh api graphql --input body.json',
+  'gh api graphql -f query="$(cat merge.graphql)"',
 ]
 
 const ALLOWED = [
@@ -169,6 +196,20 @@ const ALLOWED = [
   // A value flag's value is not an argument, so a comment quoting the merge
   // endpoint in a field is still a comment.
   'gh api --silent repos/o/r/issues/58/comments -f body="repos/o/r/pulls/1/merge"',
+  // #210. GraphQL reads, and a merge mutation's name where it is not a call:
+  // in a string, in a comment, and as an alias. Refusing these is what gets a
+  // guard switched off.
+  `gh api graphql -f query='query{viewer{login}}'`,
+  `gh api graphql -F owner=o -f query='query($owner:String!){repositoryOwner(login:$owner){login}}'`,
+  `gh api graphql --paginate -f query='query($endCursor:String){viewer{repositories(first:10,after:$endCursor){nodes{name} pageInfo{hasNextPage endCursor}}}}'`,
+  `gh api graphql -f query='{search(query:"mergePullRequest", type:ISSUE, first:1){issueCount}}'`,
+  `gh api graphql -f query='query{ # not mergePullRequest\n viewer{login}}'`,
+  `gh api graphql -f query='query{mergePullRequest: repository(owner:"o",name:"r"){id}}'`,
+  `gh api graphql -f query='mutation{addComment(input:{subjectId:"s",body:"do not call mergePullRequest"}){clientMutationId}}'`,
+  // `-f` never reads a file, so its `@` is text and the query is on the line.
+  `gh api graphql -f query='@{viewer{login}}'`,
+  // Reading the asynchronous merge's result is a GET.
+  'gh api repos/o/r/pulls/1/merge-async/abc',
   // Empty and malformed payloads are not this guard's problem.
   '',
   '   ',
