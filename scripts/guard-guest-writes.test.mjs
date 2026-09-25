@@ -66,12 +66,23 @@ const DENIED = [
   'gh api -X PATCH repos/o/r/issues/3',
   'gh api repos/o/r/issues/3/comments -f body="done"',
   'gh api --method=DELETE repos/o/r/issues/3',
+  // #199. gh takes the last `-X`, and reads `-XPUT` as one flag and its value.
+  // This gate stopped at the first `-X` and matched whole tokens, so each of
+  // these writes was allowed.
+  'gh api -XPUT repos/o/r/pulls/1/merge',
+  'gh api -X GET -X PUT repos/o/r/pulls/1/merge',
+  'gh api -iXDELETE repos/o/r/issues/3',
+  'gh api --silent repos/o/r/pulls/1/merge -X PUT',
   // A GraphQL call cannot be classified: query and mutation are the same POST
   // carrying `-f query=`. Refused whatever the method says, and refused with a
   // message that does not promise a remedy that cannot work — see below.
   "gh api graphql -f query='query{viewer{login}}'",
   'gh api graphql -F query=@issues.graphql',
   'gh api --method GET graphql -f query=x',
+  // #199. `--silent` takes no value, and the old reading let it swallow
+  // `graphql`, which left an explicit GET looking like a REST read.
+  'gh api --method GET --silent graphql -f query=x',
+  'gh api --paginate --method GET graphql -f query=x',
   'gh --repo o/r api graphql -f query=x',
   // The home directory and the machine, which are outside the repository in
   // the most literal sense the boundary has.
@@ -182,6 +193,11 @@ const ALLOWED = [
   // This is the remedy the write-shaped refusal names, so it has to work.
   'gh api repos/o/r/issues --method GET -f state=open',
   'gh api --paginate repos/o/r/issues',
+  // #199's reads, which the rewritten method reading has to leave alone.
+  'gh api --silent --paginate repos/o/r/issues',
+  'gh api -X PUT -X GET repos/o/r/issues/3',
+  'gh api -XGET repos/o/r/issues -f state=open',
+  'gh api --jq .merged repos/o/r/pulls/1/merge',
   // Reading the operator's global config is a read, and reads are unrestricted.
   // Unlike a GraphQL call, these announce themselves: no shape of `--get` or
   // `--list` writes anything.

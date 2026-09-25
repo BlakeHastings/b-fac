@@ -398,6 +398,15 @@ and every rule reads the head of one of them. That parser is the same in
 copies have drifted twice, and both times the bug reached only the file nobody
 was looking at.
 
+The region also carries how a `gh api` call reads, `ghApiCall`: its method and
+the arguments that are not flags or a flag's value. The merge rule asks whether
+a call that writes names a merge endpoint *anywhere* among those arguments,
+rather than guessing which one is the endpoint. Guessing is what failed: a copy
+that assumed every flag before the endpoint takes a value read
+`gh api --silent repos/o/r/pulls/1/merge -X PUT` as no endpoint at all, and let
+it merge. A GET of that endpoint asks whether a pull request is merged, and is
+allowed.
+
 The copy a repository installed is one more, and nothing watches it. The line
 under the marker, `// reader stamp: sha256 <hash>`, is a hash of the reader's
 code, which the skill's own check keeps true. Compare it with the same line in

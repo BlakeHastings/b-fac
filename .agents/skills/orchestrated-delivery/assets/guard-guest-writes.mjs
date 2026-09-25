@@ -282,7 +282,7 @@ function deny(reason, refused) {
 // ---------------------------------------------------------------------------
 
 // BEGIN command reader
-// reader stamp: sha256 029b3235253c70a6
+// reader stamp: sha256 4447e4dfa9022e69
 //
 // Everything between this marker and END is the command reader. In the skill
 // that ships this gate it is carried in three files, which a test there holds
@@ -599,6 +599,100 @@ const outerSegmentsOf = (line) =>
     .filter((segment) => !segment.substituted)
     .map((segment) => segment.tokens)
 
+// How a `gh api` call reads: its method, and the arguments that are not flags
+// or a flag's value. It lives in the reader rather than beside a rule because
+// every guard asks it, and the copies that lived beside the rules had drifted
+// into two versions that shared one hole (#199): each assumed every flag before
+// the endpoint takes a value, so `gh api --silent repos/o/r/pulls/1/merge -X
+// PUT` let `--silent` swallow the endpoint, and the merge went through.
+//
+// The flags that take a value are gh's own, read off `gh api --help` on gh
+// 2.101.0. The help's boolean flags are `--allow-escape-sequences`, `-i`/
+// `--include`, `--paginate`, `--silent`, `--slurp`, `--verbose` and `--help`,
+// and nothing here needs to name them, because anything starting with `-` that
+// is not in the table below is taken to stand alone. That is the
+// direction to be wrong in, and it is the reason the table names the valued
+// flags rather than the boolean ones: a flag gh adds later that takes a value
+// leaves its value among the arguments, where the worst it can do is be read as
+// a second endpoint, and a rule asking "is any argument a merge endpoint" then
+// refuses rather than allows. Guessing which argument is *the* endpoint is the
+// thing that failed; gh accepts exactly one, so asking about all of them loses
+// nothing on a command gh would run.
+//
+// The method is gh's too: the last `-X`/`--method` wins, as it does in gh's
+// flag parser, gh upper-cases it, and without one a call carrying a field or
+// `--input` is a POST. Measured on gh 2.101.0 with `--verbose`: `-X GET -X
+// HEAD`, `-XHEAD`, `-X=HEAD` and `-iXHEAD` all send HEAD, and `--` ends the
+// flags.
+const GH_API_VALUE_FLAGS = new Set([
+  '--cache',
+  '-F',
+  '--field',
+  '-H',
+  '--header',
+  '--hostname',
+  '--input',
+  '-q',
+  '--jq',
+  '-X',
+  '--method',
+  '-p',
+  '--preview',
+  '-f',
+  '--raw-field',
+  '-t',
+  '--template',
+])
+const GH_API_BODY_FLAGS = new Set(['-F', '--field', '-f', '--raw-field', '--input'])
+const GH_API_READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+function ghApiCall(args) {
+  const positionals = []
+  let method = null
+  let body = false
+  const take = (flag, value) => {
+    if (flag === '-X' || flag === '--method') method = (value ?? '').toUpperCase()
+    if (GH_API_BODY_FLAGS.has(flag)) body = true
+  }
+  for (let at = 0; at < args.length; at += 1) {
+    const token = args[at]
+    if (token === '--') {
+      positionals.push(...args.slice(at + 1))
+      break
+    }
+    if (token.startsWith('--')) {
+      const equals = token.indexOf('=')
+      if (equals !== -1) {
+        take(token.slice(0, equals), token.slice(equals + 1))
+      } else if (GH_API_VALUE_FLAGS.has(token)) {
+        take(token, args[at + 1])
+        at += 1
+      }
+      continue
+    }
+    if (token.startsWith('-') && token.length > 1) {
+      // A cluster of short flags. The first one that takes a value takes the
+      // rest of the token, or the next token when nothing is left.
+      for (let c = 1; c < token.length; c += 1) {
+        const flag = `-${token[c]}`
+        if (!GH_API_VALUE_FLAGS.has(flag)) continue
+        const rest = token.slice(c + 1).replace(/^=/, '')
+        if (rest !== '') {
+          take(flag, rest)
+        } else {
+          take(flag, args[at + 1])
+          at += 1
+        }
+        break
+      }
+      continue
+    }
+    positionals.push(token)
+  }
+  const effective = method ?? (body ? 'POST' : 'GET')
+  return { positionals, method: effective, writes: !GH_API_READ_METHODS.has(effective) }
+}
+
 // END command reader
 
 const commandName = (token) =>
@@ -715,37 +809,14 @@ function gitConfigReads(args) {
 }
 
 // `gh api` defaults to GET and turns into a POST the moment it is handed a
-// field, so the method is not always written down. Both forms are the write.
-const GH_API_WRITE_METHODS = new Set(['post', 'patch', 'put', 'delete'])
-const GH_API_PAYLOAD_FLAGS = new Set(['-f', '-F', '--field', '--raw-field', '--input'])
-
-// The endpoint is the first argument that is not a flag and is not the value of
-// one. Worked out that way rather than from a table of gh's flags, because a
-// table of somebody else's flags rots silently. `--method GET` is skipped by
-// the first test and `GET` by the second.
-function apiEndpoint(args) {
-  for (let at = 0; at < args.length; at += 1) {
-    if (args[at].startsWith('-')) continue
-    if (at > 0 && args[at - 1].startsWith('-')) continue
-    return args[at]
-  }
-  return null
-}
-
-function ghApiWrites(args) {
-  for (let at = 0; at < args.length; at += 1) {
-    const flag = args[at]
-    if (GH_API_PAYLOAD_FLAGS.has(flag)) return true
-    if (flag.startsWith('--field=') || flag.startsWith('--raw-field=')) return true
-    if (flag === '--method' || flag === '-X') {
-      return GH_API_WRITE_METHODS.has((args[at + 1] ?? '').toLowerCase())
-    }
-    if (flag.startsWith('--method=')) {
-      return GH_API_WRITE_METHODS.has(flag.slice('--method='.length).toLowerCase())
-    }
-  }
-  return false
-}
+// field, so the method is not always written down. Both forms are the write,
+// and `ghApiCall` in the reader works out which one a call is.
+//
+// Until #199 this file read the method itself and stopped at the first
+// `-X`/`--method` it met. gh takes the last one, so `gh api -X GET -X PUT ...`
+// was a write this gate allowed, and so was `-XPUT`, which is one token. It
+// read the endpoint by assuming every flag before it takes a value, so
+// `--method GET --silent graphql` hid `graphql` behind `--silent`.
 
 // A GraphQL query and a GraphQL mutation are the same call: a POST to
 // `/graphql` carrying `-f query=`. Nothing on the command line tells them
@@ -914,11 +985,11 @@ function judge(line, depth) {
     if (gh !== null && gh.length > 0) {
       const path = gh.filter((token) => !token.startsWith('-')).slice(0, 2)
       if (path[0] === 'api') {
-        const args = gh.slice(1)
+        const call = ghApiCall(gh.slice(1))
         // Before the method test, and regardless of it: `--method GET graphql`
         // is the same unclassifiable call wearing a read's clothes.
-        if (apiEndpoint(args) === 'graphql') deny(GRAPHQL, { rule: 'gh-api-graphql', tokens })
-        if (ghApiWrites(args)) {
+        if (call.positionals.includes('graphql')) deny(GRAPHQL, { rule: 'gh-api-graphql', tokens })
+        if (call.writes) {
           deny(
             'Blocked: this `gh api` call carries a write method or a payload, so it is an\n' +
               `outward write however the endpoint reads.\n\n${PUBLISH}\n\n` +

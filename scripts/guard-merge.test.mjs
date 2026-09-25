@@ -123,6 +123,24 @@ const DENIED = [
   // Newly refused, and it was a working merge before: the endpoint was split at
   // the `$(` and `apiEndpoint` never saw a path with `/merge` in it.
   'gh api "repos/o/r/pulls/$(cat n)/merge" --method PUT',
+  // #199. Each of these merged: the endpoint was worked out by assuming every
+  // flag before it takes a value, so a flag that takes none swallowed it.
+  'gh api --silent repos/o/r/pulls/1/merge -X PUT',
+  'gh api --paginate repos/o/r/pulls/1/merge --method PUT',
+  'gh api --include --verbose repos/o/r/pulls/1/merge -X PUT',
+  'gh api --futureflag repos/o/r/pulls/1/merge -X PUT',
+  'gh api -X PUT -- repos/o/r/pulls/1/merge',
+  // The method in forms gh accepts and the old reading did not see.
+  'gh api -XPUT repos/o/r/pulls/1/merge',
+  'gh api -X=PUT repos/o/r/pulls/1/merge',
+  'gh api -iXPUT repos/o/r/pulls/1/merge',
+  'gh api -X GET -X PUT repos/o/r/pulls/1/merge',
+  'gh api -X put repos/o/r/pulls/1/merge',
+  // A flag that does take a value, before the endpoint, still parses.
+  'gh api --jq .sha repos/o/r/pulls/1/merge -X PUT',
+  'gh api -H "Accept: application/json" -X PUT repos/o/r/pulls/1/merge',
+  // The branch-merge endpoint lands a commit on a base with no pull request.
+  'gh api --silent repos/o/r/merges -f base=main -f head=feature',
 ]
 
 const ALLOWED = [
@@ -142,6 +160,15 @@ const ALLOWED = [
   // `merge` inside a name, not as a verb.
   'git checkout -b chore/merges-cleanup',
   'gh api repos/o/r/branches/merge-queue-test',
+  // #199. A GET of the merge endpoint asks whether a pull request is merged.
+  // The old reading refused it along with the PUT; nothing is landed by it.
+  'gh api repos/o/r/pulls/1/merge',
+  'gh api --silent repos/o/r/pulls/1/merge',
+  'gh api -X GET repos/o/r/pulls/1/merge',
+  'gh api -X PUT -X GET repos/o/r/pulls/1/merge',
+  // A value flag's value is not an argument, so a comment quoting the merge
+  // endpoint in a field is still a comment.
+  'gh api --silent repos/o/r/issues/58/comments -f body="repos/o/r/pulls/1/merge"',
   // Empty and malformed payloads are not this guard's problem.
   '',
   '   ',

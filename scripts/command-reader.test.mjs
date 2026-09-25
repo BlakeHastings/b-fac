@@ -16,7 +16,8 @@
 // nothing here noticed, because nothing here looked.
 //
 // WHAT IT COMPARES, AND WHAT IT DELIBERATELY DOES NOT
-// The *reader*: how a line becomes segments and tokens. Not the verdicts. The
+// The *reader*: how a line becomes segments and tokens, and since #199 how a
+// `gh api` call's arguments read, which every guard asks. Not the verdicts. The
 // guards' rules genuinely differ and are meant to. #98 measured `\git push`,
 // `/usr/bin/gh pr create` and `git.exe push` denied by the guest gate and
 // allowed by this repository's merge guard, because every rule there goes
@@ -70,7 +71,7 @@ function readerSource(url) {
 }
 
 async function readerOf(url) {
-  const module = `${readerSource(url)}\nexport { segmentsOf }\n`
+  const module = `${readerSource(url)}\nexport { segmentsOf, ghApiCall }\n`
   return import(`data:text/javascript;base64,${Buffer.from(module).toString('base64')}`)
 }
 
@@ -374,6 +375,56 @@ for (const [line, segments] of EXPECTED) {
   for (const name of Object.keys(GUARDS)) {
     test(`${name} reads ${JSON.stringify(line)} as ${JSON.stringify(segments)}`, () => {
       assert.deepEqual(readers[name].segmentsOf(line), segments)
+    })
+  }
+}
+
+// #199. How a `gh api` call reads is part of the region too. It lived beside
+// the rules until then, in three copies that had drifted into two versions and
+// shared one hole: each assumed every flag before the endpoint takes a value, so
+// a flag that takes none swallowed it. The text comparison above now holds the
+// copies together; these pin what the one reading is supposed to produce, from
+// `gh api --help` on gh 2.101.0 and from gh's own `--verbose` output for the
+// method forms.
+const GH_API = [
+  // The table #199 opened with.
+  ['repos/o/r/pulls/1/merge -X PUT', ['repos/o/r/pulls/1/merge'], 'PUT'],
+  ['--silent repos/o/r/pulls/1/merge -X PUT', ['repos/o/r/pulls/1/merge'], 'PUT'],
+  ['--paginate repos/o/r/pulls/1/merge --method PUT', ['repos/o/r/pulls/1/merge'], 'PUT'],
+  // A flag that takes a value, before the endpoint, still has its value taken.
+  ['--jq .sha repos/o/r/pulls/1/merge -X PUT', ['repos/o/r/pulls/1/merge'], 'PUT'],
+  ['-H "Accept: x" repos/o/r/issues', ['repos/o/r/issues'], 'GET'],
+  // A flag the reader does not know stands alone, so whatever follows it is
+  // still asked about. The wrong-way case costs a refusal, not a merge.
+  ['--futureflag repos/o/r/pulls/1/merge', ['repos/o/r/pulls/1/merge'], 'GET'],
+  ['--futureflag value repos/o/r/issues', ['value', 'repos/o/r/issues'], 'GET'],
+  // The method: the last one wins, it is upper-cased, and it can share a token.
+  ['-X GET -X PUT x', ['x'], 'PUT'],
+  ['-XPUT x', ['x'], 'PUT'],
+  ['-X=PUT x', ['x'], 'PUT'],
+  ['-iXPUT x', ['x'], 'PUT'],
+  ['--method=put x', ['x'], 'PUT'],
+  // No method written down: a field or `--input` makes it a POST.
+  ['repos/o/r/issues -f title=x', ['repos/o/r/issues'], 'POST'],
+  ['repos/o/r/issues -ftitle=x', ['repos/o/r/issues'], 'POST'],
+  ['repos/o/r/issues --raw-field=title=x', ['repos/o/r/issues'], 'POST'],
+  ['repos/o/r/rulesets --input file.json', ['repos/o/r/rulesets'], 'POST'],
+  ['repos/o/r/issues --method GET -f state=open', ['repos/o/r/issues'], 'GET'],
+  // A field's value is payload, never an argument.
+  ['repos/o/r/issues/1/comments -f body=repos/o/r/pulls/1/merge', ['repos/o/r/issues/1/comments'], 'POST'],
+  // `--` ends the flags.
+  ['-X PUT -- repos/o/r/pulls/1/merge', ['repos/o/r/pulls/1/merge'], 'PUT'],
+  ['--method GET --silent graphql -f query=x', ['graphql'], 'GET'],
+]
+
+for (const [args, positionals, method] of GH_API) {
+  for (const name of Object.keys(GUARDS)) {
+    test(`${name} reads gh api ${args} as ${method} ${JSON.stringify(positionals)}`, () => {
+      const [tokens] = readers[name].segmentsOf(`gh api ${args}`)
+      const call = readers[name].ghApiCall(tokens.slice(2))
+      assert.deepEqual(call.positionals, positionals)
+      assert.equal(call.method, method)
+      assert.equal(call.writes, !['GET', 'HEAD', 'OPTIONS'].includes(method))
     })
   }
 }
