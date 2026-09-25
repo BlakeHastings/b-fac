@@ -21,7 +21,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,13 +42,23 @@ const HOOKS = fileURLToPath(
 const HANDOFF = 'docs/process/handoff.md'
 const HOUR = 3_600_000
 
+// The two variables that choose where compaction happens are removed from
+// every run and put back only by the cases about them. This repository's own
+// settings set them, so a suite run from inside a session here inherits them,
+// and a case that passed only because of the shell it ran in is not a case.
+const THRESHOLD_VARS = ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']
+const baseEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !THRESHOLD_VARS.includes(key)),
+)
+
 // The exit code comes off the process rather than out of the output. A hook's
 // exit code is the whole of its verdict, and this repository has mis-measured
 // one by letting a pipe swallow it.
-function run(cwd, payload, args = []) {
+function run(cwd, payload, args = [], env = {}) {
   try {
     const stdout = execFileSync(process.execPath, [HOOKS, ...args], {
       cwd,
+      env: { ...baseEnv, ...env },
       input: payload === null ? '' : JSON.stringify(payload),
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -257,6 +276,202 @@ test('SessionStart carries the decay note, not just the file', () => {
   assert.match(result.out, /the repository is right/)
 })
 
+test('SessionStart tells the orchestrator to resume, in both shapes', () => {
+  // The sentence the owner typed after every /compact. With the threshold set
+  // the compaction happens mid-turn with nobody there to type it, so the block
+  // has to say it, and has to say it whether or not there is a file to print.
+  const withFile = repo({ handoffAgeHours: 2 })
+  const without = repo({ handoff: null })
+
+  for (const root of [withFile, without]) {
+    const result = run(root, sessionStart(root))
+    assert.match(result.out, /load it again/)
+    assert.match(result.out, /docs\/process\/orchestrating\.md/)
+    assert.match(result.out, /open pull requests/)
+    assert.match(result.out, /Continue the loop/)
+  }
+})
+
+test('a handoff too long to inject whole is pointed at, not cut short', () => {
+  // Measured on 2.1.282: over 10,000 characters, the harness swaps a hook's
+  // output for a path and a 2KB preview. A handoff cut there lost its second
+  // half without saying so, which is worse than not printing it.
+  const body = ['HANDOFF-BEGIN', ...Array.from({ length: 800 }, (_, n) => `line ${n} of a long handoff`), 'THE-END']
+  const root = repo({ handoff: body.join('\n'), handoffAgeHours: 2 })
+  const result = run(root, sessionStart(root))
+
+  assert.equal(result.code, 0)
+  assert.ok(result.out.length < 10_000, `injected ${result.out.length} characters, over the cap`)
+  assert.doesNotMatch(result.out, /THE-END/)
+  assert.match(result.out, /over the harness's 10000 character cap/)
+  assert.ok(result.out.includes(join(root, HANDOFF)), 'the reader is told where the file is')
+
+  // What the reader must act on is still there, because it never depended on
+  // the handoff fitting.
+  assert.match(result.out, /IF YOU WERE DISPATCHED AS AN IMPLEMENTATION AGENT/)
+  assert.match(result.out, /Continue the loop/)
+})
+
+test('a handoff that fits is still printed whole, however close to the cap', () => {
+  const body = ['HANDOFF-BEGIN', ...Array.from({ length: 200 }, (_, n) => `line ${n} of a long handoff`), 'THE-END']
+  const root = repo({ handoff: body.join('\n'), handoffAgeHours: 2 })
+  const result = run(root, sessionStart(root))
+
+  assert.ok(result.out.includes(body.join('\n')), 'the body is injected unaltered')
+  assert.ok(result.out.length < 10_000)
+})
+
+// --- the summariser ---------------------------------------------------------
+
+test('an automatic compaction is told what to keep, and is still not refused', () => {
+  const root = repo({ handoffAgeHours: 500, commits: 20 })
+  const result = run(root, preCompact(root, 'auto'))
+
+  assert.equal(result.code, 0)
+  assert.equal(result.err, '')
+  // Both readers, because nothing in this payload says whose context it is.
+  assert.match(result.out, /orchestrated-delivery/)
+  assert.match(result.out, /docs\/process\/handoff\.md/)
+  assert.match(result.out, /implementation\s+agent/)
+})
+
+// --- the warning before the threshold ----------------------------------------
+//
+// ADR 0060. PostToolUse reads context in use from the transcript's last
+// main-thread assistant entry and warns once per climb past the band, which is
+// ten points under the compaction percentage.
+
+const WATCHED = { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '100000', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '85' }
+const EFFECTIVE = 80_000 // 100K less the 20K the harness keeps back
+
+const assistant = (tokens, extra = {}) =>
+  JSON.stringify({
+    type: 'assistant',
+    isSidechain: false,
+    message: {
+      id: `msg-${tokens}`,
+      usage: {
+        input_tokens: 3,
+        cache_read_input_tokens: tokens - 3,
+        cache_creation_input_tokens: 0,
+        output_tokens: 40,
+      },
+    },
+    ...extra,
+  })
+
+function transcript(lines) {
+  const path = join(mkdtempSync(join(tmpdir(), 'handoff-hooks-transcript-')), 'session.jsonl')
+  writeFileSync(path, lines.map((line) => `${line}\n`).join(''))
+  return path
+}
+
+const postToolUse = (path, session, extra = {}) => ({
+  hook_event_name: 'PostToolUse',
+  session_id: session,
+  transcript_path: path,
+  cwd: tmpdir(),
+  tool_name: 'Read',
+  ...extra,
+})
+
+// What the harness would add to the context, or '' for nothing.
+const injected = (result) =>
+  result.out === '' ? '' : JSON.parse(result.out).hookSpecificOutput.additionalContext
+
+const at = (percent) => Math.round((EFFECTIVE * percent) / 100)
+
+test('the warning fires once on crossing the band, and not again on the same climb', () => {
+  const session = randomUUID()
+  const path = transcript([assistant(at(40))])
+  const call = () => injected(run(tmpdir(), postToolUse(path, session), [], WATCHED))
+
+  assert.equal(call(), '', 'warned at 40%, under the band')
+
+  appendFileSync(path, `${assistant(at(76))}\n`)
+  const warning = call()
+  assert.match(warning, /Context is at 76%/)
+  assert.match(warning, /set for 85%/)
+  assert.match(warning, /Top the handoff/)
+
+  appendFileSync(path, `${assistant(at(80))}\n`)
+  assert.equal(call(), '', 'warned twice on one climb')
+})
+
+test('a compaction resets the band, so the next climb is warned again', () => {
+  const session = randomUUID()
+  const path = transcript([assistant(at(78))])
+  const call = () => injected(run(tmpdir(), postToolUse(path, session), [], WATCHED))
+
+  assert.match(call(), /Context is at 78%/)
+
+  // A boundary after the last usage means the context was just replaced, and
+  // what was in use before it is no longer the answer.
+  appendFileSync(
+    path,
+    `${JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: at(86), postTokens: 9_000 } })}\n`,
+  )
+  assert.equal(call(), '')
+
+  appendFileSync(path, `${assistant(at(30))}\n${assistant(at(77))}\n`)
+  assert.match(call(), /Context is at 77%/)
+})
+
+test('a subagent is never warned, however full its context', () => {
+  // A subagent's handoff is its issue. Telling an implementation agent to top
+  // up the orchestrator's handoff is the wrong-reader failure of ADR 0042.
+  const session = randomUUID()
+  const path = transcript([assistant(at(95))])
+  const result = run(
+    tmpdir(),
+    postToolUse(path, session, { agent_id: 'a1b2c3', agent_type: 'general-purpose' }),
+    [],
+    WATCHED,
+  )
+
+  assert.equal(result.code, 0)
+  assert.equal(result.out, '')
+
+  // And it left nothing behind to suppress the orchestrator's own warning.
+  assert.match(injected(run(tmpdir(), postToolUse(path, session), [], WATCHED)), /Context is at 95%/)
+})
+
+test('an unknown window is said once, and no percentage is guessed', () => {
+  const session = randomUUID()
+  const path = transcript([assistant(900_000)])
+  const first = injected(run(tmpdir(), postToolUse(path, session)))
+
+  assert.match(first, /not being watched/)
+  assert.match(first, /CLAUDE_CODE_AUTO_COMPACT_WINDOW/)
+  assert.doesNotMatch(first, /\d+%/)
+  assert.equal(injected(run(tmpdir(), postToolUse(path, session))), '', 'said twice in one session')
+
+  // One of the two is not enough: the window without the percentage says
+  // nothing about where compaction is.
+  const half = injected(
+    run(tmpdir(), postToolUse(path, randomUUID()), [], {
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '1000000',
+    }),
+  )
+  assert.match(half, /not being watched/)
+})
+
+test('a transcript that cannot be read warns nothing', () => {
+  const missing = join(tmpdir(), `no-such-${randomUUID()}.jsonl`)
+  const result = run(tmpdir(), postToolUse(missing, randomUUID()), [], WATCHED)
+  assert.equal(result.code, 0)
+  assert.equal(result.out, '')
+})
+
+test('the last usage is found behind a tool result bigger than the first read', () => {
+  // The transcript is read from the end in widening steps, so a single large
+  // tool result after the last assistant entry must not hide it.
+  const session = randomUUID()
+  const huge = JSON.stringify({ type: 'user', message: { content: 'z'.repeat(300_000) } })
+  const path = transcript([assistant(at(10)), assistant(at(79)), huge])
+  assert.match(injected(run(tmpdir(), postToolUse(path, session), [], WATCHED)), /Context is at 79%/)
+})
+
 // --- which clock dates the handoff ------------------------------------------
 //
 // #145. A checkout writes the committed bytes out with today's timestamp, so
@@ -387,8 +602,8 @@ test('the probe does not refuse a repository with no handoff in it', () => {
 
 // --- the wiring in this repository ------------------------------------------
 //
-// Everything above is about the asset other repositories install. These three
-// are about this one, which shipped the asset uninstalled for two weeks (#128)
+// Everything above is about the asset other repositories install. The rest are
+// about this one, which shipped the asset uninstalled for two weeks (#128)
 // while publishing enforcement.md's rule that a control nothing invokes is an
 // instruction. They are cheap because the failure is silent: an unwired
 // SessionStart hook and a wired one that never has anything to say look
@@ -415,6 +630,41 @@ test('SessionStart is wired to compact and to nothing else', () => {
     for (const source of ['startup', 'resume', 'clear']) {
       assert.equal(matches(source), false, `${source} is matched, so the block fires uncompacted`)
     }
+  }
+})
+
+const wiredTo = (event) =>
+  (SETTINGS.hooks?.[event] ?? []).filter((entry) =>
+    (entry.hooks ?? []).some((hook) => (hook.command ?? '').includes('handoff-hooks.mjs')),
+  )
+
+test('the threshold is set here, and set to the owner’s number', () => {
+  // ADR 0060. Measured on 2.1.282: an `env` entry in project settings reaches
+  // both the harness's compaction threshold and the hooks' environment, so
+  // this one block decides where compaction happens and what the warning
+  // measures against.
+  assert.equal(SETTINGS.env?.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, '85')
+  assert.match(SETTINGS.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? '', /^\d+$/)
+})
+
+test('the warning is wired to every tool call', () => {
+  const entries = wiredTo('PostToolUse')
+  assert.equal(entries.length > 0, true, 'nothing wires the PostToolUse warning')
+  for (const entry of entries) {
+    assert.ok(entry.matcher === undefined || entry.matcher === '*', `matcher ${entry.matcher} skips tools`)
+  }
+})
+
+test('PreCompact is wired to auto only, so nothing here refuses a manual compaction', () => {
+  // Refusing a manual /compact is #141's question and is not decided by
+  // wiring. The auto entry exists only to hand the summariser its
+  // instructions, and the asset never refuses on that path.
+  const entries = wiredTo('PreCompact')
+  assert.equal(entries.length > 0, true, 'PreCompact auto is not wired')
+  for (const entry of entries) {
+    const matches = (trigger) => new RegExp(`^(${entry.matcher})$`).test(trigger)
+    assert.equal(matches('auto'), true)
+    assert.equal(matches('manual'), false, 'manual is wired, which is #141 decided by accident')
   }
 })
 

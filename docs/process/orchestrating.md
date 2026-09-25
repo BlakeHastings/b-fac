@@ -23,15 +23,17 @@ merges through `gh api`, and nothing else. There is no `Bash(git *)` clause in
 `.claude/settings.json`, because a hook that fires on every git command and
 never denies one is pure latency.
 
-**The compaction hooks run here, and only their `SessionStart` half.**
-`.claude/settings.json` registers matcher `compact` against
-`scripts/handoff-hooks.mjs`, an unchanged copy of the asset, so after any
-compaction — yours or a dispatched agent's — the resumed context opens with
-`docs/process/handoff.md` verbatim and a note of how old it is. Only `compact`:
-on `startup` and `resume` the file is on disk and can be read. The `PreCompact`
-refusal is deliberately **not** wired, because a hook that blocks the owner's own
-`/compact` in a tracked settings file is theirs to opt into rather than an
-agent's to install (#141). Two consequences worth having in advance: the
+**Compaction happens here at 85%, and you are warned at 75%.**
+`.claude/settings.json` sets `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=85` and a 1M
+window in its `env` block, and wires `scripts/handoff-hooks.mjs`, an unchanged
+copy of the asset, to three events. `PostToolUse` warns the main thread once per
+climb to top up `docs/process/handoff.md` before compaction. `PreCompact`
+`auto` tells the summariser what to keep and refuses nothing. `SessionStart`
+`compact` opens the resumed context, yours or a dispatched agent's, with the
+handoff verbatim, a note of how old it is, and the instruction to resume. ADR
+0060. The `PreCompact` **manual** refusal is deliberately **not** wired, because
+a hook that blocks the owner's own `/compact` in a tracked settings file is
+theirs to opt into rather than an agent's to install (#141). Two consequences worth having in advance: the
 injected block is addressed to both readers because nothing in the payload says
 whose context compacted (ADR 0042), and **the wiring was snapshotted at process
 start**, so the session that landed it did not have it. Restart, then look for
