@@ -1,6 +1,7 @@
 # 0024. The backlog is a port described in prose, not an adapter
 
-Status: accepted
+Status: accepted, and amended by ADR 0035, which adds the dependency edge as the
+port's eighth verb.
 
 Parent epic #60, issue #61. ADR 0021 defines the write boundary this rests on.
 

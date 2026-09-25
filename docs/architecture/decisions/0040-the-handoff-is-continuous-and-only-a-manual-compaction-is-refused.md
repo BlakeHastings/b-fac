@@ -1,6 +1,9 @@
 # 0040. The handoff is continuous, and only a manual compaction is refused
 
-Status: accepted
+Status: accepted, and amended three times. ADR 0042 corrects the claim that
+subagents have no far side. ADR 0055 replaces staleness by the file's own mtime.
+ADR 0060 revises the premise that context usage is not exposed, and keeps the
+argument.
 
 Issue #124, parent epic #4. The measurements are
 `docs/research/2026-08-12-compaction-hooks-and-context-continuity.md`. ADR 0025

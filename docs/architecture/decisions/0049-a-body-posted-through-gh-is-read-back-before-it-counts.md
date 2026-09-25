@@ -1,6 +1,7 @@
 # 0049. A body posted through `gh` is read back before it counts as posted
 
-Status: accepted
+Status: accepted, and amended by ADR 0050, which drops the placeholder from the
+create-then-set two-step this prescribed for creation.
 
 Issue #143. ADR 0004 is this repository's record of what a stronger sentence is
 worth against a shape, and ADR 0027 and ADR 0038 are the two nearest cases of

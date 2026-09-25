@@ -1,6 +1,7 @@
 # 0063. The merge wrapper refuses what it cannot see, and its copies share a body
 
-Status: accepted
+Status: accepted, and amended by ADR 0065, which reads the `REQUIRED` row's check
+names from the ruleset and keeps the array as a fallback.
 
 Issue #200. ADR 0001 made this repository's `merge-pr.mjs` a convenience
 rather than a control; the shipped asset is still a control, because a private

@@ -1,6 +1,7 @@
 # 0014. The plugin ships the whole repository, and the `CLAUDE.md` warning is expected
 
-Status: accepted
+Status: accepted, and amended by ADR 0018, which answered the mirror question this
+left open and whose measurement supersedes the figures here.
 
 ## Context
 

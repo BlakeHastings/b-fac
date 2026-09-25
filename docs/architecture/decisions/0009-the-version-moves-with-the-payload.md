@@ -1,6 +1,7 @@
 # 0009. The plugin version moves in the pull request that changes the payload
 
-Status: accepted
+Status: accepted, and amended by ADR 0017, which replaced the tag-per-merge half.
+The bump rule stands.
 
 ## Context
 
