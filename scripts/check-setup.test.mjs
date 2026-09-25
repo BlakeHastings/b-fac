@@ -1561,3 +1561,140 @@ test('a repository that declared nothing gets the report it got before', () => {
     assert.match(absent.out, RECIPE)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Linked worktrees, reported and never judged
+//
+// BlakeHastings/b-fac#154. A worktree left by an agent whose pull request merged
+// and one left by an agent that died holding the only copy of a commit look the
+// same from outside. The report prints the facts that tell them apart and moves
+// no verdict. The four cases are the ones the issue names.
+// ---------------------------------------------------------------------------
+
+// A repository with a real remote, so "on no remote-tracking ref" has something
+// to be measured against, and a recorded owned boundary with every layer in
+// place, so the exit code is 0 before any worktree exists.
+function withWorktrees(body) {
+  withRepo((root) => {
+    const outside = mkdtempSync(join(tmpdir(), 'check-setup-wt-'))
+    try {
+      write(root, `${FACTORY}/machine.md`, '# Machine facts\n\nWrite boundary: owned\n')
+      installOwnedLayers(root)
+      gitIn(outside, 'init', '--quiet', '--bare', 'origin.git')
+      gitIn(root, 'remote', 'add', 'origin', join(outside, 'origin.git'))
+      gitIn(root, 'push', '--quiet', '-u', 'origin', 'main')
+      gitIn(root, 'remote', 'set-head', 'origin', 'main')
+      const add = (name) => {
+        const path = join(outside, `wt-${name}`)
+        gitIn(root, 'worktree', 'add', '--quiet', path, '-b', name)
+        return path
+      }
+      const commitIn = (path, file) => {
+        write(path, file, `${file}\n`)
+        gitIn(path, 'add', file)
+        gitIn(path, 'commit', '--quiet', '-m', file)
+      }
+      body({ root, add, commitIn })
+    } finally {
+      // The worktrees live in `outside`, and the main checkout's record of them
+      // goes with `root`, so deleting both directories is the whole cleanup.
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+}
+
+function fourWorktrees({ add, commitIn }) {
+  const pushed = add('pushed')
+  commitIn(pushed, 'p.txt')
+  gitIn(pushed, 'push', '--quiet', '-u', 'origin', 'pushed')
+  commitIn(add('unpushed'), 'u.txt')
+  write(add('untracked'), 'scratch.txt', 'x\n')
+  const locked = add('locked')
+  gitIn(locked, 'worktree', 'lock', '--reason', 'agent a1 (pid 4242)', locked)
+}
+
+// One worktree's block, from the line naming it to the blank line after it.
+function worktreeBlock(out, name) {
+  const lines = out.split('\n')
+  const at = lines.findIndex((line) => new RegExp(`[\\\\/]wt-${name}\\b`).test(line))
+  assert.notEqual(at, -1, `no block for worktree ${name} in:\n${out}`)
+  const end = lines.indexOf('', at)
+  return lines.slice(at, end === -1 ? undefined : end).join('\n')
+}
+
+test('each linked worktree is reported, and none of them moves the exit code', () => {
+  withWorktrees((repo) => {
+    fourWorktrees(repo)
+    const { code, out } = check(repo.root)
+
+    assert.equal(code, 0, `a worktree holding an unpushed commit turned the report red:\n${out}`)
+    assert.match(out, /Linked worktrees: 4\. Facts, not a layer: nothing below changes the exit code/)
+    // Below the layer table and above the summary, so the verdict stays last.
+    assert.ok(out.indexOf('] G.') < out.indexOf('Linked worktrees:'))
+    assert.ok(out.indexOf('Linked worktrees:') < out.indexOf('Every layer that applies here'))
+
+    const pushed = worktreeBlock(out, 'pushed')
+    assert.match(pushed, /branch: pushed/)
+    assert.match(pushed, /locked: no/)
+    assert.match(pushed, /uncommitted or untracked files: none/)
+
+    const untracked = worktreeBlock(out, 'untracked')
+    assert.match(untracked, /uncommitted or untracked files: 0 changed, 1 untracked/)
+
+    const locked = worktreeBlock(out, 'locked')
+    assert.match(locked, /locked: yes, "agent a1 \(pid 4242\)"/)
+    assert.match(locked, /uncommitted or untracked files: none/)
+
+    // Facts and a safe way to clear one, never a verdict and never the flag
+    // that stops git refusing.
+    assert.doesNotMatch(out, /--force|\bdead\b|\bstale\b/)
+    assert.match(out, /references\/parallelism\.md/)
+  })
+})
+
+// The fact the issue is about: an unpushed commit is the only copy, so it has
+// to be on the worktree that holds it and on no other.
+test('a commit on no remote-tracking ref is reported on the worktree holding it', () => {
+  withWorktrees((repo) => {
+    fourWorktrees(repo)
+    const { out } = check(repo.root)
+
+    assert.match(worktreeBlock(out, 'unpushed'), /commits on no remote-tracking ref: 1 commit$/m)
+    for (const name of ['pushed', 'untracked', 'locked']) {
+      assert.match(worktreeBlock(out, name), /commits on no remote-tracking ref: none$/m, name)
+    }
+  })
+})
+
+// Merged is judged by ancestry because the pull request is on the forge and
+// this report makes no network call. A squash merge is the case that test
+// cannot see, and it is this repository's own merge policy, so the limit is
+// printed rather than assumed known.
+test('merged is the ancestry test, and a squash merge is said to fail it', () => {
+  withWorktrees((repo) => {
+    const squashed = repo.add('squashed')
+    repo.commitIn(squashed, 's.txt')
+    gitIn(repo.root, 'merge', '--quiet', '--squash', 'squashed')
+    gitIn(repo.root, 'commit', '--quiet', '-m', 'squash-merge squashed')
+    const merged = repo.add('merged')
+    repo.commitIn(merged, 'm.txt')
+    gitIn(repo.root, 'merge', '--quiet', '--ff-only', 'merged')
+    gitIn(repo.root, 'push', '--quiet', 'origin', 'main')
+
+    const { out } = check(repo.root)
+    assert.match(worktreeBlock(out, 'merged'), /merged into origin\/main: yes/)
+    assert.match(worktreeBlock(out, 'squashed'), /merged into origin\/main: no, 1 commit is not/)
+    assert.match(out, /squash-merged\s+pull request reads "no" here/)
+    assert.match(out, /makes no network call/)
+  })
+})
+
+test('a repository with no linked worktree gets no worktree section', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, '# Machine facts\n\nWrite boundary: owned\n')
+    installOwnedLayers(root)
+    const { code, out } = check(root)
+    assert.equal(code, 0)
+    assert.doesNotMatch(out, /Linked worktrees/)
+  })
+})
