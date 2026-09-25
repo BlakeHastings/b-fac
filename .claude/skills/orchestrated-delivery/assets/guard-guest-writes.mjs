@@ -282,13 +282,22 @@ function deny(reason, refused) {
 // ---------------------------------------------------------------------------
 
 // BEGIN command reader
+// reader stamp: sha256 029b3235253c70a6
 //
-// Everything between this marker and END is one reader carried in three files:
-// this one, `assets/guard-merge.mjs` beside it, and the skill repository's own
-// `scripts/guard-merge.mjs`. All three have to answer the same question the same
-// way. ADR 0029 refuses a shared module and #93 holds the duplication;
-// `scripts/command-reader.test.mjs` runs every copy over one corpus so a drift
-// is a red test rather than a lucky reading.
+// Everything between this marker and END is the command reader. In the skill
+// that ships this gate it is carried in three files, which a test there holds
+// to one reading. **An installed copy is not one of them.** `--install` copies
+// this file out once, it carries no version, and no test anywhere reads the
+// copy: whatever the skill fixes after that day, the copy does not get.
+//
+// The stamp line above is how you tell. It is a hash of the code in this region,
+// comments and blank lines left out, and the skill's check fails if its own
+// copies change without it. So compare that one line in the copy your hook runs
+// with the same line in the `assets/guard-guest-writes.mjs` of the skill you
+// have installed now. If they differ, running `--install` again from the skill
+// replaces the copy. If they match and somebody has edited the copy's code since,
+// the stamp no longer describes it, because nothing outside the skill recomputes
+// it. It covers this region only; the rest of the file is not stamped.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` ends a command too, and when a `$(` opened it, it also

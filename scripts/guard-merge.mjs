@@ -78,6 +78,7 @@ function deny(reason) {
 }
 
 // BEGIN command reader
+// reader stamp: sha256 029b3235253c70a6
 //
 // Everything between this marker and END is one reader carried in three files:
 // this one, the guest gate in `assets/guard-guest-writes.mjs`, and the guard
@@ -86,6 +87,13 @@ function deny(reason) {
 // module and #93 holds the duplication; `scripts/command-reader.test.mjs` runs
 // every copy over one corpus so a drift is a red test rather than a lucky
 // reading.
+//
+// The stamp line above is a hash of this region's code, comments and blanks
+// left out, and the same test fails when the code changes and the stamp does
+// not. It is there for the copies that leave: a host repository's guard is a
+// fourth copy that nothing here can read, and comparing its stamp with the
+// shipped asset's is the one check its operator can make. Change the reader and
+// the test prints the new line; put it in all three.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` is handled separately, because ending the command is

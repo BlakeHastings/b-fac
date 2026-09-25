@@ -123,17 +123,26 @@ function deny(reason) {
 }
 
 // BEGIN command reader
+// reader stamp: sha256 029b3235253c70a6
 //
-// Everything between this marker and END is one reader carried in three files:
-// this asset, `assets/guard-guest-writes.mjs`, and the skill repository's own
-// `scripts/guard-merge.mjs`. All three have to answer the same question the same
-// way. ADR 0029 refuses a shared module — what a repository is handed has to be
-// one file, and a two-file asset is a setup step that gets half done — so
-// `scripts/command-reader.test.mjs` runs every copy over one corpus instead, and
-// a drift is a red test rather than a lucky reading.
+// Everything between this marker and END is the command reader. In the skill
+// that ships this guard it is carried in three files, which a test there holds
+// to one reading. **The copy in your repository's `scripts/` is not one of
+// them.** It was copied out of the skill once, it carries no version, and no
+// test anywhere reads it: whatever the skill fixes after that day, it does not
+// get.
 //
-// Editing this region in your own checkout is fine and it is yours to do. Edit
-// it in the skill and it has to land in all three at once.
+// The stamp line above is how you tell. It is a hash of the code in this region,
+// comments and blank lines left out, and the skill's check fails if its own
+// copies change without it. So compare that one line with the same line in the
+// `assets/guard-merge.mjs` of the skill you have installed now. If they differ,
+// the reader here is older or newer than the skill's, and copying the skill's
+// region over this one is how you bring it level. If they match and you have
+// edited the code here since, the stamp no longer describes it, because nothing
+// in your repository recomputes it. It covers this region only; the rest of
+// the file is not stamped.
+//
+// Editing this region in your own checkout is fine and it is yours to do.
 
 // Characters that end one command and begin another when they are not inside
 // quotes. A closing `)` is handled separately, because ending the command is

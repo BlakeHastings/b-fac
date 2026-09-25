@@ -398,6 +398,12 @@ and every rule reads the head of one of them. That parser is the same in
 copies have drifted twice, and both times the bug reached only the file nobody
 was looking at.
 
+The copy a repository installed is one more, and nothing watches it. The line
+under the marker, `// reader stamp: sha256 <hash>`, is a hash of the reader's
+code, which the skill's own check keeps true. Compare it with the same line in
+the asset of the skill you have now: a different stamp means your reader is not
+the skill's.
+
 ## The other gate: guest mode's write boundary
 
 Everything above is owned mode, where the thing being protected is a trunk other
