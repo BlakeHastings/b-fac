@@ -16,17 +16,19 @@ leaves an orchestrator that believes it is the same one.
 
 ## Two facts fix the shape of the answer
 
-**Context usage is not exposed.** Not to hooks, not to the statusline, not
-through an environment variable. There is no threshold event of any kind. So
-"write the handoff at ninety percent" cannot be built — and it does not need to
-be, because `PreCompact` fires at exactly that moment and the harness decides
-when it is. No threshold to tune, and none to drift.
+**You choose where compaction happens, and a hook can see it coming.**
+`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` sets the percentage at which automatic
+compaction fires. It can only lower the threshold, never raise it.
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW` sets the window it is a percentage of. No hook
+payload carries usage, but every one carries `transcript_path`. The last
+main-thread assistant entry's `message.usage` there gives the context in use.
+Measured on 2.1.282 (ADR 0060).
 
-**A hook cannot make the model do work.** It is a shell command with stdout,
-stderr and an exit code. No tool calls, no slash commands. So a hook cannot
-write a handoff; only the conversation can. A hook's entire vocabulary here is
-**refuse** and **inject**, and the design is what you can build out of those two
-verbs.
+**A hook cannot write the handoff.** It is a shell command with stdout, stderr
+and an exit code. No tool calls, and no slash commands. The model cannot run
+`/compact` either, since no tool reaches it. So only the conversation can write
+prose, and a hook's vocabulary here is **refuse**, **inject** and **warn**. The
+design is what you can build out of those.
 
 ## Continuous, not boundary-triggered
 
@@ -51,6 +53,15 @@ So: **the orchestrator tops the handoff up as part of the loop**, and the
 compaction hooks become a staleness check and a way across the boundary rather
 than the thing that produces the document. The failure mode moves from "wrote it badly under
 pressure" to "was told to top it up", which is a failure you can see.
+
+**And it is told, because being expected to was not enough.** In the owner's
+sessions the top-up did not happen unprompted. Every compaction on record was
+one they typed, after asking for the handoff first. So a warning now arrives
+ten points before the threshold, once per climb: top the handoff up now, while
+you can still see the detail. That is the calm moment the argument above wants.
+It arrives at a point you chose rather than one you remembered to find. It is a
+prompt and not a control (`references/enforcement.md`). The control is the
+threshold.
 
 ## What the handoff is, which is nothing new
 
@@ -86,48 +97,91 @@ after its fan-out ended has quietly become a second handoff.
 `references/parallelism.md` has what goes in it and what the artifacts answer
 instead; ADR 0044 has why it is separate rather than folded in here.
 
-## The two hooks
+## The threshold and the hooks
 
-`assets/handoff-hooks.mjs` is one file wired to both events. It decides which it
+`assets/handoff-hooks.mjs` is one file wired to every event. It decides which it
 is from the payload, because a mode flag in the command line is a setup step
-that gets copied wrong.
+that gets copied wrong. With everything wired, the sequence is:
+
+1. **`PostToolUse`** reads the context in use and, once per climb, warns ten
+   points before the threshold. It skips any payload with `agent_id`.
+2. **`PreCompact` `auto`** refuses nothing. It prints what the summariser should
+   keep.
+3. **`SessionStart` `compact`** prints the handoff back, with the resume
+   instruction: reload the skill if it is gone, re-read the process docs, audit
+   the real issue and PR state, and continue.
 
 ```json
 {
+  "env": {
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "85"
+  },
   "hooks": {
+    "PostToolUse": [
+      { "hooks": [
+          { "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/handoff-hooks.mjs\"",
+            "timeout": 15 } ] }
+    ],
     "PreCompact": [
-      {
-        "matcher": "manual",
+      { "matcher": "auto",
         "hooks": [
           { "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/handoff-hooks.mjs\"",
-            "timeout": 15 }
-        ]
-      }
+            "timeout": 15 } ] }
     ],
     "SessionStart": [
-      {
-        "matcher": "compact",
+      { "matcher": "compact",
         "hooks": [
           { "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/handoff-hooks.mjs\"",
-            "timeout": 15 }
-        ]
-      }
+            "timeout": 15 } ] }
     ]
   }
 }
 ```
 
-**There is deliberately no `auto` matcher in that block.** The file refuses
-nothing on `auto` anyway, so registering it would buy a process launch per
-compaction and one more line for a future editor to "tidy" into something that
-blocks.
+**The `env` block in project settings is enough, and nothing needs exporting.**
+Measured on 2.1.282 with nothing set in the shell. A project `.claude/settings.json`
+carrying a window of 100000 and an override of 60 made the harness log
+`effectiveWindow=80000` and `thresholdSource=env`. It compacted with 51K in use,
+where the default for that window is about 67K. The same entries reached the
+hooks' environment, which is how the warning reads them. The two numbers are
+therefore set once, for the harness and the hook together.
+
+**Set the window to your model's.** The percentage is of the window less 20,000
+tokens that the harness keeps for the summary. That is measured, not documented:
+windows of 100K, 200K and 1M logged 80000, 180000 and 980000. The harness caps a
+window larger than the model's and the hook cannot see that happen. A 1M setting
+on a model served at 200K compacts at 85% of 180K, and the warning, dividing by
+980K, never fires first. Where either variable is unset, the hook says once that
+nothing is being watched and warns nothing. It does not guess a window from the
+model id, because the same id is served at 200K and at 1M.
+
+**The override applies to subagents too.** A set window makes a 200K subagent
+compact proactively at the percentage rather than reactively at its limit. That
+is the better side of the trade, since reactive compaction is how an agent dies
+of `Prompt is too long`.
+
+**The `auto` matcher is there to talk, not to refuse.** On `auto` the file
+prints summary instructions and exits 0 on every path, unconditionally. Its
+stdout reached the summariser in three runs out of three. That is undocumented,
+so nothing depends on it, and the handoff is printed back afterwards either way.
+
+**The manual refusal is optional wiring.** Add `"matcher": "manual"` to
+`PreCompact` and a stale handoff refuses a typed `/compact`. This repository
+does not wire it; #141 decides that.
 
 **`SessionStart` uses only the `compact` matcher.** On `startup` and `resume`
 the file is on disk and can be read. After a compaction the model holds a
 summary that does not know the file exists, which is the one case where
 injecting it is the only thing that works.
+
+**The warning is cheap on purpose,** since it runs on every tool call of every
+agent. It reads the transcript from the tail and exits on `agent_id` before
+opening anything. Against a 50 MB transcript it took about 50 ms, against 41 ms
+for a bare `node` start.
 
 Hooks are read once at process start, so **restart after wiring these** — and
 note that the *script* is read off disk every time, so a change to what it
@@ -190,6 +244,11 @@ one. The gate cannot be satisfied from inside because the model cannot be
 reached to satisfy it: the handoff the hook is asking for is prose, and no
 prompt gets through to write it.
 
+**Current documentation does not relax this.** It says blocking a *proactive*
+automatic compaction only skips it. Blocking a *reactive* one, the recovery
+from a context-limit error, still fails the request. The payload does not say
+which kind it is, so the rule stays unconditional.
+
 There is one escape, and it only exists because of the asymmetry: **a manual
 `/compact` still works on a wedged session**, provided the manual rule allows it
 at that moment. Measured. A hook that blocked both would have no way out at all.
@@ -200,14 +259,28 @@ and both measured to work here. That is not an escape from the wedge, it is a
 way to arrive at it sooner: with no automatic compaction the session runs
 straight into the same `Prompt is too long` with nothing to catch it.*
 
-## The far side works, and it does not truncate
+## The far side works, up to 10,000 characters
 
 `SessionStart` stdout is added to the resumed context. Measured: a marker
-injected before a compaction was read back verbatim after it, and a 1 MB payload
-came through with its first, middle and last lines intact. So the hook prints
-the handoff whole and summarises nothing. A handoff that silently lost its
-second half would be worse than one that was never injected, because the reader
-has no way to tell the two apart.
+injected before a compaction was read back verbatim after it. **Above 10,000
+characters it is not.** On 2.1.282 the harness saves anything longer to a file
+and injects the path with a 2KB preview. Plain stdout and `additionalContext`
+behave the same. With a 23KB and a 22.5KB block, the first line arrived and the
+middle and last did not.
+
+So the hook prints the handoff whole when the block fits, and **not at all when
+it does not**. In that case it names the file and tells the reader to Read it
+first. A handoff that silently lost its second half would be worse than one
+that was never injected, because the reader has no way to tell the two apart.
+What the reader must act on (who the file is for, and what to do next) comes
+before the handoff, so it is inside the cap either way.
+
+**Keep the handoff well under the cap anyway.** The harness has a thrash
+breaker. If the context refills to the threshold within three turns of a
+compaction, three times running, it ends the turn. A block under 10,000
+characters is about 2,500 tokens and cannot do that alone. A handoff that
+outgrows the cap is also carrying more than where the work stopped, and the
+durable part belongs in the backlog or a decision record.
 
 That injection is also the only honest answer to whether these hooks are loaded.
 `--probe` prints the verdict the *rules* would give, which is the written state
@@ -220,7 +293,7 @@ nothing there to go stale.
 
 ## Subagents compact too, and the block you inject reaches them
 
-Established by measurement, because none of it is documented.
+Established by measurement.
 
 - A subagent's context compacts **independently** of the orchestrator's.
 - `PreCompact` **does** fire for it, with `trigger: "auto"`, and the payload
@@ -235,6 +308,9 @@ Established by measurement, because none of it is documented.
   back inside the agent's report. This payload names no agent either.
 - **You are told nothing.** No event, nothing in your own transcript, nothing on
   the tool result. The agent knows, and the record knows.
+- A subagent's *tool calls* do say whose they are. `PostToolUse` carries
+  `agent_id` and `agent_type` inside a subagent and neither on the main thread.
+  That is how the warning skips them.
 
 So a blocking `auto` rule does not merely risk wedging your session: it kills
 implementation agents. Measured — a `general-purpose` subagent reading twelve
@@ -341,13 +417,16 @@ the same treatment is a decision on its own, and it is not made here.
 
 ## Revisit trigger
 
-If a harness ever exposes context usage to a hook, or a low-context event
-arrives, re-read the "continuous, not boundary-triggered" section rather than
-adopting it. The argument there is about *who writes the document and in what
-condition*, and a better trigger does not change it. What a threshold would buy
-is a warning early enough to be acted on calmly, which is worth having as a
-prompt to top the file up — and is still not a reason to produce it at the
-boundary.
+If a hook payload ever carries context usage or the window size, read it from
+there. The transcript tail and the two environment variables are the
+workaround, and the 20K reserve they depend on is undocumented. Do not take a
+better signal as a reason to produce the handoff at the boundary. The argument
+in "continuous, not boundary-triggered" is about *who writes the document and
+in what condition*, and the warning exists to serve it.
+
+If the warning is seen ignored twice, the next layer is a `Stop` hook returning
+`decision: "block"` with a reason. It was measured to make the model carry on
+and do what the reason says. It is deliberately not built yet.
 
 If `PreCompact` ever gains a field naming the agent whose context is being
 compacted, the subagent hole becomes addressable and this chapter is wrong about

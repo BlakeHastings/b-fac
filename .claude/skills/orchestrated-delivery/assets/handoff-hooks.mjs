@@ -1,10 +1,23 @@
-// Two hooks about one file: the handoff the orchestrator keeps topped up, and
-// what happens to it when the context window is compacted.
+// Hooks about one file: the handoff the orchestrator keeps topped up, and what
+// happens to it as the context window fills and is compacted.
 //
 // SETUP
 // Three knobs, below: HANDOFF, DEFAULT_BRANCH, and the two staleness numbers.
-// Wire both events to this same file; it decides which one it is from the
-// payload. The block is in references/continuity.md.
+// Wire every event to this same file; it decides which one it is from the
+// payload. The block, and the two environment variables that choose where
+// compaction happens, are in references/continuity.md.
+//
+// THE SEQUENCE, WHEN ALL OF IT IS WIRED (ADR 0060)
+//   PostToolUse         reads how full the context is from the transcript and,
+//                       once per climb, tells the orchestrator to top the
+//                       handoff up now, calmly, because compaction is coming.
+//   PreCompact (auto)   refuses nothing, and prints what the summariser must
+//                       keep: whose session this is and where the handoff is.
+//   SessionStart        prints the handoff back, with the resume instruction
+//                       the owner used to type by hand.
+// The threshold itself is not in this file. It is the harness's own setting,
+// CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, and this file reads it rather than keeping a
+// second copy that could disagree.
 //
 // WHAT THIS PREVENTS
 // A compaction is the one event that destroys the orchestrator's working memory
@@ -133,7 +146,17 @@ const STALE_AFTER_HOURS = 8
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
 // The payload carries the session's `cwd`, so the path is resolved against a
@@ -295,18 +318,46 @@ const age = (state) => {
 // PreCompact: the one refusal
 // ---------------------------------------------------------------------------
 
+// What the summariser is asked to keep. PreCompact stdout on an allowed
+// compaction is used as instructions to the summariser: measured on 2.1.282, a
+// marker printed here came back in `compact_summary` three times out of three.
+// That is not documented, so nothing depends on it. The handoff is printed back
+// by SessionStart whether or not the summariser listened; this only makes the
+// summary it lands next to point the same way.
+//
+// Addressed to both readers, for the reason the SessionStart block is: an
+// automatic compaction fires for a subagent's context too, with nothing in the
+// payload to say so, and a summary that turned an implementation agent into
+// the orchestrator would be the wrong-reader failure arriving a step earlier.
+const KEEP_IN_THE_SUMMARY =
+  'When summarising, keep these specifics verbatim rather than their gist.\n' +
+  'If this conversation is an orchestrator running the orchestrated-delivery\n' +
+  `loop: say so, keep the handoff path (${HANDOFF}), which step of the loop was in\n` +
+  'progress, which issues and pull requests were in flight and with which agents,\n' +
+  "and anything the owner said in their own words. If it is an implementation\n" +
+  'agent working one issue: keep the issue number, the branch, the evidence bar\n' +
+  'and the report contract from its brief, and do not describe it as the\n' +
+  'orchestrator.\n'
+
 function preCompact(payload) {
   // Unconditional, and the two reasons are at the top of this file. Read them
   // before narrowing this line: both were measured, and one of them kills
-  // subagents rather than the session you are sitting in.
-  if (payload.trigger !== 'manual') process.exit(0)
+  // subagents rather than the session you are sitting in. The write before it
+  // cannot refuse anything: a PreCompact hook refuses by exit code, and this
+  // one's is 0 on every path that reaches it.
+  if (payload.trigger !== 'manual') {
+    process.stdout.write(KEEP_IN_THE_SUMMARY)
+    process.exit(0)
+  }
 
   const state = readHandoff(payload.cwd ?? process.cwd())
 
   // The first compaction of a fresh session must not wedge, and there is
-  // nothing to be stale about yet. Silence rather than a nudge, because a
-  // PreCompact hook that exits 0 has no channel the model can hear.
-  if (!state.present || !state.stale) process.exit(0)
+  // nothing to be stale about yet.
+  if (!state.present || !state.stale) {
+    process.stdout.write(KEEP_IN_THE_SUMMARY)
+    process.exit(0)
+  }
 
   process.stderr.write(
     `Blocked: ${HANDOFF} is ${age(state)}.\n` +
@@ -332,11 +383,18 @@ function preCompact(payload) {
 // SessionStart: the far side
 // ---------------------------------------------------------------------------
 
-// stdout from a SessionStart hook is added to the resumed context. Measured
-// intact at 1 MB, first line, middle line and last line, so nothing here
-// truncates or summarises: a handoff that silently lost its second half would
-// be worse than one that was never injected, and the caller has no way to tell
-// the two apart.
+// stdout from a SessionStart hook is added to the resumed context, up to 10,000
+// characters. Over that, the harness saves it to a file and injects the path
+// and a 2KB preview instead. Measured on 2.1.282, 23KB of plain stdout and
+// 22.5KB of `additionalContext` alike: the first line arrived, the middle and
+// the last did not. (2.1.228 carried 1 MB whole; the cap arrived since.)
+//
+// A handoff cut at 2KB is the failure this file exists to prevent — it lost
+// its second half and the reader cannot tell. So the block is built whole
+// first, and if it would not fit, the handoff's text is left out on purpose
+// and the reader is told to Read the file, which is where every word of it
+// still is. Everything the reader must act on comes before the handoff either
+// way, so it is inside the cap in both shapes.
 //
 // Only the `compact` matcher, deliberately. On `startup` and `resume` the file
 // is on disk and can be read; after a compaction the model has a summary that
@@ -367,6 +425,27 @@ const WHOEVER_YOU_ARE =
   '\n' +
   'IF YOU ARE THE ORCHESTRATOR:\n'
 
+// The ritual the owner typed by hand after every /compact, for weeks, because
+// nothing else said it: re-read the handoff, re-read the process, check the
+// real state, and carry on without being asked. Every compaction on record in
+// those sessions was manual, so this block never once arrived without the
+// owner's own sentence beside it. With the threshold set, it now arrives alone,
+// mid-turn, and the turn continues — so it has to say "continue" itself.
+const RESUME =
+  'Then, before acting on anything you remember:\n' +
+  '1. If the orchestrated-delivery skill is not in your context, load it again.\n' +
+  '2. Re-read docs/process/orchestrating.md and the process docs it points to.\n' +
+  '3. Audit the real state: open issues, open pull requests and their checks,\n' +
+  '   and which agents are still running. Where it disagrees with the handoff,\n' +
+  '   the repository is right.\n' +
+  '4. Continue the loop from where the handoff says it stopped. Do not wait to\n' +
+  '   be told to; this compaction was planned for.\n'
+
+// The harness's cap on what a hook may inject, in characters (hooks.md). The
+// margin is for the line endings and quoting nobody here controls.
+const INJECTION_CAP = 10_000
+const INJECTION_BUDGET = INJECTION_CAP - 500
+
 function sessionStart(payload) {
   const state = readHandoff(payload.cwd ?? process.cwd())
 
@@ -378,25 +457,248 @@ function sessionStart(payload) {
         `there is no handoff at ${HANDOFF}, so nothing was carried across besides the\n` +
         'summary you are holding. Re-read the backlog and the log before acting on\n' +
         'anything you think you remember, and write the handoff as part of this pass\n' +
-        'so the next compaction costs less than this one did.\n',
+        'so the next compaction costs less than this one did.\n' +
+        '\n' +
+        RESUME,
     )
     process.exit(0)
   }
 
-  process.stdout.write(
+  const opening = (where) =>
     'The context was just compacted.\n' +
+    '\n' +
+    WHOEVER_YOU_ARE +
+    `${where}, ${age(state)}.\n` +
+    '\n' +
+    'It is a snapshot, not a source of truth. Where it disagrees with the\n' +
+    'repository the repository is right, and the summary you are holding is lossy\n' +
+    'in ways neither of you can see. Top this file up as part of the loop rather\n' +
+    'than at the next boundary.\n' +
+    '\n' +
+    RESUME
+
+  const text = state.text()
+  const whole =
+    opening(`below is ${HANDOFF} verbatim`) +
+    '\n' +
+    `----- ${HANDOFF} -----\n` +
+    text +
+    `\n----- end ${HANDOFF} -----\n`
+
+  if (whole.length <= INJECTION_BUDGET) {
+    process.stdout.write(whole)
+    process.exit(0)
+  }
+
+  // Too long to carry whole, so it is not carried in part either.
+  process.stdout.write(
+    opening(`${HANDOFF} is ${text.length} characters, which is over the harness's ` +
+      `${INJECTION_CAP} character cap on what a hook may inject, so it is not printed here: ` +
+      `Read ${state.path} in full, first`) +
       '\n' +
-      WHOEVER_YOU_ARE +
-      `below is ${HANDOFF} verbatim, ${age(state)}.\n` +
-      '\n' +
-      'It is a snapshot, not a source of truth. Where it disagrees with the\n' +
-      'repository the repository is right, and the summary you are holding is lossy\n' +
-      'in ways neither of you can see. Reconcile against the backlog before acting,\n' +
-      'and top this file up as part of the loop rather than at the next boundary.\n' +
-      '\n' +
-      `----- ${HANDOFF} -----\n` +
-      state.text() +
-      `\n----- end ${HANDOFF} -----\n`,
+      'A preview would have been cut at 2KB without saying where. A handoff this long is\n' +
+      'also carrying more than where the work stopped; move what is durable into the\n' +
+      'backlog or a decision record when you next top it up.\n',
+  )
+  process.exit(0)
+}
+
+// ---------------------------------------------------------------------------
+// PostToolUse: the warning before the threshold
+// ---------------------------------------------------------------------------
+
+// WHY A WARNING, WHEN THE HANDOFF IS SUPPOSED TO BE TOPPED UP ANYWAY
+// Because it was not. Ten sessions of the owner's, and every compaction on
+// record was one they typed, after first asking for the handoff to be updated.
+// "Top it up as part of the loop" is an instruction, and an instruction is not
+// a control (ADR 0004). The control is the threshold, which the harness owns.
+// This buys the other half: a calm moment, some way before the threshold, at
+// which the orchestrator is told the boundary is coming. It is still a prompt,
+// and it is still the orchestrator that writes. ADR 0060.
+//
+// WHERE THE NUMBERS COME FROM
+// No hook payload carries context usage or the window size. Measured on
+// 2.1.282. So:
+//
+//   in use   The last main-thread assistant entry in the transcript, whose
+//            `message.usage` input, cache-read and cache-creation tokens add up
+//            to what was sent. The transcript is written asynchronously, so
+//            this can be one call behind. Near a band edge that is a warning a
+//            tool call late, which is fine for a warning.
+//
+//   window   CLAUDE_CODE_AUTO_COMPACT_WINDOW, the harness's own knob. Read,
+//            not duplicated: settings `env` entries reach both the harness and
+//            this hook (measured), so one line decides both.
+//
+//   percent  CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, likewise.
+//
+// A model-family table was the alternative, and it was declined. Transcript
+// model ids carry no `[1m]`, and the same model runs at 200K or 1M depending
+// on where it is served, so the table would be a guess that reads as a
+// measurement. Where the two variables are not set, this says so once and warns
+// nothing, because a guessed percentage is the "number with a caveat" the rest
+// of this file refuses.
+//
+// THE PERCENTAGE IS OF THE WINDOW LESS A RESERVE
+// The harness keeps 20,000 tokens of the window back for the summary, and the
+// override is a percentage of what is left. Measured, not documented: a window
+// of 100K, 200K and 1M logged `effectiveWindow` 80000, 180000 and 980000, and
+// an override of 60 on 100K compacted with 51K in use, on the tool call that
+// took it past 48K rather than 60K. If this moves, the warning
+// moves with it by a few points, which is what the band's width absorbs.
+const SUMMARY_RESERVE = 20_000
+
+// How far below the compaction point the warning goes. Ten points of the
+// effective window: 75% when compaction is at 85%, which is the owner's number.
+// A top-up is a few thousand tokens of reading and writing, so on a 1M window
+// this is a great deal of room and on the 100K minimum it is still 8,000 tokens.
+const WARN_POINTS_BELOW = 10
+
+// The transcript is read from the end, because this runs on every tool call in
+// every session and every worktree agent where it is wired, and a transcript
+// grows without bound. 64KB almost always holds the last assistant entry; one
+// huge tool result can push it further back, so the window widens four times
+// before giving up and saying nothing.
+const TAIL_START = 64 * 1024
+const TAIL_LIMIT = 4 * 1024 * 1024
+
+function contextThreshold(env) {
+  const window = Number.parseInt(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? '', 10)
+  const percent = Number.parseInt(env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? '', 10)
+  if (!Number.isFinite(window) || !Number.isFinite(percent)) return null
+  if (percent < 1 || percent > 100) return null
+
+  // The harness clamps the window to 100K..1M rather than rejecting it (a value
+  // like "500k" reads as 500 and becomes 100K), so the arithmetic here clamps
+  // the same way instead of disagreeing with it.
+  const effective = Math.min(Math.max(window, 100_000), 1_000_000) - SUMMARY_RESERVE
+  return { effective, compactAt: percent, warnAt: Math.max(percent - WARN_POINTS_BELOW, 1) }
+}
+
+// null is "cannot tell", which warns nothing. A compaction boundary found
+// before any usage means the context was just replaced, so what was in use
+// before it is no longer the answer.
+function contextInUse(transcriptPath) {
+  let fd
+  try {
+    fd = openSync(transcriptPath, 'r')
+  } catch {
+    return null
+  }
+
+  try {
+    const size = fstatSync(fd).size
+    for (let span = TAIL_START; ; span *= 4) {
+      const start = Math.max(0, size - span)
+      const buffer = Buffer.alloc(size - start)
+      readSync(fd, buffer, 0, buffer.length, start)
+      const lines = buffer.toString('utf8').split('\n')
+      if (start > 0) lines.shift() // cut mid-line
+
+      for (let n = lines.length - 1; n >= 0; n -= 1) {
+        const line = lines[n]
+        const boundary = line.includes('"compact_boundary"')
+        if (!boundary && !line.includes('"usage"')) continue
+
+        let entry
+        try {
+          entry = JSON.parse(line)
+        } catch {
+          continue
+        }
+        if (entry.isSidechain) continue
+        if (entry.subtype === 'compact_boundary') return entry.compactMetadata?.postTokens ?? 0
+
+        const usage = entry.type === 'assistant' ? entry.message?.usage : null
+        const used =
+          (usage?.input_tokens ?? 0) +
+          (usage?.cache_read_input_tokens ?? 0) +
+          (usage?.cache_creation_input_tokens ?? 0)
+        if (used > 0) return used
+      }
+
+      if (start === 0 || span >= TAIL_LIMIT) return null
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// One small file per session, so the warning is said once per climb rather
+// than on every tool call past the line. It is cleared by the context falling
+// back below the line, which is what a compaction does, rather than by any
+// event: SessionStart fires for subagents' compactions as well, under the same
+// session id, and would clear the orchestrator's state at the wrong moment.
+const bandFile = (sessionId) =>
+  join(tmpdir(), 'b-fac-context', `${String(sessionId).replace(/[^\w-]/g, '_')}.json`)
+
+function readBand(sessionId) {
+  try {
+    return JSON.parse(readFileSync(bandFile(sessionId), 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function writeBand(sessionId, band) {
+  try {
+    mkdirSync(join(tmpdir(), 'b-fac-context'), { recursive: true })
+    writeFileSync(bandFile(sessionId), JSON.stringify(band))
+  } catch {
+    // Unrecorded, the warning may repeat on the next call. That is noise, not
+    // a failure, and nothing here is worth crashing a tool call over.
+  }
+}
+
+const inject = (text) =>
+  process.stdout.write(
+    JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } }),
+  )
+
+function postToolUse(payload) {
+  // A subagent's handoff is its issue. Telling an implementation agent to top
+  // up the orchestrator's handoff is the wrong-reader failure ADR 0042 exists
+  // to prevent, and a subagent's tool calls are the only ones whose payload
+  // says whose they are. First, and before any file is opened, because this is
+  // every tool call every agent makes.
+  if (payload.agent_id) process.exit(0)
+  if (!payload.session_id) process.exit(0)
+
+  const threshold = contextThreshold(process.env)
+  const band = readBand(payload.session_id)
+
+  if (threshold === null) {
+    if (!band.unwatched) {
+      writeBand(payload.session_id, { ...band, unwatched: true })
+      inject(
+        'Context usage is not being watched in this session: CLAUDE_CODE_AUTO_COMPACT_WINDOW ' +
+          'and CLAUDE_AUTOCOMPACT_PCT_OVERRIDE are not both set, so there is no threshold to ' +
+          'warn ahead of. Top the handoff up as part of the loop. (Said once per session; ' +
+          'references/continuity.md has the setting.)',
+      )
+    }
+    process.exit(0)
+  }
+
+  const used = contextInUse(payload.transcript_path)
+  if (used === null) process.exit(0)
+
+  const percent = Math.floor((used / threshold.effective) * 100)
+  if (percent < threshold.warnAt) {
+    if (band.warned) writeBand(payload.session_id, { ...band, warned: false })
+    process.exit(0)
+  }
+  if (band.warned) process.exit(0)
+
+  writeBand(payload.session_id, { ...band, warned: true })
+  inject(
+    `Context is at ${percent}% of the ${threshold.effective}-token auto-compact window, and ` +
+      `automatic compaction is set for ${threshold.compactAt}%. Top the handoff ` +
+      `(${HANDOFF}) up now, while you can still see the detail it needs: where the work ` +
+      'stopped, what is dispatched to whom, what is waiting on the owner, and at which ' +
+      'commit that was true. Then carry on with the loop. The compaction will not be ' +
+      'refused, and the handoff is printed back into the context after it, with what to ' +
+      'do next. This is said once per climb.',
   )
   process.exit(0)
 }
@@ -471,10 +773,11 @@ if (process.argv.includes('--probe')) {
     process.exit(0) // An unparseable payload is not this hook's problem.
   }
 
-  // One file, wired to both events, deciding from the payload rather than from
+  // One file, wired to every event, deciding from the payload rather than from
   // an argv flag. A flag is a setup step that gets copied wrong, and the wrong
   // half of this file firing on the wrong event is a refusal nobody expects.
   if (payload.hook_event_name === 'PreCompact') preCompact(payload)
   if (payload.hook_event_name === 'SessionStart') sessionStart(payload)
+  if (payload.hook_event_name === 'PostToolUse') postToolUse(payload)
   process.exit(0)
 }

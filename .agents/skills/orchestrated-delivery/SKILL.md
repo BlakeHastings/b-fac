@@ -355,12 +355,16 @@ assumption a brief was written under.
 
 **Keep a handoff file, and top it up as part of the loop rather than at the
 boundary.** A handoff written when the context is nearly full is written by the
-most degraded version of you, about work you can barely still see; the worked
-example this skill came from was written at a *calm* moment and was wrong about
-its largest claim within the hour. The boundary cannot be gated anyway.
-**Automatic compaction must never be refused** — a refused one cannot be
-satisfied, because the session then fails every request and the hook goes on
-refusing, and the same rule fires for a subagent's context and kills the agent.
+most degraded version of you, about work you can barely still see. The worked
+example this skill came from was written at a *calm* moment and was still wrong
+about its largest claim within the hour. **Choose where compaction happens**
+(`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, 85 by default here). **When the warning
+arrives ten points before it, top the handoff up then**, and carry on. After
+the compaction, do what the injected block says: reload this skill if it is
+gone, re-read the process docs, audit the real state, continue.
+**Automatic compaction must never be refused.** A refused one cannot be
+satisfied: the session fails every request and the hook goes on refusing. The
+same rule fires for a subagent's context, where it kills the agent.
 
 It is a snapshot with a decay note, not a source of truth, and where it
 disagrees with the repository the repository is right. **Do not invent a
@@ -369,9 +373,10 @@ and the review record on each PR already carry everything durable; the handoff
 is only where the work stopped and what a successor would otherwise have to
 reconstruct.
 
-`assets/handoff-hooks.mjs` is the mechanical half: it refuses a manual
-`/compact` when the handoff has aged out, never refuses an automatic one, and
-prints the file into the resumed context afterwards. **After any compaction,
+`assets/handoff-hooks.mjs` is the mechanical half. It warns before the
+threshold (main thread only), never refuses an automatic compaction, can refuse
+a manual `/compact` when the handoff has aged out, and prints the file back
+into the resumed context afterwards. **After any compaction,
 look for that injected block** — it is either in this context or it is not, so
 unlike every other layer here, asking whether it is loaded costs nothing.
 **Implementation agents compact too, and nothing tells you.** An agent that lost
@@ -459,7 +464,7 @@ is silent, and one repository spent two days that way.
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names |
 | `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
 | `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
-| `handoff-hooks.mjs` | `scripts/`, wired to `PreCompact` and `SessionStart` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
+| `handoff-hooks.mjs` | `scripts/`, wired to `PostToolUse`, `PreCompact` and `SessionStart`, with the threshold in settings `env` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
 | `check-outward-writes.mjs` | **Guest mode, at publish.** Run in place. Reports what actually left, from the reflog; `--mark` after an authorised publish | Nothing |
