@@ -113,6 +113,9 @@ ships to private repos, and ADR 0051 for why the fourth came back.
    not land code", which the ruleset does not.
    *Not covered:* sessions that did not load it, and humans at a terminal. A
    net, not a guarantee.
+   It also refuses a destructive git command (`reset --hard`, `clean -f`,
+   `worktree remove --force` and the rest) when the tree it acts on holds
+   uncommitted work, outside a linked worktree. ADR 0069.
 3. **`node scripts/merge-pr.mjs <n>`**, which refuses unless every required
    check is green and always squash merges. A convenience rather than a control
    here, kept because it says *which* check is red where a merge button does

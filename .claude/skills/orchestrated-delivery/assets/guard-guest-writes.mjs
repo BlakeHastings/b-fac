@@ -769,26 +769,38 @@ const PUBLISH =
   'of ours runs. See b-fac ADR 0021 and references/first-run.md.'
 
 // BEGIN git arguments
-// git arguments stamp: sha256 dabf07cef9e8c86e
+// git arguments stamp: sha256 6d9fbae09aea9c65
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
 // the skill's as the reader's note above says. #201. Split from `gh arguments`
 // by #219, because one of that region's copies is in a file that reads no `git`.
 
-// `git` takes its own flags before the subcommand, and two of them swallow the
-// next token. Returns the arguments from the subcommand onward, or null when
-// this segment does not invoke git.
+// `git` takes its own flags before the subcommand, and several of them swallow
+// the next token. `gitCall` returns the arguments from the subcommand onward
+// together with the flags that decide *where* git acts and how it is
+// configured, or null when this segment does not invoke git. This gate asks
+// only for the arguments; the merge guards' uncommitted-work rule asks for the
+// rest, and one text in every copy is what keeps the three reading git alike.
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--exec-path'])
 
-function gitArguments(tokens) {
+function gitCall(tokens) {
   if (commandName(tokens[0]) !== 'git') return null
+  const directories = []
+  const configs = []
+  let elsewhere = false
   let at = 1
   while (at < tokens.length && tokens[at].startsWith('-')) {
-    at += GIT_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
+    const flag = tokens[at]
+    if (flag === '-C') directories.push(tokens[at + 1] ?? '')
+    if (flag === '-c') configs.push(tokens[at + 1] ?? '')
+    if (/^--(git-dir|work-tree)(=|$)/.test(flag)) elsewhere = true
+    at += GIT_FLAGS_WITH_VALUE.has(flag) ? 2 : 1
   }
-  return tokens.slice(at)
+  return { args: tokens.slice(at), directories, configs, elsewhere }
 }
+
+const gitArguments = (tokens) => gitCall(tokens)?.args ?? null
 
 // END git arguments
 

@@ -65,7 +65,8 @@ const FILES = {
 // assets from #194, `commandName` and `shellPayload` in all three guards,
 // `gitArguments` and `ghArguments` in the two guards that read both the same
 // way, the merge rule, REST and GraphQL, in the two merge guards from #213, and
-// `show`, which prints a path the same way in the two check scripts.
+// `show`, which prints a path the same way in the two check scripts. #188 added
+// the uncommitted-work rule to the two merge guards as a region from the start.
 //
 // Each helper group is a region of its own with a stamp of its own, rather than
 // a wider reader region, for two reasons. The groups live in different sets of
@@ -82,10 +83,12 @@ const FILES = {
 // longer declares fails to import, rather than shrinking the comparison.
 //
 // `gitArguments` and `ghArguments` are two regions rather than one because
-// `scripts/guard-merge.mjs` reads `gh` and not `git`. Until #219 its
+// `scripts/guard-merge.mjs` read `gh` and not `git`. Until #219 its
 // `ghArguments` was left out of any region, comparing the raw token where the
 // other two asked `commandName`, and `/usr/bin/gh pr merge 42` merged past it.
-// ADR 0068.
+// ADR 0068. Since #188 that file reads `git` too, for the uncommitted-work rule,
+// so `git arguments` is in all three guards and the split is kept only so a
+// change to one reading does not move the other's stamp. ADR 0069.
 const REGIONS = [
   {
     name: 'command reader',
@@ -102,9 +105,9 @@ const REGIONS = [
   {
     name: 'git arguments',
     stamp: 'git arguments stamp',
-    files: ['assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
+    files: ['scripts/guard-merge.mjs', 'assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
     needs: ['shell payload'],
-    exports: ['gitArguments'],
+    exports: ['gitArguments', 'gitCall'],
   },
   {
     name: 'gh arguments',
@@ -119,6 +122,18 @@ const REGIONS = [
     files: ['scripts/guard-merge.mjs', 'assets/guard-merge.mjs'],
     needs: ['command reader'],
     exports: ['mergesThroughApi', 'graphqlMerge', 'GRAPHQL_MERGE', 'GRAPHQL_UNREADABLE'],
+  },
+  {
+    name: 'uncommitted work',
+    stamp: 'uncommitted work stamp',
+    files: ['scripts/guard-merge.mjs', 'assets/guard-merge.mjs'],
+    needs: ['shell payload', 'git arguments'],
+    prelude:
+      "import { execFileSync } from 'node:child_process'\n" +
+      "import { existsSync } from 'node:fs'\n" +
+      "import { homedir } from 'node:os'\n" +
+      "import { resolve } from 'node:path'\n",
+    exports: ['uncommittedWork', 'destructiveAction', 'DESTRUCTIVE_OK'],
   },
   {
     name: 'path comparison',
@@ -325,6 +340,62 @@ for (const [file, m] of Object.entries(modules['git arguments'])) {
     assert.deepEqual(m.gitArguments(['git.cmd', 'push']), ['push'])
     assert.equal(m.gitArguments(['gh', 'pr', 'merge']), null)
     assert.equal(m.gitArguments(['git-lfs', 'push']), null)
+    // #188. Where git acts, and how it is configured, read off the same walk.
+    assert.deepEqual(m.gitCall(['git', '-C', 'a', '-C', 'b', '-c', 'x=y', 'reset', '--hard']), {
+      args: ['reset', '--hard'],
+      directories: ['a', 'b'],
+      configs: ['x=y'],
+      elsewhere: false,
+    })
+    assert.equal(m.gitCall(['git', '--work-tree=/w', 'reset', '--hard']).elsewhere, true)
+    assert.equal(m.gitCall(['git', '--git-dir', '/g', 'reset', '--hard']).elsewhere, true)
+    assert.equal(m.gitCall(['node', 'x']), null)
+  })
+}
+
+// The uncommitted-work rule's reading of a command, #188. What the tree holds
+// is guard-uncommitted-work.test.mjs's business; this pins which commands are
+// destructive at all, and what each would take.
+for (const [file, m] of Object.entries(modules['uncommitted work'])) {
+  test(`${file}'s uncommitted work rule knows a destructive command from its neighbours`, () => {
+    const read = (line) => m.destructiveAction(line.split(' '))
+    assert.deepEqual(read('reset --hard origin/main'), { lose: 'rewrite', target: 'origin/main', paths: [] })
+    assert.deepEqual(read('reset --hard'), { lose: 'rewrite', target: 'HEAD', paths: [] })
+    assert.equal(read('reset --soft HEAD~1'), null)
+    assert.deepEqual(read('checkout -f'), { lose: 'rewrite', target: 'HEAD', paths: [] })
+    assert.deepEqual(read('checkout -qf main'), { lose: 'rewrite', target: 'main', paths: [] })
+    assert.deepEqual(read('checkout -f -b fix origin/main'), { lose: 'rewrite', target: 'origin/main', paths: [] })
+    // `-b` takes the rest of its token, so `-bfix` is a branch called `fix`.
+    assert.equal(read('checkout -bfix'), null)
+    assert.equal(read('checkout -b f'), null)
+    assert.equal(read('checkout main'), null)
+    assert.deepEqual(read('checkout HEAD -- a.txt b.txt'), { lose: 'tracked', paths: ['a.txt', 'b.txt'] })
+    assert.deepEqual(read('checkout .'), { lose: 'tracked', paths: ['.'] })
+    assert.deepEqual(read('switch -f main'), { lose: 'rewrite', target: 'main', paths: [] })
+    assert.deepEqual(read('switch --discard-changes -c fix'), { lose: 'rewrite', target: 'HEAD', paths: [] })
+    assert.equal(read('switch -c fix'), null)
+    assert.deepEqual(read('restore a.txt'), { lose: 'tracked', paths: ['a.txt'] })
+    assert.deepEqual(read('restore -s HEAD~1 a.txt'), { lose: 'tracked', paths: ['a.txt'] })
+    assert.deepEqual(read('restore -SW a.txt'), { lose: 'tracked', paths: ['a.txt'] })
+    assert.equal(read('restore --staged a.txt'), null)
+    assert.equal(read('restore -S a.txt'), null)
+    assert.deepEqual(read('clean -fdx'), { lose: 'untracked', paths: [], ignored: true, directories: true })
+    assert.deepEqual(read('clean -f -- build'), { lose: 'untracked', paths: ['build'], ignored: false, directories: false })
+    assert.equal(read('clean -d'), null)
+    assert.equal(read('clean -fn'), null)
+    assert.equal(read('clean -f --dry-run'), null)
+    // `-e` takes a value, so the `f` in `-efoo` is the pattern's.
+    assert.equal(read('clean -efoo'), null)
+    assert.deepEqual(read('stash clear'), { stash: 'all' })
+    assert.deepEqual(read('stash drop'), { stash: 'top' })
+    assert.deepEqual(read('stash drop -q'), { stash: 'top' })
+    assert.equal(read('stash drop stash@{2}'), null)
+    assert.equal(read('stash pop'), null)
+    assert.deepEqual(read('worktree remove --force ../wt'), { worktree: '../wt' })
+    assert.deepEqual(read('worktree remove -ff ../wt'), { worktree: '../wt' })
+    assert.equal(read('worktree remove ../wt'), null)
+    assert.equal(read('worktree prune'), null)
+    assert.equal(m.DESTRUCTIVE_OK, 'guard.destructive=ok')
   })
 }
 
