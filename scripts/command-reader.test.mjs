@@ -23,12 +23,12 @@
 // WHAT IT COMPARES, AND WHAT IT DELIBERATELY DOES NOT
 // The *reader*: how a line becomes segments and tokens, and since #199 how a
 // `gh api` call's arguments read, which every guard asks. Not the verdicts. The
-// guards' rules genuinely differ and are meant to. #98 measured `\git push`,
-// `/usr/bin/gh pr create` and `git.exe push` denied by the guest gate and
-// allowed by this repository's merge guard, because every rule there goes
-// through `commandName` while `ghArguments` there compares the raw token. ADR
-// 0033 keeps a push rule in the shipped guard that ADR 0001 deleted from this
-// repository's. Asserting equal verdicts would be asserting a fiction.
+// guards' rules genuinely differ and are meant to: the guest gate refuses every
+// outward write, and ADR 0033 keeps a push rule in the shipped guard that ADR
+// 0001 deleted from this repository's. How a guard decides *which program* a
+// segment runs is not one of those differences. Since #219 every copy asks
+// `commandName`, in the `gh arguments` region, and ADR 0068 says why the
+// difference #98 measured there was a hole and not a rule. Asserting equal verdicts would be asserting a fiction.
 // Asserting equal segmentation is asserting the thing that is actually one
 // thing.
 //
@@ -81,11 +81,11 @@ const FILES = {
 // `exports` is what proves the markers enclose the thing: a name the region no
 // longer declares fails to import, rather than shrinking the comparison.
 //
-// `scripts/guard-merge.mjs`'s `ghArguments` is left out of its region on
-// purpose. It compares the raw token where the other two ask `commandName`, so
-// `/usr/bin/gh pr merge` reads as a merge in the shipped guard and not in this
-// repository's. ADR 0031 records that as a difference in the rules, not in the
-// reading, and this does not change it.
+// `gitArguments` and `ghArguments` are two regions rather than one because
+// `scripts/guard-merge.mjs` reads `gh` and not `git`. Until #219 its
+// `ghArguments` was left out of any region, comparing the raw token where the
+// other two asked `commandName`, and `/usr/bin/gh pr merge 42` merged past it.
+// ADR 0068.
 const REGIONS = [
   {
     name: 'command reader',
@@ -100,11 +100,18 @@ const REGIONS = [
     exports: ['commandName', 'shellPayload'],
   },
   {
-    name: 'command arguments',
-    stamp: 'command arguments stamp',
+    name: 'git arguments',
+    stamp: 'git arguments stamp',
     files: ['assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
     needs: ['shell payload'],
-    exports: ['gitArguments', 'ghArguments'],
+    exports: ['gitArguments'],
+  },
+  {
+    name: 'gh arguments',
+    stamp: 'gh arguments stamp',
+    files: ['scripts/guard-merge.mjs', 'assets/guard-guest-writes.mjs', 'assets/guard-merge.mjs'],
+    needs: ['shell payload'],
+    exports: ['ghArguments'],
   },
   {
     name: 'merge rule',
@@ -292,6 +299,16 @@ for (const [file, m] of Object.entries(modules['shell payload'])) {
   test(`${file}'s shell payload reads a nested shell's command line`, () => {
     assert.equal(m.commandName('C:\\Program Files\\Git\\bin\\GIT.EXE'), 'git')
     assert.equal(m.commandName('/usr/bin/gh'), 'gh')
+    assert.equal(m.commandName('C:\\Program Files\\GitHub CLI\\gh.exe'), 'gh')
+    assert.equal(m.commandName('C:/Program Files/GitHub CLI/gh.exe'), 'gh')
+    assert.equal(m.commandName('GH.EXE'), 'gh')
+    assert.equal(m.commandName('gh.cmd'), 'gh')
+    assert.equal(m.commandName('git.bat'), 'git')
+    // Another program whose name starts or ends like one of ours stays itself.
+    assert.equal(m.commandName('gh-dash'), 'gh-dash')
+    assert.equal(m.commandName('ghq'), 'ghq')
+    assert.equal(m.commandName('/opt/gh/bin/not-gh'), 'not-gh')
+    assert.equal(m.commandName('gh.exe.txt'), 'gh.exe.txt')
     assert.equal(m.shellPayload(['bash', '-c', 'gh pr merge 42']), 'gh pr merge 42')
     assert.equal(m.shellPayload(['/usr/bin/pwsh.exe', '-Command', 'git push']), 'git push')
     assert.equal(m.shellPayload(['cmd', '/C', 'git push']), 'git push')
@@ -301,14 +318,25 @@ for (const [file, m] of Object.entries(modules['shell payload'])) {
   })
 }
 
-for (const [file, m] of Object.entries(modules['command arguments'])) {
-  test(`${file}'s command arguments skip the global flags`, () => {
+for (const [file, m] of Object.entries(modules['git arguments'])) {
+  test(`${file}'s git arguments skip the global flags`, () => {
     assert.deepEqual(m.gitArguments(['git', '-C', 'repo', '-c', 'a=b', '--no-pager', 'push', 'origin']), ['push', 'origin'])
     assert.deepEqual(m.gitArguments(['/usr/bin/git.exe', 'push']), ['push'])
+    assert.deepEqual(m.gitArguments(['git.cmd', 'push']), ['push'])
     assert.equal(m.gitArguments(['gh', 'pr', 'merge']), null)
+    assert.equal(m.gitArguments(['git-lfs', 'push']), null)
+  })
+}
+
+for (const [file, m] of Object.entries(modules['gh arguments'])) {
+  test(`${file}'s gh arguments skip the global flags and know gh by any path`, () => {
     assert.deepEqual(m.ghArguments(['gh', '--repo', 'o/r', 'pr', 'merge', '42']), ['pr', 'merge', '42'])
     assert.deepEqual(m.ghArguments(['/usr/bin/gh', '-R', 'o/r', 'api', 'x']), ['api', 'x'])
+    assert.deepEqual(m.ghArguments(['C:\\Program Files\\GitHub CLI\\gh.exe', 'pr', 'merge']), ['pr', 'merge'])
     assert.equal(m.ghArguments(['git', 'push']), null)
+    assert.equal(m.ghArguments(['gh-dash', 'pr', 'merge']), null)
+    assert.equal(m.ghArguments(['ghq', 'pr', 'merge']), null)
+    assert.equal(m.ghArguments(['/opt/gh/bin/not-gh', 'pr', 'merge']), null)
   })
 }
 

@@ -14,14 +14,17 @@
 // `-EncodedCommand`, or a script file the command merely names is invisible to
 // it, and no amount of pattern work changes that.
 //
-// Nor does it cover a command that runs another command, or `gh` reached under
-// another name. Every line below was run against this guard and allowed
-// through, and `gh pr merge` with no argument merges the current branch's pull
-// request, so each of them is a working merge:
+// Nor does it cover a command that runs another command. Every line below was
+// run against this guard and allowed through, and `gh pr merge` with no
+// argument merges the current branch's pull request, so each of them is a
+// working merge:
 //
 //   sudo gh pr merge      env gh pr merge       command gh pr merge
 //   nohup gh pr merge     xargs gh pr merge     time -p gh pr merge
-//   \gh pr merge          /usr/bin/gh pr merge
+//
+// `gh` spelled with its path is not on that list any more. `\gh pr merge`,
+// `/usr/bin/gh pr merge` and `gh.exe pr merge` are refused since #219, because
+// `commandName` reads the program a path names and the rules ask it.
 //
 // They are left open on purpose. The threat model is an agent that forgot, or
 // that talked itself into it, not one that is hiding, and nobody reaches for
@@ -506,33 +509,24 @@ function ghApiCall(args) {
 
 // END command reader
 
-// `gh` takes its global flags before the subcommand and no positional argument
-// there, so skipping the flags lands on the subcommand path. Returns null when
-// this segment does not invoke `gh` at all.
-const GH_FLAGS_WITH_VALUE = new Set(['--repo', '-R', '--hostname'])
-
-function ghArguments(tokens) {
-  if (tokens[0] !== 'gh') return null
-  let at = 1
-  while (at < tokens.length && tokens[at].startsWith('-')) {
-    at += GH_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
-  }
-  return tokens.slice(at)
-}
-
 // BEGIN shell payload
-// shell payload stamp: sha256 b6b4205db57edd81
+// shell payload stamp: sha256 ab29fad175b6dc61
 //
 // A second marked region, held to the same text in all three guards by the same
 // test as the reader, with a stamp of its own so that a change here does not
 // move the reader's. #201.
 
+// The name a shell runs, whatever path spelled it: `/usr/bin/gh`,
+// `C:\Program Files\GitHub CLI\gh.exe`, `gh.CMD`. The basename is compared
+// whole once a Windows executable extension is off, so `gh-dash`, `ghq` and
+// `/opt/gh/bin/not-gh` stay other programs. Lowercased everywhere: Windows
+// ignores the case, and a POSIX program called `GH` is not worth a hole. #219.
 const commandName = (token) =>
   token
     .split(/[\\/]/)
     .pop()
     .toLowerCase()
-    .replace(/\.exe$/, '')
+    .replace(/\.(exe|cmd|bat)$/, '')
 
 // This hook is wired to every shell-capable tool the harness offers, and each
 // of those shells can invoke the other one, so `pwsh -Command "gh pr merge 42"`
@@ -548,6 +542,31 @@ function shellPayload(tokens) {
 }
 
 // END shell payload
+
+// BEGIN gh arguments
+// gh arguments stamp: sha256 f8edf97722f2123e
+//
+// A marked region held to one text with the two shipped guards. Until #219 this
+// copy compared the raw token with `'gh'` instead of asking `commandName`, so
+// `/usr/bin/gh pr merge 42` and `gh.exe pr merge 42` walked past it while both
+// shipped guards refused them. It sat outside the regions on purpose, and that
+// is exactly how nothing noticed.
+
+// `gh` takes its global flags before the subcommand and no positional argument
+// there, so skipping the flags lands on the subcommand path. Returns null when
+// this segment does not invoke `gh` at all.
+const GH_FLAGS_WITH_VALUE = new Set(['--repo', '-R', '--hostname'])
+
+function ghArguments(tokens) {
+  if (commandName(tokens[0]) !== 'gh') return null
+  let at = 1
+  while (at < tokens.length && tokens[at].startsWith('-')) {
+    at += GH_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
+  }
+  return tokens.slice(at)
+}
+
+// END gh arguments
 
 // How many shells deep the walk follows a payload. Two readers of the command
 // line now start from the top, and they have to agree on where the bottom is or

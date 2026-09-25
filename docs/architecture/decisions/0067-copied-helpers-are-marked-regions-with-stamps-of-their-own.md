@@ -1,6 +1,8 @@
 # 0067. Copied helpers are marked regions, each with a stamp of its own
 
-Status: accepted
+Status: accepted, and amended by ADR 0068, which splits `command arguments` into
+`git arguments` and `gh arguments` and brings this repository's `ghArguments`
+into the second.
 
 Issue #201. Amends ADR 0061, whose stamp covered the reader and nothing else,
 and extends ADR 0031 (the reader is held together by a test) to the helpers

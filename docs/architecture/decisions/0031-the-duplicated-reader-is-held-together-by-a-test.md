@@ -1,7 +1,9 @@
 # 0031. The duplicated command reader is held together by a test, not by a module
 
 Status: accepted, and extended by ADR 0067, which holds the helpers copied beside
-the reader together the same way.
+the reader together the same way. Amended by ADR 0068: the raw-token versus
+`commandName` difference below was a hole, and every guard now names a command
+through `commandName`.
 
 Issue #97. ADR 0029 is the decision this one sits under; #93 is the open
 question it deliberately does not answer.

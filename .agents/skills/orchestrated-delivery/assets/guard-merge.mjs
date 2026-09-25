@@ -54,14 +54,18 @@
 // variable, a base64 `-EncodedCommand`, or a script file the command merely
 // names is invisible to it, and no amount of pattern work changes that.
 //
-// Nor does it cover a command that runs another command, or `gh` reached under
-// another name. Every line below was run against this guard and allowed
-// through, and `gh pr merge` with no argument merges the current branch's pull
-// request, so each of them is a working merge:
+// Nor does it cover a command that runs another command. Every line below was
+// run against this guard and allowed through, and `gh pr merge` with no
+// argument merges the current branch's pull request, so each of them is a
+// working merge:
 //
 //   sudo gh pr merge      env gh pr merge       command gh pr merge
 //   nohup gh pr merge     xargs gh pr merge     time -p gh pr merge
-//   \gh pr merge          /usr/bin/gh pr merge
+//
+// `gh` spelled with its path is refused: `\gh`, `/usr/bin/gh`,
+// `"C:\Program Files\GitHub CLI\gh.exe"`, `gh.cmd`. The rules ask
+// `commandName`, which reads the program a path names. Earlier copies of this
+// file listed `\gh` and `/usr/bin/gh` above as open, which they were not.
 //
 // They are left open on purpose. The threat model is an agent that forgot, or
 // that talked itself into it, not one that is hiding, and nobody reaches for
@@ -555,18 +559,23 @@ function ghApiCall(args) {
 // END command reader
 
 // BEGIN shell payload
-// shell payload stamp: sha256 b6b4205db57edd81
+// shell payload stamp: sha256 ab29fad175b6dc61
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
 // the skill's as the reader's note above says. #201.
 
+// The name a shell runs, whatever path spelled it: `/usr/bin/gh`,
+// `C:\Program Files\GitHub CLI\gh.exe`, `gh.CMD`. The basename is compared
+// whole once a Windows executable extension is off, so `gh-dash`, `ghq` and
+// `/opt/gh/bin/not-gh` stay other programs. Lowercased everywhere: Windows
+// ignores the case, and a POSIX program called `GH` is not worth a hole. #219.
 const commandName = (token) =>
   token
     .split(/[\\/]/)
     .pop()
     .toLowerCase()
-    .replace(/\.exe$/, '')
+    .replace(/\.(exe|cmd|bat)$/, '')
 
 // This hook is wired to every shell-capable tool the harness offers, and each
 // of those shells can invoke the other one, so `pwsh -Command "gh pr merge 42"`
@@ -609,12 +618,13 @@ const USE_WRAPPER =
   'It refuses unless every required check is green, and always squash merges.\n' +
   'See docs/process/working-an-issue.md.'
 
-// BEGIN command arguments
-// command arguments stamp: sha256 544defb2d57a7c4b
+// BEGIN git arguments
+// git arguments stamp: sha256 dabf07cef9e8c86e
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
-// the skill's as the reader's note above says. #201.
+// the skill's as the reader's note above says. #201. Split from `gh arguments`
+// by #219, because one of that region's copies is in a file that reads no `git`.
 
 // `git` takes its own flags before the subcommand, and several of them swallow
 // the next token. Returns the arguments from the subcommand onward, or null
@@ -629,6 +639,15 @@ function gitArguments(tokens) {
   }
   return tokens.slice(at)
 }
+
+// END git arguments
+
+// BEGIN gh arguments
+// gh arguments stamp: sha256 f8edf97722f2123e
+//
+// Held to the same code as its other copies in the skill by the test that holds
+// the command reader, and stamped the same way, so compare this stamp line with
+// the skill's as the reader's note above says. #201 and #219.
 
 // `gh` takes its global flags before the subcommand and no positional argument
 // there, so skipping the flags lands on the subcommand path. Returns null when
@@ -647,7 +666,7 @@ function ghArguments(tokens) {
   return tokens.slice(at)
 }
 
-// END command arguments
+// END gh arguments
 
 // BEGIN merge rule
 // merge rule stamp: sha256 e41bec80b425dbf6
