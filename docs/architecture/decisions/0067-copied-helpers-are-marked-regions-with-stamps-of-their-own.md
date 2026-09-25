@@ -1,9 +1,10 @@
-# 0066. Copied helpers are marked regions, each with a stamp of its own
+# 0067. Copied helpers are marked regions, each with a stamp of its own
 
 Status: accepted
 
-Issue #201. Extends ADR 0031 (the reader is held together by a test) and ADR
-0061 (the reader's stamp). ADR 0029 still refuses a shared module.
+Issue #201. Amends ADR 0061, whose stamp covered the reader and nothing else,
+and extends ADR 0031 (the reader is held together by a test) to the helpers
+beside it. ADR 0029 still refuses a shared module.
 
 ## Context
 
@@ -16,9 +17,12 @@ helpers had been copied just outside the markers, and nothing compared them:
 | `commandName`, `SHELLS`, `shellPayload` | both merge guards and the guest gate |
 | `gitArguments`, `ghArguments` | `assets/guard-merge.mjs`, `assets/guard-guest-writes.mjs` |
 | the REST and GraphQL merge rule, from `isMergeEndpoint` to its two messages | `scripts/guard-merge.mjs`, `assets/guard-merge.mjs` |
+| `show` | `assets/check-setup.mjs`, `assets/check-outward-writes.mjs` |
 
-The last group arrived with #213 and was held together only by shared test
-cases. Test cases cover the paths somebody wrote down, which is the weakness
+The issue named the first three groups. The merge rule arrived with #213 after
+the issue was filed, and `show` turned up while this was being done.
+
+The merge rule was held together only by shared test cases. Test cases cover the paths somebody wrote down, which is the weakness
 ADR 0031 chose a text comparison to avoid.
 
 ## Decision

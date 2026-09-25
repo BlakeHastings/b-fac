@@ -1,6 +1,7 @@
 # 0031. The duplicated command reader is held together by a test, not by a module
 
-Status: accepted
+Status: accepted, and extended by ADR 0067, which holds the helpers copied beside
+the reader together the same way.
 
 Issue #97. ADR 0029 is the decision this one sits under; #93 is the open
 question it deliberately does not answer.
