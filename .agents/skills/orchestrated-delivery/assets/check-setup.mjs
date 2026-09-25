@@ -72,10 +72,10 @@
 // check's first finding without it having to run, because layers 1 to 3 ship as
 // Node scripts. The LAYERS table below is the same checklist by eye, for a repo
 // where you cannot run it.
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { homedir } from 'node:os'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 
 const OK = 'ok'
 const PARTIAL = 'PARTIAL'
@@ -138,12 +138,35 @@ function gitCommonDir() {
 const COMMON = gitCommonDir()
 const readCommon = (rel) => (COMMON === null ? null : readAt(COMMON, rel))
 
+// One directory has more than one name, and git answers with a different one
+// from the one you stood in. Windows spells a long user name as an 8.3 short
+// name (`C:\Users\BHASTI~1`), so `os.tmpdir()` does, while git says
+// `C:\Users\bhastings`; a junction, a `subst` drive or a POSIX symlink does the
+// same anywhere. `resolve()` and lowercasing expand none of those, and #193 is
+// this report calling a main checkout a linked worktree of itself.
+//
+// So two paths are compared by what `realpathSync.native` calls them. The
+// native one, because the JavaScript `realpathSync` follows a junction and
+// leaves a short name alone. It throws on a path that is not there, and a
+// compared path can legitimately be absent, so the part that exists is
+// canonicalised and the missing tail is kept as written. Only comparisons go
+// through this: the report still prints a directory the way you named it.
+function canonical(path) {
+  const abs = resolve(path)
+  try {
+    return realpathSync.native(abs)
+  } catch {
+    const up = dirname(abs)
+    return up === abs ? abs : join(canonical(up), basename(abs))
+  }
+}
+
 // Relative when the file is under the checkout you are standing in, absolute
 // when it is not. From a worktree that difference is the point: a path leading
 // out of this directory is the visible form of "this fact is the repository's,
 // not this checkout's".
 const show = (abs) => {
-  const path = relative(ROOT, abs).replace(/\\/g, '/')
+  const path = relative(canonical(ROOT), canonical(abs)).replace(/\\/g, '/')
   return path !== '' && !path.startsWith('..') ? path : abs
 }
 
@@ -956,7 +979,7 @@ the answer here changes, delete this file and record the new one.
 // case, and absolute when it is still being run out of the skill.
 const SELF = (() => {
   const path = process.argv[1] ?? ''
-  const rel = relative(ROOT, path).replace(/\\/g, '/')
+  const rel = relative(canonical(ROOT), canonical(path)).replace(/\\/g, '/')
   return rel !== '' && !rel.startsWith('..') ? rel : path
 })()
 
@@ -1155,7 +1178,7 @@ const userSettingsFile = () =>
   join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
 
 function samePath(a, b) {
-  const normalise = (path) => resolve(path).replace(/[\\/]+$/, '')
+  const normalise = (path) => canonical(path).replace(/[\\/]+$/, '')
   return process.platform === 'win32'
     ? normalise(a).toLowerCase() === normalise(b).toLowerCase()
     : normalise(a) === normalise(b)

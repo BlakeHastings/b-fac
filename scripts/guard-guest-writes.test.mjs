@@ -16,7 +16,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -630,6 +630,32 @@ test(
     }
   },
 )
+
+// #193, and case is only one of the spellings. An 8.3 short name
+// (`C:\Users\BHASTI~1`, which is what `%TEMP%` is on an account with a long user
+// name), a junction or a symlink is a second name for the same directory, and
+// git answers with neither. A junction on Windows and a directory symlink
+// elsewhere is a second name any machine running this suite can make, so this
+// fails without the fix on CI as well as on the one machine whose temp path is
+// short.
+test('the scope survives a path spelled through a second name for the directory', () => {
+  const root = scratchRepo()
+  const link = `${root}-link`
+  try {
+    install(root)
+    symlinkSync(root, link, 'junction')
+    const gate = join(commonDirOf(root), 'factory/guard-guest-writes.mjs')
+
+    assert.equal(
+      scoped(gate, join(link, '.git'), 'git push origin HEAD', root),
+      true,
+      'a push was allowed inside the scoped repository, because the scope named it through a link',
+    )
+  } finally {
+    rmSync(link, { force: true })
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('--scope stands aside everywhere else, which is the whole reason it exists', () => {
   const root = scratchRepo()

@@ -17,7 +17,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -454,6 +454,29 @@ test('a linked worktree gets the same answer as the main checkout', () => {
     }
     assert.match(run(worktree).out, /This is a linked worktree/)
   } finally {
+    cleanup(repo)
+  }
+})
+
+// #193. The same directory under a second name, which git does not use: git
+// answers with the physical path. A junction on Windows, a directory symlink
+// elsewhere, and `--root` keeps the link spelling where a child's working
+// directory would already have been resolved. The 8.3 short form `%TEMP%` has
+// on an account with a long user name is the same case without the link, but
+// only on that machine.
+test('one directory by two names is the main checkout, not a worktree of itself', () => {
+  const repo = hosted()
+  const link = `${repo.root}-link`
+  try {
+    record(repo.root, 'guest')
+    symlinkSync(repo.root, link, 'junction')
+
+    const { code, out } = run(link, [`--root=${link}`])
+    assert.doesNotMatch(out, /linked worktree/, 'a main checkout was reported as a worktree of itself')
+    assert.match(out, /Write boundary: guest, recorded in \.git\/factory\/machine\.md/)
+    assert.equal(code, 0, out)
+  } finally {
+    rmSync(link, { force: true })
     cleanup(repo)
   }
 })
