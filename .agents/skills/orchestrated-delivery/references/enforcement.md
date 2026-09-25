@@ -51,7 +51,10 @@ pipeline; GitHub is close to alone in saying workflow.*
 An instruction is not a control.
 
 **1. The merge wrapper.** Reads the PR's check rollup, refuses unless every
-required check is green, always squash merges.
+required check is green, always squash merges. It also refuses a branch that
+is behind its base. It refuses one it cannot compare with its base too, because
+a stale green is the failure this layer exists for, and "could not tell" is not
+evidence against one.
 *Does not cover:* anyone who does not type it. A tool, not a gate: it has a
 gate's shape, and a refusal you can decline to ask for is advice.
 
