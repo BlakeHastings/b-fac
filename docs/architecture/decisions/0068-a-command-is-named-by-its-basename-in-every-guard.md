@@ -1,6 +1,7 @@
 # 0068. A command is named by its basename, in every guard
 
-Status: accepted
+Status: accepted, and amended by ADR 0069, which puts `git arguments` in this
+repository's merge guard too, for its uncommitted-work rule.
 
 Issue #219. Amends ADR 0031, whose "known difference" between the guards'
 reading of a command name was a hole and not a rule, and ADR 0067, which left

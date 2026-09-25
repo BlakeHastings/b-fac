@@ -428,6 +428,33 @@ marked regions with stamps of their own (`// merge rule stamp: ...` and the
 like), compared the same way, so a change to one of them does not move the
 reader's.
 
+### The merge guard's second rule: uncommitted work
+
+The same file refuses the git commands that throw away uncommitted work, when
+the tree they act on holds some: `git reset --hard`, `git checkout -f` or
+`git switch -f`, `git checkout -- <paths>` and `git checkout .`, `git restore`
+without `--staged`, `git clean -f`, a bare `git stash drop` and `git stash
+clear`, and `git worktree remove --force`. It exists because a force flag is how
+a refusal gets past, and the refusal was holding something: one orchestrating
+session destroyed uncommitted work three times that way, the owner's among it
+(BlakeHastings/b-fac#188).
+
+It counts rather than judges, because the session is rarely the only writer in
+a main checkout and nothing says who wrote what. A clean tree is allowed. **A
+linked worktree is allowed**, because a throwaway worktree is where this work
+belongs, and a guard that blocks the remedy gets switched off. `git worktree
+remove --force <path>` is judged on `<path>`, the tree it deletes, so a
+worktree holding a single untracked file is refused and the file is named. The
+stash is judged on the stash, which every worktree shares.
+
+The refusal lists what would be lost and how to keep it. The override is
+`git -c guard.destructive=ok ...`, visible on the line. **An agent that adds it
+on its own is a finding for review, not a failure of the guard**: the guard
+makes the loss visible before it happens, and the override being visible is how
+a reviewer sees that nobody asked. The guard reads the directory the harness
+reports and any `git -C`, so a `cd` earlier on the same line is not followed;
+its header lists that and the rest of what it does not cover. b-fac ADR 0069.
+
 ## The other gate: guest mode's write boundary
 
 Everything above is owned mode, where the thing being protected is a trunk other
