@@ -37,6 +37,7 @@
 //   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -114,6 +115,52 @@ for (const name of REST) {
       `The command reader has drifted between ${FIRST} and ${name}.\n` +
         'Every copy answers the same question and a fix belongs in all of them, in\n' +
         'one commit. ADR 0029 refuses a shared module; #93 holds the duplication.',
+    )
+  })
+}
+
+// The stamp, #185. A copy of the reader that leaves for a host repository is a
+// fourth copy nobody here can read, so each region carries a line naming the
+// code it holds, and an operator compares that one line with the skill's.
+//
+// It hashes exactly what the drift control above compares, `codeLines`, and
+// that choice is forced rather than taste. The copies' comments differ on
+// purpose, so a hash over them would give three stamps for one reader and the
+// host would have nothing single to compare against. And the stamp is itself a
+// comment inside the region it describes: `codeLines` drops it, so the hash
+// never has to reach around its own line. What the normalisation drops is whole
+// lines that start `//`, so a trailing comment on a line of code *is* hashed.
+// That errs toward a stamp that moves when it need not, which costs one edit.
+//
+// It is checked here rather than in a script of its own because this file
+// already owns the region and its normalisation. A second script would be a
+// second copy of `codeLines`, and a second copy of a thing is how this whole
+// area keeps going wrong.
+const STAMP = /^\/\/ reader stamp: sha256 ([0-9a-f]+)$/
+
+const stampOf = (region) =>
+  createHash('sha256').update(codeLines(region).join('\n')).digest('hex').slice(0, 16)
+
+for (const name of Object.keys(GUARDS)) {
+  test(`${name} carries a stamp that matches its reader`, () => {
+    const region = readerSource(GUARDS[name])
+    const stamps = region
+      .split('\n')
+      .map((line) => STAMP.exec(line.trim()))
+      .filter(Boolean)
+    const expected = stampOf(region)
+    assert.equal(
+      stamps.length,
+      1,
+      `${name} should carry exactly one \`// reader stamp: sha256 <hash>\` line inside the reader region, and carries ${stamps.length}.\n` +
+        `For the reader it holds now, the line is: // reader stamp: sha256 ${expected}`,
+    )
+    assert.equal(
+      stamps[0][1],
+      expected,
+      `${name}'s reader stamp does not match the code it stamps. The reader changed and the stamp did not,\n` +
+        'so a host repository comparing stamps would be told its copy is current when it is not.\n' +
+        `Update the line, in all three copies, to: // reader stamp: sha256 ${expected}`,
     )
   })
 }
