@@ -95,7 +95,7 @@ does not mention: the bar, the bounds, the artefact you named.
 
 Asking for it in the brief is the cheap half (`references/briefing.md`), and a
 report that says "no compaction" against a transcript that shows four is its own
-kind of signal. `references/continuity.md` has the mechanics and ADR 0042 has
+kind of signal. `references/continuity.md` has the mechanics and b-fac ADR 0042 has
 why this is a check and not a gate.
 
 ## Verify the merge result, not the branch
@@ -287,7 +287,7 @@ literal characters, which blanked seven artifacts in one session
 including an escalation issue whose only job was to carry a question to the
 owner and which nobody was waiting on. This paragraph used to be the remedy, and
 being correct did not make it work. Where you have no such script, build the
-read-back; do not write the note again. ADR 0049.
+read-back; do not write the note again. b-fac ADR 0049.
 
 ### Creating an artifact, where the rule sits on the read-back and not on the form
 

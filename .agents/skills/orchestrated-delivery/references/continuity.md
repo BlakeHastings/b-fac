@@ -22,7 +22,7 @@ compaction fires. It can only lower the threshold, never raise it.
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` sets the window it is a percentage of. No hook
 payload carries usage, but every one carries `transcript_path`. The last
 main-thread assistant entry's `message.usage` there gives the context in use.
-Measured on 2.1.282 (ADR 0060).
+Measured on 2.1.282 (b-fac ADR 0060).
 
 **A hook cannot write the handoff.** It is a shell command with stdout, stderr
 and an exit code. No tool calls, and no slash commands. The model cannot run
@@ -95,7 +95,7 @@ line between them is that the resume record is per-fan-out and disposable, where
 the handoff is per-session and durable, so a resume record still being topped up
 after its fan-out ended has quietly become a second handoff.
 `references/parallelism.md` has what goes in it and what the artifacts answer
-instead; ADR 0044 has why it is separate rather than folded in here.
+instead; b-fac ADR 0044 has why it is separate rather than folded in here.
 
 ## The threshold and the hooks
 
@@ -171,7 +171,7 @@ so nothing depends on it, and the handoff is printed back afterwards either way.
 
 **The manual refusal is optional wiring.** Add `"matcher": "manual"` to
 `PreCompact` and a stale handoff refuses a typed `/compact`. This repository
-does not wire it; #141 decides that.
+does not wire it; BlakeHastings/b-fac#141 decides that.
 
 **`SessionStart` uses only the `compact` matcher.** On `startup` and `resume`
 the file is on disk and can be read. After a compaction the model holds a
@@ -222,7 +222,7 @@ because its timestamp is evidence about the last checkout instead.
 nothing.** Not a number with a caveat, because the caveat would be the whole of
 the answer. And **nothing is parsed out of the handoff's own prose** — a date in
 the text is a format the document has to satisfy, and it is written by the same
-hand the mechanism exists to check. ADR 0055, revising one sentence of ADR 0040.
+hand the mechanism exists to check. b-fac ADR 0055, revising one sentence of b-fac ADR 0040.
 
 What none of this sees: a handoff topped up in the morning and merged in the
 evening is dated by the merge, in the commit and in the pull alike. The commit
@@ -342,7 +342,7 @@ subagent. It came from a run in which the compaction never completed: the agent
 died of `Prompt is too long` and the `SubagentStart` seconds later was the
 parent's retry, not the same agent continuing. A compaction that fires and then
 kills the agent looks identical in a hook log and leaves no boundary in the
-transcript. ADR 0042.*
+transcript. b-fac ADR 0042.*
 
 ## Finding out afterwards that an agent compacted
 
@@ -378,7 +378,7 @@ command above already is. Its exit 2 *does* reach the agent and the agent obeys,
 which makes it a gate on the report rather than a check, arriving after the work
 instead of during it. And it never fires for the case that matters most: an
 agent that dies of `Prompt is too long` produces no `SubagentStop` at all, while
-its transcript is still on disk. ADR 0042.
+its transcript is still on disk. b-fac ADR 0042.
 
 **Ask in the report contract as well.** The agent can tell: the summary it is
 holding opens with "This session is being continued from a previous conversation
@@ -395,7 +395,7 @@ answer.
 **In guest mode it is not**, and this chapter invents nothing, because the
 question was already answered. A handoff is not committable in a repository you
 are a guest in, which makes it the same question as where the machine record and
-the discovered checks live, and **ADR 0037 settled that**: per-repository state
+the discovered checks live, and **b-fac ADR 0037 settled that**: per-repository state
 that must not be committed goes in `factory/` inside the **git common
 directory**, which is one path from the main checkout and from every linked
 worktree alike.

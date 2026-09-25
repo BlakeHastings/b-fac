@@ -1,6 +1,6 @@
 # The host repo's checks, and what running them locally is worth
 
-Guest mode has no remote check rollup to read, so ADR 0021's table says its gate
+Guest mode has no remote check rollup to read, so b-fac ADR 0021's table says its gate
 is **the host repository's own check command, run locally**. This chapter is how
 the factory finds out what that command is, in a repository it did not create,
 and what the answer is worth once it has it.
@@ -14,7 +14,7 @@ integration suite talks to a database that exists for ninety seconds.
 
 What running their checks locally buys is **fewer round trips**. It is not a
 promise the pull request will pass, and a green local gate followed by a red
-pipeline is the expected difference rather than a defect in either. ADR 0021
+pipeline is the expected difference rather than a defect in either. b-fac ADR 0021
 records it as a consequence for exactly that reason.
 
 Say this out loud to the owner the first time you use it. `discover-checks.mjs`
@@ -28,7 +28,7 @@ output is a proposal rather than a decision.
 
 | Tier | Evidence | Why it ranks there |
 | --- | --- | --- |
-| 1 | The repository's own task runner: `Makefile`, `justfile`, `Taskfile.yml`, `package.json` scripts | It is what the people who work here actually type. ADR 0022 and issue #66: conform where the host has a convention |
+| 1 | The repository's own task runner: `Makefile`, `justfile`, `Taskfile.yml`, `package.json` scripts | It is what the people who work here actually type. b-fac ADR 0022 and issue BlakeHastings/b-fac#66: conform where the host has a convention |
 | 2 | The ecosystem manifest: `Cargo.toml`, `go.mod`, a `.sln`, `pyproject.toml`, `pom.xml`, `build.gradle`, `Gemfile` | What someone who had never seen this repository would type. Weaker, and a fine fallback where nobody wrote anything down |
 | 3 | The pipeline: `.github/workflows/`, `.gitlab-ci.yml`, `azure-pipelines.yml`, `Jenkinsfile`, CircleCI | Read, printed, and **never proposed**. See below |
 
@@ -39,11 +39,11 @@ a proposal at all**.
 and no tests. It may shell out to a runner nobody on this machine has. That is
 the whole reason the proposal has to be executed before anything depends on it.
 
-### Why this is a script when ADR 0022 refused to build convention detection
+### Why this is a script when b-fac ADR 0022 refused to build convention detection
 
 Because this answer is executable and that one is not.
 
-ADR 0022 rejected detection logic for *convention authority*: whether a
+b-fac ADR 0022 rejected detection logic for *convention authority*: whether a
 repository "believes in" decision records has no ground truth to check a
 detector against, so a detector there is a guess wearing a uniform, and a wrong
 guess is invisible afterwards. Whether `npm run check` is this repository's
@@ -139,7 +139,7 @@ recorded. That is what keeps escalation a loop that closes rather than a note in
 a status update.
 
 **Documents are listed and never parsed.** `CONTRIBUTING.md`, `AGENTS.md` and a
-README are printed under "not read", because ADR 0022's rule is to read
+README are printed under "not read", because b-fac ADR 0022's rule is to read
 artifacts rather than the documents describing them: a contribution guide that
 has drifted from the log is the normal state of a contribution guide. They are
 still the first place a human should look before answering the question.
@@ -155,15 +155,15 @@ script checks that rather than claiming it.
 **Inside the common directory rather than at the working-tree root**, because a
 repository is not one directory. The check entry point is a fact every checkout
 needs, and an agent works in a linked worktree, which has no untracked files of
-the main checkout's. ADR 0037, and #122 is what it cost to learn.
+the main checkout's. b-fac ADR 0037, and BlakeHastings/b-fac#122 is what it cost to learn.
 
 **No wrapper script is installed.** Adding `check.sh` beside somebody's Makefile
 is imposing a convention on a repository that already has one, which is the
-thing ADR 0022 and issue #66 exist to prevent. If the entry point is two
+thing b-fac ADR 0022 and issue BlakeHastings/b-fac#66 exist to prevent. If the entry point is two
 commands because that is how this repository is shaped, the record holds two
 commands.
 
-The check command is a *repo fact* by ADR 0021's split, and it still goes in an
+The check command is a *repo fact* by b-fac ADR 0021's split, and it still goes in an
 untracked file, because in a repository you are a guest in there is no
 committable place to put one.
 

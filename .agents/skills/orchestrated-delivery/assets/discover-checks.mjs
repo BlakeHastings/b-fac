@@ -508,7 +508,7 @@ if (PIPELINES.length > 0) {
 
 if (PRESENT_DOCS.length > 0) {
   say(`Not read: ${PRESENT_DOCS.join(', ')}`)
-  say('  A document describing the build is the half that goes stale (ADR 0022), so nothing')
+  say('  A document describing the build is the half that goes stale (b-fac ADR 0022), so nothing')
   say('  here parses one. They are still the first place to look before you ask.')
   say()
 }
@@ -638,7 +638,7 @@ const when = new Date().toISOString()
 const body = `# The check entry point in this repository
 
 Discovered by \`discover-checks.mjs\` and confirmed by running it. Nothing is
-recorded here that was not executed: ADR 0032.
+recorded here that was not executed: b-fac ADR 0032.
 
 Check entry point:
 
@@ -664,7 +664,7 @@ This is inside the git common directory rather than in the working tree, so no
 ignore rule has to hold it out of anybody's \`git status\` and every linked
 worktree of this repository reads the same copy. Editing a tracked ignore file
 is itself a change to a repository you are a guest in, and now nothing has to.
-ADR 0021, ADR 0037.
+b-fac ADR 0021, b-fac ADR 0037.
 `
 
 mkdirSync(join(COMMON, HOME), { recursive: true })
