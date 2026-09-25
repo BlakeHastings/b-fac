@@ -118,9 +118,14 @@ is itself a change to a repo you are a guest in.
 3. Write the brief, evidence bar included. `references/briefing.md`.
 4. Dispatch. Implementation agents are `general-purpose` with
    `isolation: "worktree"`, launched as several tool calls in one message. A
-   read-only agent gets one too if it boots the app.
-5. While they run, touch nothing they touch. Reviewing, filing, answering the
-   owner and mining the record are safe. Editing is not.
+   read-only agent gets one too if it boots the app. A worktree's gitignored
+   dependency directory can arrive present but empty, and the failure then
+   names an unrelated test. `references/briefing.md`.
+5. While they run, touch nothing they touch, the machine included. Reviewing,
+   filing, answering the owner and mining the record are safe because they are
+   light. Editing is not, and nor is a suite, a build or a container: prefer
+   letting CI answer, and re-read `assets/machine-load.mjs` before running
+   anything heavy here. `references/parallelism.md`.
 6. Review. `references/reviewing.md`.
 7. Post what you independently verified, then merge or send it back.
 8. File what surfaced and could not be fixed there, and top up the handoff with
@@ -171,6 +176,10 @@ Calibrations, not rules. Each has its reason, so you can tell when to deviate.
   the system was out of resources, and the largest consumer turned out to be six
   `claude` sessions and a sibling checkout that this session had no way to see.
   Counting your own agents undercounts. `references/parallelism.md`.
+- **The main checkout is for edit, `git add` by name, commit, push.** Anything
+  with `--force` or `--hard` runs in a throwaway worktree, and a stopped agent's
+  worktree is committed and checked before it is removed.
+  `references/parallelism.md`.
 - **Batch by what would collide, not by theme.** Issues touching one registry go
   together. Unrelated surfaces go apart even when they sound like one feature.
 - **Hand out ADR numbers explicitly**, checked against the default branch, every
