@@ -28,12 +28,20 @@ landed on 25 Aug (#156, #157, #162, #163, #170, #171, #174, #176), then #181
 (`assets/machine-load.mjs`, read the box before a wave) on 7 Sep and #192
 (compaction at 85%, a warning ten points before, resume from this file) today.
 
-This session: **#193 / PR #194**, `check-setup` read one directory as two when
-Windows named it by its 8.3 short form, so `npm run check` was red on `main` on
-any machine whose account name is over eight characters. The agent found the
-same defect in `check-outward-writes.mjs`, and in `guard-guest-writes.mjs
---scope` it **failed open**. Verified by running the new tests against `main`'s
-assets with a long `TEMP`: exactly the four new tests fail.
+**Topped up 2026-09-25, later the same day, at `dfdbc00`, 0.54.6.**
+
+Merged this session, each verified independently before merge (the review record is on each PR):
+
+- **#194** (#193) paths compared by what the filesystem calls them: an 8.3 short name is not a second directory. `guard-guest-writes --scope` had **failed open** on it.
+- **#197** (#185) the command-reader region carries a hash stamp, and the check fails when the code changes without it. ADR 0061.
+- **#198** (#184) machine-load names a session's scratch work.
+- **#207** (#180) three assets found "the repository" by looking for a `.git` directory; they now ask git.
+- **#208** (#199) the merge guard let `gh api --silent .../merge -X PUT` through. One `ghApiCall` in the stamped region; ADR 0062. The guest gate had three holes of its own, all closed.
+- **#209** (#200) `merge-pr.mjs` tested in both copies, and refuses what it cannot see. ADR 0063. **The shipped copy deleted the base repository's branch named after a fork's head**, so a host repository with an older copy can lose its `main`.
+
+**In flight:** #210 (a GraphQL `mergePullRequest` passes the merge guard; 0.54.7), #205 (required checks read from the ruleset; 0.54.8), #202 (bare ADR and issue citations in shipped text, plus a lint; 0.54.9). Each brief is on its issue.
+
+**Adversarial review, 2026-09-25**, asked for by the owner: four read-only agents covering code, skill and docs, process, and factory-CLI prior art. The reports are **outside the repository** at `C:\Users\bhastings\source\repos\personal\b-fac-critique\`. The findings kept became #199 to #206 and #210. The headline: **omitting `version` is supported** and would remove the version line, which is on #151 with a recommendation. Refuted: the three reader copies, the no-dependencies rule for assets, making the mirror a symlink, and the skill's style.
 
 ## Open pull request
 
@@ -49,8 +57,7 @@ the decisions made for that. We need to use proper um, CLI framework for that."*
 And the CLI is a channel as well as a view: *"we will use the CLI for
 communication via the agent out as well ... when the agent is uh, waiting on
 something from the user, it needs to be able to ... put that on a queue that we
-can see in the front end."* That is the larger work, and it is in refinement.
-Do not rebase or merge #183 as it stands.
+can see in the front end."* That is the larger work, and it is in refinement as **epic #196**, whose comments carry the owner's answers (same machine or several; transport is Claude Code's own messaging between sessions; Node and TypeScript) and a proposed design awaiting confirmation. **`CLAUDE_CODE_SESSION_ID` does reach a Bash call**, which undoes #183's ADR 0057 premise. Do not rebase or merge #183 as it stands.
 
 ## The field reports of 7 and 8 September
 
@@ -69,13 +76,14 @@ material here:
 
 ## What needs the owner
 
-`needs-owner`, unchanged: #14, #28, #57, #87, #141, **#150** (em dashes versus
-the operator's style rule). The larger piece of work the owner raised on
+`needs-owner`: #14, #28, #57, #87, #141, **#150** (em dashes versus the
+operator's style rule), and **#151** (omit the plugin version; recommendation yes).
+**#196's design** also waits on the owner. The larger piece of work the owner raised on
 2026-09-25 is the factory CLI rework above.
 
 ## Dispatchable
 
-The field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
+#201, #203, #204 and #206 from the review (#201 collides with #210's region), the field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
 #64, #7. Blocked: #78 and #79 behind #28, #123.
 
 ## Traps that cost something
