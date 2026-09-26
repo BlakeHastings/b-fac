@@ -1835,6 +1835,175 @@ for (const { layer, status, findings, fix } of rows) {
   console.log('')
 }
 
+// ---------------------------------------------------------------------------
+// Linked worktrees, reported and never judged
+//
+// BlakeHastings/b-fac#154. Every dispatch leaves a worktree behind, the harness
+// cleans up only the ones with nothing in them, so the count grows with useful
+// work and nothing reclaims it. One session ended with fourteen. Twelve held a
+// branch whose pull request had merged and were disposable; the same session had
+// opened on one holding a commit that existed nowhere else. **From outside, the
+// two look identical**: a locked directory with a branch checked out.
+//
+// So this prints the facts that tell them apart, one worktree at a time, and
+// decides nothing. It does not say which worktrees are in use, because a lock is
+// taken by whatever created the worktree and is not evidence that anything is
+// still running, and a wrong answer to that question is what deletes a running
+// agent's tree. That is also why this lives here rather than in a hook that
+// cleans up: a report can be wrong out loud and a cleanup cannot.
+//
+// **It sits below the layer table and never moves the exit code.** A worktree
+// is not an enforcement layer and a repository with twelve of them has no layer
+// missing. Counting one would make this report red after every ordinary session,
+// and a line that is red on every run is the one the header says gets switched
+// off. It is printed before the summary rather than after it, so the verdict and
+// what to do about it stay the last thing on the screen, as they always were.
+//
+// **Merged is the one fact this cannot know**, because a pull request lives on
+// the forge and this report makes no network call and runs no `gh`. What it
+// reports instead is the `git branch --merged` test, whether every commit on the
+// branch is already in the default branch, and it says what that misses: a squash
+// or rebase merge writes new commits, so the branch of a squash-merged pull
+// request reads "no" for ever. That is this repository's own merge policy, which
+// is why the limit is printed and not left in this comment.
+//
+// Nothing is printed where there are no linked worktrees, so a repository
+// without any gets the report it always got.
+// ---------------------------------------------------------------------------
+function linkedWorktrees() {
+  let text
+  try {
+    text = git(['worktree', 'list', '--porcelain'])
+  } catch {
+    return []
+  }
+  // The first block is always the main worktree, or the bare repository.
+  return text
+    .split(/\n\s*\n/)
+    .slice(1)
+    .map((block) => {
+      const lines = block.split('\n')
+      const field = (key) => {
+        const line = lines.find((l) => l === key || l.startsWith(`${key} `))
+        return line === undefined ? undefined : line.slice(key.length).trim()
+      }
+      return {
+        path: resolve(field('worktree') ?? ''),
+        head: field('HEAD'),
+        branch: field('branch')?.replace(/^refs\/heads\//, ''),
+        locked: field('locked'),
+        prunable: field('prunable'),
+      }
+    })
+    .filter((w) => w.head !== undefined)
+}
+
+const countOf = (args) => {
+  try {
+    return Number(git(args))
+  } catch {
+    return null
+  }
+}
+const commits = (n) => (n === 1 ? '1 commit' : `${n} commits`)
+
+// The branch these are compared with. The remote-tracking one when there is
+// one, because a local default branch is only as current as whoever last pulled
+// it in this clone.
+function mergeTarget() {
+  const name = (BRANCH ?? defaultBranch())?.name
+  if (!name) return null
+  for (const ref of [`origin/${name}`, name]) {
+    try {
+      git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
+      return ref
+    } catch {
+      /* not in this clone; try the next */
+    }
+  }
+  return null
+}
+
+function worktreeFacts(w, target, remotes) {
+  const facts = []
+  facts.push(`branch: ${w.branch ?? `none, HEAD detached at ${w.head.slice(0, 7)}`}`)
+  facts.push(`locked: ${w.locked === undefined ? 'no' : w.locked === '' ? 'yes' : `yes, "${w.locked}"`}`)
+
+  const unpushed = remotes ? countOf(['rev-list', '--count', w.head, '--not', '--remotes']) : null
+  facts.push(
+    `commits on no remote-tracking ref: ${
+      !remotes ? 'all of them, since this clone has no remote-tracking refs'
+      : unpushed === null ? 'could not be read'
+      : unpushed === 0 ? 'none'
+      : commits(unpushed)
+    }`,
+  )
+
+  if (w.prunable !== undefined) {
+    facts.push('uncommitted or untracked files: not readable, the directory is gone (`git worktree prune` forgets it)')
+  } else {
+    let files = null
+    try {
+      files = git(['-C', w.path, 'status', '--porcelain', '--untracked-files=all']).split('\n').filter(Boolean)
+    } catch {
+      /* reported below as unreadable rather than as clean */
+    }
+    const untrackedCount = files?.filter((line) => line.startsWith('??')).length
+    facts.push(
+      `uncommitted or untracked files: ${
+        files === null ? 'could not be read'
+        : files.length === 0 ? 'none'
+        : `${files.length - untrackedCount} changed, ${untrackedCount} untracked`
+      }`,
+    )
+  }
+
+  const outside = target === null ? null : countOf(['rev-list', '--count', `${target}..${w.head}`])
+  facts.push(
+    `merged into ${target ?? 'the default branch'}: ${
+      target === null ? 'not judged, the default branch is unknown'
+      : outside === null ? 'could not be read'
+      : outside === 0 ? 'yes, every commit on it is there'
+      : `no, ${commits(outside)} ${outside === 1 ? 'is' : 'are'} not`
+    }`,
+  )
+  return facts
+}
+
+const WORKTREES = linkedWorktrees()
+if (WORKTREES.length > 0) {
+  const target = mergeTarget()
+  const remotes = (() => {
+    try {
+      return git(['for-each-ref', '--count=1', 'refs/remotes']) !== ''
+    } catch {
+      return false
+    }
+  })()
+  console.log(
+    `Linked worktrees: ${WORKTREES.length}. Facts, not a layer: nothing below changes the exit code.`,
+  )
+  console.log('')
+  for (const w of WORKTREES) {
+    console.log(`  ${show(w.path)}${samePath(w.path, ROOT) ? '   (this checkout)' : ''}`)
+    for (const fact of worktreeFacts(w, target, remotes)) console.log(`             ${fact}`)
+    console.log('')
+  }
+  for (const line of [
+    `"Merged" is the \`git branch --merged\` test against ${target ?? 'the default branch'}: every commit on the branch`,
+    'is already there. A squash or rebase merge writes new commits, so the branch of a squash-merged',
+    'pull request reads "no" here. Whether a pull request merged is a question for the forge, and',
+    'this report makes no network call. Remote-tracking refs are as of the last fetch.',
+    '',
+    'None of this says which worktrees are still in use: a lock is not proof that anything is',
+    "running. To clear one, first keep what it holds, using the preserve step in the skill's",
+    'references/parallelism.md ("Resuming and recovering"), then unlock it only if you know its',
+    'agent has stopped and remove it with `git worktree remove`, unforced: if git refuses, that',
+    'refusal is the report that something is still in there.',
+    '',
+  ]) console.log(line)
+}
+
 const DECLINED_ROWS = rows.filter((r) => r.status === DECLINED)
 
 // The probe is the only way a session can tell a loaded gate from an inert one,

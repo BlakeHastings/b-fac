@@ -342,7 +342,16 @@ Run it when an agent goes quiet, and again before you write `Next: nothing`: an
 orphan holding real work is a line waiting on you, which SKILL.md's "Before you
 stop" makes your `Next:` rather than a blocker. A branch line with no
 `...origin/` upstream has never pushed anything, and every line under it exists
-nowhere else. Then, per worktree:
+nowhere else.
+
+`assets/check-setup.mjs` prints the same sweep with the facts that separate a
+disposable worktree from the only copy of something: per linked worktree, its
+branch, whether it is locked, how many commits no remote-tracking ref holds,
+what is uncommitted or untracked, and whether the branch is merged into the
+default branch by ancestry. It decides nothing and never changes its exit code.
+A lock is not proof an agent is running, and a squash-merged branch reads as
+unmerged there, because whether a pull request merged needs the forge. Then,
+per worktree:
 
 1. Check `git status` there before assuming anything landed.
 2. If there is real work, commit it as clearly-labelled WIP on its branch. Do
