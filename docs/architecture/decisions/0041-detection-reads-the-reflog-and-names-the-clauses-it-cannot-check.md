@@ -244,7 +244,8 @@ it wrote nothing and survived for a reason that had nothing to do with the test.
 **What is still only somebody's word is written down as that.** The publish step
 gained two commands and lost most of a sentence, and the sentence that remains
 is shorter and true. Whether the host's tracker gained an issue or a comment
-stays the operator's to state, and the only mechanical route to it, asking the
-forge what this account authored recently, is a read of somebody else's system
-that needs credentials, a repository identity and a tolerance for noise the
-factory may not have. Left as a follow-up rather than guessed at here.
+stays the operator's to state. The one mechanical route, asking the forge what
+this account authored, was later measured rather than guessed at: nothing on
+the forge distinguishes an item the factory wrote from one the operator wrote,
+and no mark introduced for the purpose would be on an accidental write. ADR
+0072 has the counts.

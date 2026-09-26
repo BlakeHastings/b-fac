@@ -31,6 +31,16 @@
 //   no comment posted         not checkable locally, same reason
 //   nothing outside touched   not checkable at all, by anything
 //
+// The middle two are not checkable remotely either, and that was measured
+// (ADR 0072): on the forge, an issue or comment the factory wrote carries the
+// same account, the same token and no app attribution as one the operator
+// wrote, and the only body convention, Claude Code's footer, is on no comment
+// at all and is left just the same by the operator's own Claude sessions. A
+// mark the factory added on purpose would not be on an accidental write, which
+// goes out as the operator. So there is no `--remote` half for them and no
+// fourth state; asking the forge what this account authored would report the
+// operator's own work as findings.
+//
 // A report that implied it had verified more than that would be worse than the
 // honest sentence it replaced, because it would be quoted at a code review.
 //

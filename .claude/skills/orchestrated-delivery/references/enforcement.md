@@ -705,6 +705,13 @@ If you cannot say the remaining three, say precisely what you did instead. ADR
 promise and the other three are still somebody's word, which is worth stating
 plainly rather than letting a green report imply otherwise.
 
+Asking the forge does not rescue the middle two, and that was measured rather
+than assumed (b-fac ADR 0072): an issue or comment the factory writes goes out
+under your account and token, the same as yours, and no marker the factory adds
+on purpose would be on the accidental write this is about, because an accident
+goes out through your credential unmarked. A query of what your account
+authored would list your own work.
+
 ## Guest mode in one paragraph
 
 The whole guest stack in the order it goes in. The sections above are the
