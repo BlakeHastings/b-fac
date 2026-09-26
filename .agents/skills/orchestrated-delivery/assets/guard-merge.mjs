@@ -21,6 +21,38 @@
 // child process rather than a Bash tool call, so the guard does not see it.
 // Making the safe path the only working path beats asking nicely.
 //
+// UNCOMMITTED WORK
+// It also refuses the git commands that throw away uncommitted work, when the
+// tree they act on holds some: `git reset --hard`, `git checkout -f` and
+// `git switch -f`, `git checkout -- <paths>` and `git checkout .`, `git
+// restore` without `--staged`, `git clean -f`, a bare `git stash drop` and
+// `git stash clear`, and `git worktree remove --force`. The file's name says
+// only the first rule. The second went here rather than into a guard of its
+// own because a new file would be another copy of the command reader below.
+//
+// The session running these is rarely the only writer in a main checkout: the
+// owner edits prose, tools rewrite tracked files, and nothing says who wrote
+// what. So the rule counts rather than judges. A clean tree is allowed. A linked
+// worktree is allowed, because a throwaway worktree is where this work belongs,
+// and a guard that blocks the remedy gets switched off. `git worktree remove
+// --force <path>` is judged on `<path>`, the tree it deletes, and the stash on
+// the stash, which every worktree shares. The refusal lists what would be lost
+// and how to keep it.
+//
+// Each command counts only what it destroys. A reset or a forced checkout
+// counts tracked changes, and an untracked file only where the commit it moves
+// to tracks the same path, because every other untracked file survives it. A
+// main checkout holding a stray draft is its normal state, and refusing a
+// harmless reset there is how this rule would get switched off. A clean counts
+// untracked files; a restore, tracked changes; `worktree remove --force`,
+// everything, because it deletes the directory.
+//
+// The override is `git -c guard.destructive=ok ...`, on the command line where
+// a reviewer sees it, for a person who has read the refusal. **An override an
+// agent adds on its own is a finding for review, not a failure of this guard.**
+// The guard makes the loss visible before it happens; it cannot make an agent
+// ask, and seeing that one did not is what the override being visible is for.
+//
 // ASK IT WHETHER IT IS LOADED
 // A hook is written into settings, loaded by a process at startup, and fires on
 // a command. Only the third of those denies anything, and the middle one is
@@ -100,6 +132,40 @@
 // the default branch is not refused here. Layer 3 detects it, and detection is
 // what makes prevention honest. See references/enforcement.md.
 //
+// The uncommitted-work rule does look at a tree, and the same fact bounds it.
+// It reads the directory the harness reports in the payload, moved by any
+// `git -C`, and nothing else. That is the argument that removed the branch
+// lookup, and it still holds: where this rule allows wrongly, it is silent. It
+// is kept anyway because nothing else stands in front of the losses it exists
+// for, and the plain form of each, no `cd` in front, is the one it reads right.
+// For that rule, NOT COVERED:
+//
+//   - a `cd`, `pushd` or `Set-Location` earlier on the same line. The rule
+//     judges the directory the line starts in, and does not guess where a `cd`
+//     leads. Its refusal says so and points at `git -C`, which it reads.
+//   - the moment between the check and the command. Other writers keep writing:
+//     a file that lands after the hook ran is not on the list.
+//   - a program that runs git, `env git reset --hard` and the rest of the list
+//     above, and a git alias that expands to one of these commands.
+//   - `git checkout <path>` without `--` and without `.`: on the command line it
+//     is indistinguishable from switching to a branch of that name.
+//   - which untracked files a reset or forced checkout overwrites, when its
+//     target does not resolve here (`-`, a variable). Every untracked file is
+//     counted then, which refuses where it may not have needed to.
+//   - a Git Bash path the process cannot open. `/c/...` is read as `C:/...`,
+//     but another MSYS mount, `/tmp` among them, names a directory this process
+//     cannot find, and the rule allows a directory it cannot find.
+//   - files git ignores, except for `git clean -x` and `-X`. `git worktree
+//     remove --force` deletes an ignored `.env` without a word from this rule,
+//     which is the price of allowing the `node_modules` that makes `--force`
+//     necessary in the first place.
+//   - other destructive commands: `git rm -f`, `git branch -D`, `git worktree
+//     prune` after a directory was deleted by hand, `rm -rf`, and `git clean`
+//     with `clean.requireForce` turned off, which needs no `-f`.
+//
+// A path the rule cannot resolve at all, a variable, a `$(...)`, `--git-dir` or
+// `--work-tree`, is refused rather than guessed at, and the refusal says so.
+//
 // HOW IT READS A COMMAND
 // It asks what each command in the line *invokes*, never what the line's text
 // contains. Scanning the text is a defect this guard shipped with: within
@@ -109,6 +175,11 @@
 //
 // A gap lets a merge through; a false positive gets the guard switched off, and
 // the second is the likelier failure. Weigh them that way when you edit this.
+
+import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
 
 // The one thing to edit. `check-setup.mjs` reads this line by name.
 const DEFAULT_BRANCH = 'main'
@@ -619,7 +690,7 @@ const USE_WRAPPER =
   'See docs/process/working-an-issue.md.'
 
 // BEGIN git arguments
-// git arguments stamp: sha256 dabf07cef9e8c86e
+// git arguments stamp: sha256 6d9fbae09aea9c65
 //
 // Held to the same code as its other copies in the skill by the test that holds
 // the command reader, and stamped the same way, so compare this stamp line with
@@ -627,18 +698,33 @@ const USE_WRAPPER =
 // by #219, because one of that region's copies is in a file that reads no `git`.
 
 // `git` takes its own flags before the subcommand, and several of them swallow
-// the next token. Returns the arguments from the subcommand onward, or null
-// when this segment does not invoke git.
+// the next token. `gitCall` returns the arguments from the subcommand onward
+// together with the flags that decide *where* git acts and how it is
+// configured, or null when this segment does not invoke git.
+//
+// `directories` are the `-C` values in order, which git applies each relative to
+// the one before. `configs` are the `-c` values. `elsewhere` says that
+// `--git-dir` or `--work-tree` has moved the repository or its tree somewhere
+// `-C` does not name, which a rule about a tree cannot follow. #188.
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--exec-path'])
 
-function gitArguments(tokens) {
+function gitCall(tokens) {
   if (commandName(tokens[0]) !== 'git') return null
+  const directories = []
+  const configs = []
+  let elsewhere = false
   let at = 1
   while (at < tokens.length && tokens[at].startsWith('-')) {
-    at += GIT_FLAGS_WITH_VALUE.has(tokens[at]) ? 2 : 1
+    const flag = tokens[at]
+    if (flag === '-C') directories.push(tokens[at + 1] ?? '')
+    if (flag === '-c') configs.push(tokens[at + 1] ?? '')
+    if (/^--(git-dir|work-tree)(=|$)/.test(flag)) elsewhere = true
+    at += GIT_FLAGS_WITH_VALUE.has(flag) ? 2 : 1
   }
-  return tokens.slice(at)
+  return { args: tokens.slice(at), directories, configs, elsewhere }
 }
+
+const gitArguments = (tokens) => gitCall(tokens)?.args ?? null
 
 // END git arguments
 
@@ -820,6 +906,346 @@ const GRAPHQL_UNREADABLE =
 
 // END merge rule
 
+// BEGIN uncommitted work
+// uncommitted work stamp: sha256 e4a4b9c7125a7e4b
+//
+// The second rule, #188 and ADR 0069. Held to one text with its other copy by
+// the test that holds the reader, and stamped the same way. What it does not
+// cover is listed in the header, as NOT COVERED for this rule.
+//
+// A force flag exists to get past a refusal, and the refusal was holding
+// something. Three times in one session an orchestrator destroyed uncommitted
+// work that way: an agent's only file, untracked, under `git worktree remove
+// --force`; a backlog item under `git reset --hard`; and the owner's `README.md`
+// and ten layout files under a second `git reset --hard`. The orchestrator is
+// not the only writer in a main checkout, and nothing it can read says who wrote
+// what. So the proxy is a count: a destructive command is refused when the tree
+// it would act on holds anything it would destroy, and allowed when it holds
+// nothing.
+//
+// It is allowed in a linked worktree, because doing this work in a throwaway
+// worktree is the remedy, and a guard that blocks the remedy gets switched off.
+// Two things are exceptions. `git worktree remove --force <path>` is judged on
+// `<path>`, the tree it deletes, wherever it runs from. The stash is judged on
+// the stash, since every worktree of a repository shares one stack and a linked
+// worktree protects nothing on it.
+
+// The override. A `-c` on git's own line rather than an environment prefix,
+// because the prefix is not a form PowerShell has, the reader strips it before
+// any rule sees the command, and `$env:` would outlive the one command it was
+// meant for. git accepts a `-c` it does not know and ignores it.
+const DESTRUCTIVE_OK = 'guard.destructive=ok'
+
+// Flags up to `--`, after which everything is a path.
+const flagsOf = (args) => {
+  const end = args.indexOf('--')
+  return (end === -1 ? args : args.slice(0, end)).filter((token) => token.startsWith('-'))
+}
+
+// Whether a flag appears, long or inside a cluster of short ones. A cluster
+// stops at the first short flag that takes a value, because the rest of the
+// token is that value: `git checkout -bfix` names a branch `fix` and forces
+// nothing.
+function hasFlag(args, long, letter, valued = '') {
+  for (const token of flagsOf(args)) {
+    if (token === long) return true
+    if (token.startsWith('--')) continue
+    for (const char of token.slice(1)) {
+      if (char === letter) return true
+      if (valued.includes(char)) break
+    }
+  }
+  return false
+}
+
+// The arguments that are not flags or a flag's value, before `--` and after it.
+function operands(args, valued = '', longValued = []) {
+  const before = []
+  for (let at = 0; at < args.length; at += 1) {
+    const token = args[at]
+    if (token === '--') return { before, after: args.slice(at + 1) }
+    if (token.startsWith('--')) {
+      if (longValued.includes(token)) at += 1
+    } else if (token.startsWith('-') && token.length > 1) {
+      const cluster = token.slice(1)
+      const value = [...cluster].findIndex((char) => valued.includes(char))
+      if (value === cluster.length - 1) at += 1
+    } else {
+      before.push(token)
+    }
+  }
+  return { before, after: [] }
+}
+
+// What a git command would destroy, or null when it destroys nothing this rule
+// is about. `lose` is which entries of `git status` count, because each command
+// counts only what it destroys:
+//
+//   `tracked`    tracked changes. A restore from the index never touches an
+//                untracked file.
+//   `untracked`  untracked files. A clean never touches a tracked one.
+//   `rewrite`    tracked changes, and the untracked files that `target` tracks.
+//                A reset or a forced checkout rewrites tracked files and leaves
+//                untracked ones alone, except where the commit it moves to has
+//                a file at the same path, which it overwrites without a word.
+//                Counting every untracked file refused both in a main checkout
+//                holding nothing but a stray draft, which is its normal state.
+//   `all`        everything, for a worktree whose directory is being deleted.
+//
+// `paths` narrows the tree to what the command names, so `git checkout -- a.txt`
+// is judged on `a.txt` and an unrelated edit elsewhere does not refuse it.
+function destructiveAction(args) {
+  const [sub, ...rest] = args
+  if (sub === 'reset') {
+    if (!rest.includes('--hard')) return null
+    return { lose: 'rewrite', target: operands(rest).before[0] ?? 'HEAD', paths: [] }
+  }
+  if (sub === 'checkout') {
+    const { before, after } = operands(rest, 'bB', ['--orphan'])
+    if (after.length > 0) return { lose: 'tracked', paths: after }
+    if (before.includes('.')) return { lose: 'tracked', paths: ['.'] }
+    if (!hasFlag(rest, '--force', 'f', 'bB')) return null
+    return { lose: 'rewrite', target: before[0] ?? 'HEAD', paths: [] }
+  }
+  // `git switch` is `checkout -f`'s newer spelling, and leaving it open would
+  // make the rule a matter of which verb an agent learned.
+  if (sub === 'switch') {
+    const force = hasFlag(rest, '--force', 'f', 'cC') || hasFlag(rest, '--discard-changes', null)
+    if (!force) return null
+    return { lose: 'rewrite', target: operands(rest, 'cC').before[0] ?? 'HEAD', paths: [] }
+  }
+  if (sub === 'restore') {
+    const staged = hasFlag(rest, '--staged', 'S', 's')
+    const worktree = hasFlag(rest, '--worktree', 'W', 's')
+    if (staged && !worktree) return null
+    const { before, after } = operands(rest, 's', ['--source', '--pathspec-from-file'])
+    const fromFile = rest.some((token) => token.startsWith('--pathspec-from-file'))
+    return { lose: 'tracked', paths: fromFile ? [] : [...before, ...after] }
+  }
+  if (sub === 'clean') {
+    if (!hasFlag(rest, '--force', 'f', 'e')) return null
+    if (hasFlag(rest, '--dry-run', 'n', 'e')) return null
+    const { before, after } = operands(rest, 'e', ['--exclude'])
+    return {
+      lose: 'untracked',
+      paths: [...before, ...after],
+      ignored: hasFlag(rest, null, 'x', 'e') || hasFlag(rest, null, 'X', 'e'),
+      directories: hasFlag(rest, null, 'd', 'e'),
+    }
+  }
+  if (sub === 'stash' && rest[0] === 'clear') return { stash: 'all' }
+  if (sub === 'stash' && rest[0] === 'drop') {
+    // A named entry is the caller's choice. A bare drop takes whatever is on
+    // top of a stack every worktree shares, which may be another session's.
+    return operands(rest.slice(1)).before.length === 0 ? { stash: 'top' } : null
+  }
+  if (sub === 'worktree' && rest[0] === 'remove') {
+    const remove = rest.slice(1)
+    if (!hasFlag(remove, '--force', 'f')) return null
+    const { before, after } = operands(remove)
+    const target = [...before, ...after][0]
+    return target === undefined ? null : { worktree: target }
+  }
+  return null
+}
+
+// A variable the hook inherited from the harness, in any of the three shells'
+// spellings, is expanded, because the shell the command runs in inherited the
+// same one: `"$LOCALAPPDATA/Temp/..."` is how a scratch worktree gets named.
+// One the line sets for itself, `W=...; git -C "$W" ...`, is not in this
+// process, and neither is what a `$(...)` or a backtick prints. Those leave the
+// token unreadable, and the caller says so rather than guessing.
+const VARIABLE = /\$env:([A-Za-z_]\w*)|\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)|%([A-Za-z_]\w*)%/g
+
+function expanded(token) {
+  const text = token.replace(VARIABLE, (whole, ...names) => process.env[names.find(Boolean)] ?? whole)
+  return /[$`%]/.test(text) ? null : text
+}
+
+// A path as written on the command line, as this process can open it, or null
+// when only the shell could say what it is. `~` is the home directory, and on
+// Windows a Git Bash `/c/...` is `C:/...`. Any other MSYS mount, `/tmp` among
+// them, resolves to a directory that does not exist, and is named under NOT
+// COVERED.
+function localPath(token) {
+  const path = expanded(token)
+  if (path === null) return null
+  if (path === '~' || path.startsWith('~/')) return homedir() + path.slice(1)
+  const drive = /^\/([A-Za-z])(\/|$)/.exec(path)
+  if (process.platform === 'win32' && drive !== null) return `${drive[1]}:/${path.slice(3)}`
+  return path
+}
+
+function gitRead(dir, args) {
+  try {
+    return execFileSync('git', ['-C', dir, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+  } catch {
+    return null
+  }
+}
+
+// Whether `dir` is inside a linked worktree rather than a main checkout, or
+// null when it is not inside a repository at all, where git will refuse the
+// command itself and there is nothing for this rule to keep.
+function isLinkedWorktree(dir) {
+  const out = gitRead(dir, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'])
+  if (out === null) return null
+  const [gitDir, commonDir] = out.trim().split(/\r?\n/)
+  return resolve(gitDir) !== resolve(commonDir)
+}
+
+// The paths the commit `target` tracks, from the repository root, or null when
+// the target does not read as a commit here: a ref the guard cannot resolve, a
+// variable only the shell knows. Then every untracked file counts, which is the
+// direction that refuses rather than the one that loses a file.
+function trackedAt(dir, target) {
+  const out = gitRead(dir, ['ls-tree', '-r', '--name-only', '--full-tree', '-z', '--end-of-options', target])
+  return out === null ? null : new Set(out.split('\0').filter(Boolean))
+}
+
+// The entries of `git status` the action would destroy, as `{ code, path }`.
+function atRisk(dir, action) {
+  const untracked = action.lose === 'tracked' ? 'no' : action.lose === 'untracked' && !action.directories ? 'normal' : 'all'
+  const args = ['status', '--porcelain=v1', '-z', '--no-renames', `--untracked-files=${untracked}`]
+  if (action.ignored) args.push('--ignored=matching')
+  const out = gitRead(dir, [...args, '--', ...(action.paths ?? [])])
+  if (out === null) return []
+  const entries = out
+    .split('\0')
+    .filter((entry) => entry.length > 3)
+    .map((entry) => ({ code: entry.slice(0, 2), path: entry.slice(3) }))
+  if (action.lose === 'untracked') {
+    return entries.filter(({ code, path }) => {
+      // Without `-d`, a clean leaves untracked directories alone.
+      if (!action.directories && path.endsWith('/')) return false
+      return code === '??' || code === '!!'
+    })
+  }
+  if (action.lose === 'rewrite' && entries.some(({ code }) => code === '??')) {
+    const tracked = trackedAt(dir, action.target)
+    return entries.filter(({ code, path }) => code !== '??' || tracked === null || tracked.has(path))
+  }
+  return entries
+}
+
+const LISTED = 20
+
+function listing(entries) {
+  const lines = entries.slice(0, LISTED).map(({ code, path }) => `  ${code} ${path}`)
+  if (entries.length > LISTED) lines.push(`  ... and ${entries.length - LISTED} more`)
+  return lines.join('\n')
+}
+
+const OVERRIDE_NOTE =
+  'If a person has read this and means to go ahead, the override goes on the\n' +
+  `command line, where a reviewer will see it: \`git -c ${DESTRUCTIVE_OK} ...\`.\n` +
+  'An agent that adds it on its own has decided for whoever wrote those files.\n' +
+  'Say so in the report; a reviewer reads it as a finding.'
+
+function treeRefusal(command, dir, entries) {
+  return (
+    `Blocked: \`${command}\` would destroy uncommitted work in the main\n` +
+    `checkout at ${dir}, and nothing on this line says who wrote it:\n\n${listing(entries)}\n\n` +
+    'Keep it first. `git diff HEAD` misses every untracked file above; these do not.\n' +
+    'The stash is shared by every worktree, so name the entry:\n\n' +
+    `  git -C "${dir}" stash push -u -m "kept before ${command}"\n` +
+    `  git -C "${dir}" ls-files --others --exclude-standard   # then copy each one\n\n` +
+    'Better, do this in a throwaway worktree, which holds nobody else\'s work and\n' +
+    'where this guard allows it:  git worktree add ../scratch HEAD\n\n' +
+    'That path is where the harness says this command starts. A `cd` earlier on\n' +
+    'the same line has not happened when this guard runs, so if the command was\n' +
+    'meant for another tree, name it with `git -C <path>`, which the guard reads.\n\n' +
+    OVERRIDE_NOTE
+  )
+}
+
+function worktreeRefusal(target, entries) {
+  return (
+    `Blocked: \`git worktree remove --force\` would delete ${target}, and it holds\n` +
+    `uncommitted work that exists nowhere else:\n\n${listing(entries)}\n\n` +
+    'Commit it on that worktree\'s branch, which keeps untracked files too, and\n' +
+    'check that every path above is in the commit before removing anything:\n\n' +
+    `  git -C "${target}" add -A\n` +
+    `  git -C "${target}" commit -m "WIP (unreviewed): kept before removal"\n\n` +
+    'Once nothing is listed here, `--force` is allowed, for files git ignores.\n\n' +
+    OVERRIDE_NOTE
+  )
+}
+
+function stashRefusal(command, entries) {
+  return (
+    `Blocked: \`${command}\` would drop ${entries.length === 1 ? 'this' : 'these'} from a stash stack that every worktree\n` +
+    'of this repository shares, so an entry may be another session\'s:\n\n' +
+    `${entries.slice(0, LISTED).map((entry) => `  ${entry}`).join('\n')}\n\n` +
+    'Drop the one you mean by name, `git stash drop stash@{<n>}`, after reading it\n' +
+    'with `git stash show -p --include-untracked stash@{<n>}`.\n\n' +
+    OVERRIDE_NOTE
+  )
+}
+
+function unreadableRefusal(command, where) {
+  return (
+    `Blocked: \`${command}\` acts on a tree named through ${where}, which this\n` +
+    'guard cannot resolve, so it cannot see what the command would destroy and it\n' +
+    'refuses rather than guess. Write the path literally.\n\n' +
+    OVERRIDE_NOTE
+  )
+}
+
+// The refusal for one command, or null to allow it. `cwd` is the directory the
+// hook was told the command runs in. A `cd` earlier on the same line has not
+// happened when a PreToolUse hook runs, so it cannot be followed, and this does
+// not try.
+function uncommittedWork(tokens, cwd) {
+  const call = gitCall(tokens)
+  if (call === null) return null
+  const action = destructiveAction(call.args)
+  if (action === null) return null
+  if (call.configs.some((config) => config.toLowerCase() === DESTRUCTIVE_OK)) return null
+  const command = `git ${call.args.join(' ')}`
+  if (call.elsewhere) return unreadableRefusal(command, '`--git-dir` or `--work-tree`')
+
+  let dir = cwd
+  for (const written of call.directories) {
+    const path = localPath(written)
+    if (path === null) return unreadableRefusal(command, `\`-C ${written}\``)
+    dir = resolve(dir, path)
+  }
+  if (!existsSync(dir)) return null
+
+  if (action.worktree !== undefined) {
+    const path = localPath(action.worktree)
+    if (path === null) return unreadableRefusal(command, `\`${action.worktree}\``)
+    const target = resolve(dir, path)
+    if (!existsSync(target) || isLinkedWorktree(target) === null) return null
+    const entries = atRisk(target, { lose: 'all' })
+    return entries.length === 0 ? null : worktreeRefusal(target, entries)
+  }
+
+  const linked = isLinkedWorktree(dir)
+  if (linked === null) return null
+
+  if (action.stash !== undefined) {
+    const out = gitRead(dir, ['stash', 'list', '--format=%gd: %s'])
+    const entries = (out ?? '').split(/\r?\n/).filter((line) => line !== '')
+    if (entries.length === 0) return null
+    return stashRefusal(command, action.stash === 'top' ? entries.slice(0, 1) : entries)
+  }
+
+  if (linked) return null
+  // A path the command names through a variable only the shell knows could be
+  // any path, so the whole tree is what it might take.
+  const paths = action.paths.map(expanded)
+  const scope = paths.includes(null) ? { ...action, paths: [] } : { ...action, paths }
+  const entries = atRisk(dir, scope)
+  return entries.length === 0 ? null : treeRefusal(command, dir, entries)
+}
+
+// END uncommitted work
+
 // Where a refspec lands. `src:dst` writes `dst`, a bare ref writes the same name
 // at the far end, `:dst` deletes `dst`, and a leading `+` is force and says
 // nothing about where it goes.
@@ -862,7 +1288,7 @@ function pushesToDefaultBranch(args) {
 // real push to the default branch.
 const isDryRun = (args) => args.includes('--dry-run') || args.includes('-n')
 
-function judge(line, depth) {
+function judge(line, depth, cwd) {
   for (const tokens of segmentsOf(line)) {
     if (isLivenessProbe(tokens)) {
       deny(
@@ -901,8 +1327,11 @@ function judge(line, depth) {
       )
     }
 
+    const loss = uncommittedWork(tokens, cwd)
+    if (loss !== null) deny(loss)
+
     const nested = depth > 0 ? shellPayload(tokens) : null
-    if (nested !== null) judge(nested, depth - 1)
+    if (nested !== null) judge(nested, depth - 1, cwd)
   }
 }
 
@@ -961,11 +1390,16 @@ if (process.argv.includes('--probe')) {
   for await (const chunk of process.stdin) payload += chunk
 
   let command = ''
+  // The directory the harness says the command runs in, which the payload
+  // carries. The hook's own working directory is the fallback.
+  let cwd = process.cwd()
   try {
-    command = JSON.parse(payload)?.tool_input?.command ?? ''
+    const input = JSON.parse(payload)
+    command = input?.tool_input?.command ?? ''
+    cwd = input?.cwd ?? cwd
   } catch {
     process.exit(0) // Unparseable payload is not this guard's problem.
   }
-  if (command.trim()) judge(command, 2)
+  if (command.trim()) judge(command, 2, cwd)
   process.exit(0)
 }
