@@ -18,6 +18,22 @@
 // The value is that the failure is loud, dated and attributable, which is what
 // makes "we enforce this procedurally" an auditable claim instead of a promise.
 //
+// IT ALSO ASKS WHO LANDED IT
+// A pull request is not the whole rule. A merge taken around `merge-pr.mjs`,
+// with `gh pr merge`, a GraphQL mutation or the button in the GitHub UI, still
+// lands a pull request, so the question above answers yes. It is also exactly
+// what an agent does when the merge guard misses a spelling, and the guard has
+// missed several. So `merge-pr.mjs` writes a `Landed-by: merge-pr.mjs` trailer
+// into every squash it makes, and this reports a commit above TRAILER_BASELINE
+// that came through a pull request without it. That is a different finding
+// from a commit with no pull request at all, and it is printed separately.
+//
+// THE LIMIT, PLAINLY
+// The trailer catches an accident, not an adversary. Anyone can type
+// `Landed-by: merge-pr.mjs` into a merge message by hand, and this cannot tell
+// the difference. The case it is for is an agent, or a person, merging the
+// ordinary way by mistake, and that is the case that has actually happened.
+//
 //   node scripts/check-main-provenance.mjs              # $BEFORE..$AFTER, or HEAD
 //   node scripts/check-main-provenance.mjs <sha> [...]  # named commits
 import { execFileSync } from 'node:child_process'
@@ -38,6 +54,19 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 // SETUP: the commit that first made the PR-only rule a control rather than a
 // sentence, normally the one that adds this script and the merge wrapper.
 const BASELINE = 'dadeae4bb076d44f0ffd30f0105c5e8d6327112f'
+
+// Commits at or below this are not asked for the `Landed-by` trailer. Leave it
+// equal to BASELINE when you install this and `merge-pr.mjs` together, because
+// then every commit above the baseline was landed by a wrapper that writes it.
+// SETUP, only if the audit ran here before the wrapper wrote the trailer: set it
+// to the last commit on the default branch before a `merge-pr.mjs` that writes
+// it was in use, or every earlier merge is reported. The same warning applies
+// as to BASELINE: do not move it forward to silence a finding.
+const TRAILER_BASELINE = '5b9f8f1357fe06fee2cfe9f1df0b65f461922dce'
+
+// The trailer `merge-pr.mjs` writes, as `Landed-by: merge-pr.mjs`.
+const LANDED_BY_KEY = 'Landed-by'
+const LANDED_BY_VALUE = 'merge-pr.mjs'
 
 const DEFAULT_BRANCH = 'main'
 
@@ -119,14 +148,35 @@ if (!commitExists(BASELINE)) {
   process.exit(1)
 }
 
-// A commit at or below the baseline predates the rule and is not judged.
-function predatesBaseline(sha) {
+if (!commitExists(TRAILER_BASELINE)) {
+  console.error(
+    `The trailer baseline commit ${TRAILER_BASELINE.slice(0, 8)} is not in this checkout,\n` +
+      `so no commit can be asked for the ${LANDED_BY_KEY} trailer. Set TRAILER_BASELINE to\n` +
+      `a commit on ${DEFAULT_BRANCH}, or leave it equal to BASELINE.`,
+  )
+  process.exit(1)
+}
+
+function isAncestor(sha, of) {
   try {
-    git(['merge-base', '--is-ancestor', sha, BASELINE])
+    git(['merge-base', '--is-ancestor', sha, of])
     return true
   } catch {
     return false
   }
+}
+
+// A commit at or below the baseline predates the rule and is not judged.
+const predatesBaseline = (sha) => isAncestor(sha, BASELINE)
+
+// Read by git from the commit itself, so it costs no API call. Only a trailer
+// in the message's closing trailer block counts, which is where `merge-pr.mjs`
+// writes it; the same words in the prose of a pull request body do not.
+function landedByWrapper(sha) {
+  if (isAncestor(sha, TRAILER_BASELINE)) return true
+  return git(['log', '-1', `--format=%(trailers:key=${LANDED_BY_KEY},valueonly,separator=%x0A)`, sha])
+    .split('\n')
+    .some((value) => value.trim() === LANDED_BY_VALUE)
 }
 
 // The associated pull requests, narrowed to ones that actually explain how this
@@ -160,6 +210,7 @@ if (commits.length === 0) {
 }
 
 const violations = []
+const unmarked = []
 const accounted = []
 let exempt = 0
 
@@ -178,7 +229,15 @@ for (const sha of commits) {
   }
 
   const subject = git(['log', '-1', '--format=%s', sha])
-  if (result.landed.length > 0) {
+  if (result.landed.length > 0 && !landedByWrapper(sha)) {
+    unmarked.push({
+      sha,
+      subject,
+      author: git(['log', '-1', '--format=%an <%ae>', sha]),
+      date: git(['log', '-1', '--format=%cI', sha]),
+      number: result.landed[0].number,
+    })
+  } else if (result.landed.length > 0) {
     accounted.push(`${sha.slice(0, 8)}  #${result.landed[0].number}  ${subject}`)
   } else {
     const near = result.all
@@ -224,12 +283,46 @@ if (violations.length > 0) {
       `     Add the case to scripts/guard-merge.mjs.\n\n` +
       `Do not silence this by moving the baseline in this script forward.`,
   )
-  process.exit(1)
 }
+
+// The second finding. The pull request is real, so review and checks may well
+// have happened; what is missing is the evidence that the merge went through
+// the wrapper, which is the one route that checks them first.
+if (unmarked.length > 0) {
+  if (violations.length > 0) console.error('')
+  console.error(
+    `A pull request reached ${DEFAULT_BRANCH} without going through merge-pr.mjs ` +
+      `(${unmarked.length} of ${commits.length}):\n`,
+  )
+  for (const commit of unmarked) {
+    console.error(`  ${commit.sha}`)
+    console.error(`    ${commit.subject}`)
+    console.error(`    ${commit.author}  ${commit.date}`)
+    console.error(`    Pull request #${commit.number}, but no \`${LANDED_BY_KEY}: ${LANDED_BY_VALUE}\` trailer.\n`)
+  }
+  console.error(
+    `This came through a pull request, so it is not a direct push. What\n` +
+      `is missing is the trailer merge-pr.mjs writes into every merge it makes, so\n` +
+      `this was merged some other way: \`gh pr merge\`, a GraphQL mutation, or the\n` +
+      `merge button. Landing is the orchestrator's, through merge-pr.mjs.\n\n` +
+      `What to do, in order:\n` +
+      `  1. Find who merged it: \`gh pr view <n> --json mergedBy,mergedAt\`.\n` +
+      `  2. If an agent did, the merge guard missed a spelling. Add the case to\n` +
+      `     scripts/guard-merge.mjs, as for any bypass.\n` +
+      `  3. Check the pull request's required checks were green at its head, since\n` +
+      `     nothing here says they were.\n\n` +
+      `The trailer catches an accident, not an adversary: anyone can type it. A\n` +
+      `green here means no merge went around the wrapper by mistake, not that none\n` +
+      `could have.`,
+  )
+}
+
+if (violations.length > 0 || unmarked.length > 0) process.exit(1)
 
 const skipped = exempt > 0 ? `, ${exempt} predating the baseline` : ''
 console.log(
   `Every new commit on ${DEFAULT_BRANCH} came through a pull request ` +
-    `(${accounted.length} checked${skipped}).`,
+    `(${accounted.length} checked${skipped}), and each one the trailer rule reaches ` +
+    `was landed by merge-pr.mjs.`,
 )
 for (const line of accounted) console.log(`  ${line}`)

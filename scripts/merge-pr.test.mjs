@@ -21,6 +21,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
+import { readFileSync } from 'node:fs'
+
 import { run as runScripts } from './merge-pr.mjs'
 import { run as runAsset } from '../.agents/skills/orchestrated-delivery/assets/merge-pr.mjs'
 
@@ -112,6 +114,7 @@ function fakeGh({
   versions = ['1.0.0', '1.0.0'],
 } = {}) {
   const calls = []
+  const sent = []
   let views = 0
   let reads = 0
   const gh = (args) => {
@@ -138,6 +141,10 @@ function fakeGh({
       return JSON.stringify({ version })
     }
     if (path.endsWith('/merge')) {
+      // The wrapper sends the merge's fields in a file it deletes as soon as
+      // the call returns, so the file is read here, while it still exists.
+      const input = args[args.indexOf('--input') + 1]
+      sent.push(args.includes('--input') ? JSON.parse(readFileSync(input, 'utf8')) : null)
       if (merge) throw merge
       return '{"merged":true}'
     }
@@ -147,7 +154,7 @@ function fakeGh({
     }
     throw new Error(`unexpected gh call: ${args.join(' ')}`)
   }
-  return { gh, calls }
+  return { gh, calls, sent }
 }
 
 const merged = (calls) => calls.some((args) => args.includes('PUT'))
@@ -178,13 +185,43 @@ for (const copy of COPIES) {
   // A wrapper that refuses ordinary work gets worked around, which is worse
   // than having none, so the plain green case has to land.
   test(`${copy.name}: green, current and clean squash merges and deletes the branch`, async () => {
-    const { gh, calls } = fakeGh()
+    const { gh, calls, sent } = fakeGh()
     const { code, text } = await drive(copy, gh)
     assert.equal(code, 0)
-    const put = calls.find((args) => args.includes('PUT'))
-    assert.ok(put.includes('merge_method=squash'))
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].merge_method, 'squash')
     assert.deepEqual(deletes(calls)[0].at(-1), 'repos/{owner}/{repo}/git/refs/heads/permits/42-fee-schedule')
     assert.match(text, /All 2 required check\(s\) green/)
+  })
+
+  // THE TRAILER
+  // What the provenance audit reads to tell a merge through this script from a
+  // merge around it. ADR 0071. A message replaces GitHub's default wholesale,
+  // so the title, the body and the commits' co-authors have to be carried over
+  // by hand, and these say they were.
+  test(`${copy.name}: the squash carries Landed-by, after the PR's own title and body`, async () => {
+    const body = 'Closes #189\r\n\r\nThe permit fee schedule, recomputed.\r\n'
+    const commits = [
+      { messageHeadline: 'Recompute fees', messageBody: 'Details.\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>' },
+      { messageHeadline: 'Fix a rounding', messageBody: 'co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: A Clerk <clerk@example.org>' },
+      { messageHeadline: 'Tidy', messageBody: '' },
+    ]
+    const { gh, sent } = fakeGh({ prs: [pr({ body, commits })] })
+    assert.equal((await drive(copy, gh)).code, 0)
+    assert.equal(sent[0].commit_title, 'Permit fee schedule (#42)')
+    assert.equal(
+      sent[0].commit_message,
+      'Closes #189\n\nThe permit fee schedule, recomputed.\n\n' +
+        'Landed-by: merge-pr.mjs\n' +
+        'Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\n' +
+        'Co-authored-by: A Clerk <clerk@example.org>\n',
+    )
+  })
+
+  test(`${copy.name}: an empty PR body still lands the trailer, alone`, async () => {
+    const { gh, sent } = fakeGh({ prs: [pr({ body: '' })] })
+    assert.equal((await drive(copy, gh)).code, 0)
+    assert.equal(sent[0].commit_message, 'Landed-by: merge-pr.mjs\n')
   })
 
   test(`${copy.name}: a rerun is judged on its latest result, not its first`, async () => {

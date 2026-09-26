@@ -73,9 +73,14 @@ clearest example this list has of why detection is not optional.
 nothing about it refuses. On every push to the default branch, asks the API
 which pull requests each new commit belongs to and fails when none was merged. A
 squash merge is associated with its PR; a direct push is associated with
-nothing.
+nothing. It also reports, as a separate finding, a commit that came through a
+pull request without the `Landed-by: merge-pr.mjs` trailer the wrapper writes
+into every squash: a merge taken around the wrapper, with `gh pr merge`, a
+GraphQL mutation or the merge button. That is what an agent does when the guard
+misses a spelling, so it is the detection behind layer 2.
 *Does not cover:* prevention. By the time it fails, the commit has landed. It
-also cannot tell whether checks were green when the merge was taken.
+also cannot tell whether checks were green when the merge was taken. And the
+trailer catches an accident, not an adversary: anyone can type it.
 
 **Detection is what makes the other two honest.** Prevention can be bypassed,
 and a bypassed preventive layer is silent by construction. Detection runs on the
@@ -739,6 +744,12 @@ not violations at the time.
 **Moving the baseline forward to silence a failure is forbidden, and the script
 should say so.** That is how a real violation gets absorbed into "history we
 agreed not to look at".
+
+The trailer has a baseline of its own, `TRAILER_BASELINE`. It ships equal to
+`BASELINE`, which is right when the audit and the wrapper are installed
+together. A repository that ran the audit before its wrapper wrote the trailer
+sets it to the last commit before the first merge that carried it, or every
+earlier merge is reported, and the same rule about moving it applies.
 
 The API lags a merge by seconds, so retry rather than accept a rare false
 positive. This check's only output is a red build asserting somebody bypassed

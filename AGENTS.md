@@ -22,6 +22,11 @@ describe how work actually happens here, not an aspiration.
   `.agents/skills/orchestrated-delivery/references/backlog-port.md`.
 - **Agents do not merge.** Push the branch, open the PR, report, stop. Merging
   is the orchestrator's, through `node scripts/merge-pr.mjs <n>`.
+- **Nobody merges from the GitHub UI either, humans included.** `merge-pr.mjs`
+  writes `Landed-by: merge-pr.mjs` into every squash, and the `provenance`
+  workflow turns red on a merged pull request without it. A merge with the
+  button, `gh pr merge` or a GraphQL mutation all look the same to it, and that
+  is intended. ADR 0071.
 - **A skill body stays under ~500 lines**, with detail pushed into
   `references/`. Progressive disclosure is the whole reason the format works.
   `npm run check:size` fails above 500 and prints the count.
@@ -62,6 +67,9 @@ is a real finding, not noise to look past. The baseline sits just above two
 bootstrap commits from 9 August that predate the ruleset; ADR 0051 examined and
 recorded them, and ADR 0066 moved the line past them. The `provenance` workflow
 passes it the range a push added, so it judges only what that push brought.
+Above a second line, `TRAILER_BASELINE`, it also requires the `Landed-by`
+trailer, and reports a merge without it apart from a commit with no pull
+request. ADR 0071.
 
 No dependencies, no lockfile, Node 22 built-ins only. If that stops being true,
 add `npm ci` to `.github/workflows/checks.yml` and commit the lockfile.
