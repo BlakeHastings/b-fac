@@ -125,7 +125,11 @@ ships to private repos, and ADR 0051 for why the fourth came back.
    request behind it. This is the only one of the four that detects rather than
    prevents, which is why it exists: the ruleset above is configuration that can
    be disabled and restored without leaving a trace in any checkout. ADR 0051.
-   *Not covered:* anything, until after the commit has landed.
+   It also fails, as a separate finding, on a pull request merged without the
+   `Landed-by: merge-pr.mjs` trailer the command above writes, which is a merge
+   taken around it. ADR 0071.
+   *Not covered:* anything, until after the commit has landed. Nor a trailer
+   typed by hand: it catches an accident, not an adversary.
 
 Landing a PR:
 

@@ -35,6 +35,10 @@
 # Not that the build is broken. That a commit is on `main` with no merged pull
 # request behind it, so it arrived without review or green checks. The script's
 # own failure output says what to do about it, in order. See ADR 0051.
+#
+# Or, printed under its own heading, that a pull request was merged without
+# the `Landed-by: merge-pr.mjs` trailer: merged around the wrapper, by an agent
+# the guard missed or by a person using the merge button. See ADR 0071.
 name: provenance
 
 on:
