@@ -28,7 +28,7 @@ landed on 25 Aug (#156, #157, #162, #163, #170, #171, #174, #176), then #181
 (`assets/machine-load.mjs`, read the box before a wave) on 7 Sep and #192
 (compaction at 85%, a warning ten points before, resume from this file) today.
 
-**Topped up twice on 2026-09-25, last at `387942f`, 0.54.12.**
+**Topped up three times on 2026-09-25, last at `3a2055d`, 0.54.21.**
 
 Merged this session, each verified independently before merge (the review record is on each PR):
 
@@ -47,7 +47,21 @@ Then, in the second half of the day:
 - **#215** (#206) the provenance baseline moved past the two 9 August commits. A bare `check:provenance` now exits 0. ADR 0066.
 - **#216** (#204) twelve ADR status lines point at what changed them, and `check:collisions` fails on a declared change that is not pointed back to.
 
-**In flight:** #201 (the helpers copied outside the stamped region, the GraphQL rule #213 duplicated, and the 8 pending citations; **0.54.13**). Its brief is on the issue. **#203** (trim `SKILL.md`) waits for it, because both would edit `references/enforcement.md`.
+And into the evening, each verified by running it rather than reading it:
+
+- **#218** (#201) every helper copied between assets sits in a marked region with its own stamp. ADR 0067.
+- **#221** (#219) guards name `gh` and `git` by basename, so `gh.cmd`, `GH.BAT` and path spellings are refused. ADR 0068. **The orchestrator's claim that the shipped guard let `/usr/bin/gh` through was wrong** (MSYS rewrote the argument); corrected on #219 and #189.
+- **#220** (#203) `SKILL.md` is held under 500 lines by `check:size`; setup and guest mechanics moved to references.
+- **#222** (#182) how to keep a stopped agent's untracked work, checked with `-z` after review found the first check false-alarmed on a space in a filename.
+- **#224** (#134, third dispatch) a legacy guest record withholds the owned recipes and moves no verdict. ADR 0070.
+- **#223** (#186, #187) touch-nothing-they-touch covers the machine; an agent worktree's dependency directory can arrive empty.
+- **#226** (#112) the dispatch search lags the edge; re-read what the turn touched. Stale `blocked` labels removed from #78, #79 and #123.
+- **#225** (#188) the merge guards refuse a destructive git command on a tree holding what it would destroy. ADR 0069. **It is live in this repository's sessions**; the override is `git -c guard.destructive=ok`.
+- **#93** closed with its record: the reader stays in copies, held by stamps.
+
+**In flight:** #227 (#154, `check-setup` lists each linked worktree's facts; 0.54.22), verified and rebasing.
+
+**#123 is unblocked but held**: where per-repository factory state lives is the question #196 has to answer for several factories, so it belongs to #196's design.
 
 **Adversarial review, 2026-09-25**, asked for by the owner: four read-only agents covering code, skill and docs, process, and factory-CLI prior art. The reports are **outside the repository** at `C:\Users\bhastings\source\repos\personal\b-fac-critique\`. The findings kept became #199 to #206 and #210. The headline: **omitting `version` is supported** and would remove the version line, which is on #151 with a recommendation. Refuted: the three reader copies, the no-dependencies rule for assets, making the mirror a symlink, and the skill's style.
 
@@ -91,13 +105,26 @@ operator's style rule), and **#151** (omit the plugin version; recommendation ye
 
 ## Dispatchable
 
-#203 once #201 lands, then the field reports above, then #134, #130, #151, #154, #112, #114, #93, #91,
+The critique findings are all landed. Then #130, #114, #91, #64 and #7, and #189 with the detection its comment recommends, #130, #151, #154, #112, #114, #93, #91,
 #64, #7. Blocked: #78 and #79 behind #28, #123.
 
 ## Traps that cost something
 
-Carried forward from the fourth edition, all still true, plus two new at the top.
+Carried forward from the fourth edition, all still true, plus five new at the top.
 
+- **Git Bash rewrites an argument that starts with `/`** into a Windows path
+  before a native program sees it (`/usr/bin/gh` becomes `C:/Program Files/Git/usr/bin/gh`,
+  and `ref:path` for `git show` is mangled too). Probing a guard from Git Bash
+  with such a command tests a command you never gave. Set `MSYS_NO_PATHCONV=1`
+  for that call only, and give `git` itself Windows paths (`cygpath -m`). It cost
+  one false finding filed on #219 and #189, both corrected in place.
+- **The session scratchpad is shared by every agent the session dispatches.** An
+  agent wrote a script whose name an earlier agent had used, ran the stale one, and
+  put another issue's text into three guard files, backed out by hand. That is #162
+  again. Brief each agent to work under `scratchpad/<issue>/`.
+- **`gh pr checks --watch` returns at once when CI has not registered yet**, so
+  a merge straight after it is refused on pending. The wrapper is right to refuse.
+  Poll until every check reads `pass` before calling it.
 - **Remove a worktree only after the merge line prints.** Twice on 2026-09-25
   the orchestrator removed an agent's worktree in the same command as a
   `merge-pr.mjs` run that then refused: once on a pending check, once on a
