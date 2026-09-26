@@ -24,11 +24,13 @@
 //   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { landedMessage } from './merge-pr.mjs'
 
 const read = (path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8')
 
@@ -36,13 +38,21 @@ const ASSET = read('../.agents/skills/orchestrated-delivery/assets/check-main-pr
 const INSTALLED = read('./check-main-provenance.mjs')
 
 const BASELINE_LINE = /^const BASELINE = '([^']*)'$/m
+const TRAILER_BASELINE_LINE = /^const TRAILER_BASELINE = (.*)$/m
 
-test('the installed copy differs from the asset only in its baseline', () => {
+// Two lines since #189: the trailer baseline is a fact about this repository
+// too, because the audit ran here before merge-pr.mjs wrote the trailer.
+test('the installed copy differs from the asset only in its two baselines', () => {
   const blanked = (source) => {
     const lines = source.split('\n')
-    const at = lines.findIndex((line) => BASELINE_LINE.test(line))
-    assert.notEqual(at, -1, 'no `const BASELINE = ...` line to exempt')
-    lines[at] = '<baseline>'
+    for (const [pattern, name] of [
+      [BASELINE_LINE, 'BASELINE'],
+      [TRAILER_BASELINE_LINE, 'TRAILER_BASELINE'],
+    ]) {
+      const at = lines.findIndex((line) => pattern.test(line))
+      assert.notEqual(at, -1, `no \`const ${name} = ...\` line to exempt`)
+      lines[at] = `<${name}>`
+    }
     return lines.join('\n')
   }
   assert.equal(
@@ -59,6 +69,16 @@ test('the baseline is a real commit id rather than the placeholder', () => {
     /^[0-9a-f]{40}$/,
     'a baseline that is not a full commit id makes the audit exit before judging anything',
   )
+})
+
+// ADR 0071: the last commit on main before the first merge made by a
+// merge-pr.mjs that writes the trailer. The asset ships it equal to BASELINE,
+// which is right for anyone installing both scripts at once.
+const TRAILER_BASELINE = '5b9f8f1357fe06fee2cfe9f1df0b65f461922dce'
+
+test('the trailer baseline is the commit ADR 0071 records, and the asset ships it as BASELINE', () => {
+  assert.equal(TRAILER_BASELINE_LINE.exec(INSTALLED)?.[1], `'${TRAILER_BASELINE}'`)
+  assert.equal(TRAILER_BASELINE_LINE.exec(ASSET)?.[1], 'BASELINE')
 })
 
 // `assets/check-setup.mjs` reads this declaration out of the source to tell an
@@ -103,18 +123,22 @@ const real = cp.execFileSync
 cp.execFileSync = (file, args, options) => {
   if (file !== 'gh') return real(file, args, options)
   appendFileSync(process.env.STUB_GH_LOG, args.join(' ') + '\\n')
-  return '[]'
+  // STUB_PULLS maps a commit to the pull requests the API would name for it.
+  // Anything unmapped gets the empty list a direct push gets.
+  const pulls = JSON.parse(process.env.STUB_PULLS || '{}')
+  const sha = args.find((arg) => arg.includes('/commits/'))?.split('/')[4]
+  return JSON.stringify(pulls[sha] ?? [])
 }
 syncBuiltinESMExports()
 `
 
-function audit(args, env = {}) {
+function audit(args, env = {}, script = SCRIPT) {
   const dir = mkdtempSync(join(tmpdir(), 'provenance-'))
   const log = join(dir, 'gh.log')
   try {
     const result = spawnSync(
       process.execPath,
-      ['--import', `data:text/javascript,${encodeURIComponent(STUB)}`, SCRIPT, ...args],
+      ['--import', `data:text/javascript,${encodeURIComponent(STUB)}`, script, ...args],
       {
         encoding: 'utf8',
         env: { ...process.env, PROVENANCE_BEFORE: '', PROVENANCE_AFTER: '', ...env, STUB_GH_LOG: log },
@@ -161,3 +185,120 @@ test('the two examined bootstrap commits are exempt and never asked about', () =
   assert.match(stdout, /0 checked, 2 predating the baseline/)
   assert.deepEqual(asked, [])
 })
+
+// THE TRAILER, JUDGED ON A HISTORY BUILT FOR IT
+//
+// Nothing on this repository's main carries `Landed-by` yet, so the second
+// finding is driven in a scratch repository. The asset itself is copied in
+// with its baseline set to the scratch root, TRAILER_BASELINE following it as
+// shipped, and runs against real git with only `gh` stubbed. The history holds
+// one commit whose message merge-pr.mjs built, one merged some other way, one
+// with the trailer's words in its prose rather than its trailer block, and one
+// direct push. ADR 0071.
+
+const ASSET_PATH = fileURLToPath(
+  new URL('../.agents/skills/orchestrated-delivery/assets/check-main-provenance.mjs', import.meta.url),
+)
+
+function scratchHistory() {
+  const root = mkdtempSync(join(tmpdir(), 'provenance-trailer-'))
+  // Committed an hour ago, so no commit is young enough to be waited on.
+  const when = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const env = { ...process.env, GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when }
+  const git = (...args) => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' }).trim()
+  git('init', '-q', '-b', 'main')
+  git('config', 'user.name', 'A Clerk')
+  git('config', 'user.email', 'clerk@example.org')
+  git('config', 'commit.gpgsign', 'false')
+  const commit = (message) => {
+    git('commit', '-q', '--allow-empty', '--cleanup=verbatim', '-m', message)
+    return git('rev-parse', 'HEAD')
+  }
+  const base = commit('Start the permit ledger')
+  const landed = commit(
+    `Record the fee schedule (#2)\n\n${landedMessage({
+      body: 'Closes #1',
+      commits: [{ messageBody: 'Co-authored-by: A Reviewer <reviewer@example.org>' }],
+    })}`,
+  )
+  const around = commit('Record the inspection rota (#3)\n\nCloses #1\n\nCo-authored-by: A Reviewer <reviewer@example.org>\n')
+  const prose = commit(
+    'Record the zoning map (#4)\n\nLanded-by: merge-pr.mjs\n\nwas pasted into the body here, above a closing paragraph.\n',
+  )
+  const pushed = commit('Adjust a fee by hand')
+
+  const source = readFileSync(ASSET_PATH, 'utf8').replace(/^const BASELINE = .*$/m, `const BASELINE = '${base}'`)
+  mkdirSync(join(root, 'scripts'))
+  const script = join(root, 'scripts', 'check-main-provenance.mjs')
+  writeFileSync(script, source)
+
+  const pull = (number) => [{ number, state: 'closed', merged_at: when, base: { ref: 'main' } }]
+  const pulls = { [landed]: pull(2), [around]: pull(3), [prose]: pull(4) }
+  return {
+    root,
+    script,
+    shas: { base, landed, around, prose, pushed },
+    run: (args, env = {}) => audit(args, { STUB_PULLS: JSON.stringify(pulls), ...env }, script),
+  }
+}
+
+function withHistory(body) {
+  const history = scratchHistory()
+  try {
+    body(history)
+  } finally {
+    rmSync(history.root, { recursive: true, force: true })
+  }
+}
+
+test('a range holding one commit with the trailer and one without reports the second only', () =>
+  withHistory(({ shas, run }) => {
+    const { status, stderr } = run([], { PROVENANCE_BEFORE: shas.base, PROVENANCE_AFTER: shas.around })
+    assert.equal(status, 1, stderr)
+    assert.match(stderr, /A pull request reached main without going through merge-pr\.mjs \(1 of 2\)/)
+    assert.match(stderr, new RegExp(shas.around))
+    assert.match(stderr, /Pull request #3, but no `Landed-by: merge-pr\.mjs` trailer\./)
+    assert.doesNotMatch(stderr, new RegExp(shas.landed))
+    assert.doesNotMatch(stderr, /outside the pull request flow/)
+  }))
+
+test('a commit whose message merge-pr.mjs built is green', () =>
+  withHistory(({ shas, run }) => {
+    const { status, stdout, stderr } = run([shas.landed])
+    assert.equal(status, 0, stderr)
+    assert.match(stdout, /1 checked\), and each one the trailer rule reaches was landed by merge-pr\.mjs/)
+  }))
+
+test('the trailer counts only in the trailer block, not in the prose above it', () =>
+  withHistory(({ shas, run }) => {
+    const { status, stderr } = run([shas.prose])
+    assert.equal(status, 1, stderr)
+    assert.match(stderr, /without going through merge-pr\.mjs \(1 of 1\)/)
+  }))
+
+test('a direct push and an unmarked merge are two findings, each under its own heading', () =>
+  withHistory(({ shas, run }) => {
+    const { landed, around, prose, pushed } = shas
+    const { status, stderr } = run([], { PROVENANCE_BEFORE: shas.base, PROVENANCE_AFTER: pushed })
+    assert.equal(status, 1, stderr)
+    const [noPull, unmarked] = stderr.split(/(?=A pull request reached main without)/)
+    assert.match(noPull, /outside the pull request flow \(1 of 4\)/)
+    assert.match(noPull, new RegExp(pushed))
+    assert.doesNotMatch(noPull, new RegExp(`${around}|${prose}|${landed}`))
+    assert.match(unmarked, /\(2 of 4\)/)
+    assert.match(unmarked, new RegExp(around))
+    assert.match(unmarked, new RegExp(prose))
+    assert.doesNotMatch(unmarked, new RegExp(`${pushed}|${landed}`))
+  }))
+
+test('nothing at or below the trailer baseline is asked for the trailer', () =>
+  withHistory(({ script, shas, run }) => {
+    const source = readFileSync(script, 'utf8').replace(
+      /^const TRAILER_BASELINE = .*$/m,
+      `const TRAILER_BASELINE = '${shas.prose}'`,
+    )
+    writeFileSync(script, source)
+    const { status, stdout, stderr } = run([shas.around, shas.prose])
+    assert.equal(status, 0, stderr)
+    assert.match(stdout, /2 checked/)
+  }))

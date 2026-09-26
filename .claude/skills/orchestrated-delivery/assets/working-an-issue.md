@@ -82,9 +82,12 @@ covers:
    *Not covered:* sessions that did not load it. A net, not a guarantee.
 3. **`scripts/check-main-provenance.mjs`**, run on every push to the default
    branch. It asks the API whether each new commit belongs to a merged pull
-   request and fails loudly when one does not.
+   request and fails loudly when one does not. It also fails, separately, on a
+   merged pull request whose squash lacks the `Landed-by: merge-pr.mjs` trailer,
+   which means it was merged around the command above. A merge from the GitHub
+   UI is one of those.
    *Not covered:* prevention. It notices afterwards, which is why it cannot be
-   bypassed.
+   bypassed. Nor a trailer typed by hand: it catches accidents, not intent.
 
 Landing a PR:
 

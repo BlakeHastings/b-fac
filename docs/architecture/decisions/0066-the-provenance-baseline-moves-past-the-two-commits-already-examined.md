@@ -1,6 +1,7 @@
 # 0066. The provenance baseline moves past the two commits already examined
 
-Status: accepted
+Status: accepted. ADR 0071 adds a second baseline, for the `Landed-by`
+trailer, and leaves `BASELINE` where this put it.
 
 Issue #206. Amends the `BASELINE` decision in ADR 0051 and the consequence that
 followed from it, "a full-history run is therefore red". The rest of 0051 stands.

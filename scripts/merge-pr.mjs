@@ -40,7 +40,9 @@
 //
 //   node scripts/merge-pr.mjs 42
 import { execFileSync } from 'node:child_process'
-import { realpathSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // SETUP: the exact `name:` of each required CI job, as GitHub reports it in
@@ -112,7 +114,7 @@ export async function run({
           prNumber,
           '--json',
           'number,title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,' +
-            'baseRefName,headRefName,headRefOid,isCrossRepository,statusCheckRollup',
+            'baseRefName,headRefName,headRefOid,isCrossRepository,statusCheckRollup,body,commits',
         ]),
       )
     } catch (e) {
@@ -310,7 +312,12 @@ export async function run({
 
   try {
     // The REST endpoint rather than `gh pr merge`, which the guard blocks by name.
-    gh(['api', '--method', 'PUT', `repos/{owner}/{repo}/pulls/${prNumber}/merge`, '-f', 'merge_method=squash'])
+    // The message carries the trailer: WHAT THIS LEAVES BEHIND, below.
+    squashMerge(gh, prNumber, {
+      merge_method: 'squash',
+      commit_title: `${pr.title} (#${prNumber})`,
+      commit_message: landedMessage(pr),
+    })
   } catch (e) {
     const message = failure(e)
     error(`Merge failed: ${message}`)
@@ -418,6 +425,54 @@ function requiredChecks(gh, base, fallback) {
   }
   if (names.size === 0) return { names: fallback, from: {} }
   return { names: [...names], from: { ruleset: true } }
+}
+
+// WHAT THIS LEAVES BEHIND
+// Every squash this lands carries the trailer `Landed-by: merge-pr.mjs`, and
+// the provenance audit reports a commit above its trailer baseline that came
+// through a pull request without it. That is how a merge that went around this
+// script is seen after the fact: `gh pr merge`, a GraphQL mutation, the button
+// in the GitHub UI. The merge guard is prevention, and it has been bypassed by
+// spellings nobody had thought of; this is detection on the result. ADR 0071.
+//
+// It catches an accident, not an adversary. Anyone can type the trailer into a
+// merge by hand and the audit cannot tell. The incident it answers (#189) was
+// an agent merging by mistake, which is the case worth catching.
+//
+// Passing a message replaces GitHub's default one wholesale, as `gh pr merge
+// --squash --body` does. So this rebuilds what the default held under the
+// "pull request title" and "pull request body" squash settings: the title with
+// its number, then the body, then the `Co-authored-by` lines of the PR's
+// commits, which now share one trailer block with this one.
+export const LANDED_BY = 'Landed-by: merge-pr.mjs'
+
+export function landedMessage(pr) {
+  const body = String(pr.body ?? '').replace(/\r\n/g, '\n').trimEnd()
+  const seen = new Set()
+  const coAuthors = []
+  for (const commit of pr.commits ?? []) {
+    for (const match of String(commit?.messageBody ?? '').matchAll(/^co-authored-by:[ \t]*(.+?)[ \t]*$/gim)) {
+      const who = match[1]
+      if (seen.has(who.toLowerCase())) continue
+      seen.add(who.toLowerCase())
+      coAuthors.push(`Co-authored-by: ${who}`)
+    }
+  }
+  const trailers = [LANDED_BY, ...coAuthors].join('\n')
+  return body === '' ? `${trailers}\n` : `${body}\n\n${trailers}\n`
+}
+
+// Through a file rather than `-f`, because a PR body can outgrow the 32K
+// characters a Windows command line holds.
+function squashMerge(gh, prNumber, fields) {
+  const dir = mkdtempSync(join(tmpdir(), 'merge-pr-'))
+  const input = join(dir, 'merge.json')
+  try {
+    writeFileSync(input, JSON.stringify(fields))
+    return gh(['api', '--method', 'PUT', `repos/{owner}/{repo}/pulls/${prNumber}/merge`, '--input', input])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 async function main(argv) {

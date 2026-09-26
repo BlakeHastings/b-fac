@@ -470,7 +470,7 @@ is silent, and one repository spent two days that way.
 | `seed-issues.py` | `docs/process/` | `REPO`, `EPICS`, `ISSUES` |
 | `merge-pr.mjs` | `scripts/` | `REQUIRED` check names, read when no ruleset names them |
 | `guard-merge.mjs` | `scripts/`, then `--probe` it | `DEFAULT_BRANCH` if not `main` |
-| `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA |
+| `check-main-provenance.mjs` | `scripts/` | `BASELINE` commit SHA, and `TRAILER_BASELINE` only if the audit ran before `merge-pr.mjs` wrote its trailer |
 | `handoff-hooks.mjs` | `scripts/`, wired to `PostToolUse`, `PreCompact` and `SessionStart`, with the threshold in settings `env` | `HANDOFF`, and `DEFAULT_BRANCH` if not `main` |
 | `guard-guest-writes.mjs` | **Guest mode only.** `--install` puts it in `factory/` inside the git common directory, wires this checkout, and prints a machine-wide block that is the half reaching a worktree | Nothing |
 | `discover-checks.mjs` | **A repo you did not create.** Run in place; `--run` records to `factory/` beside the machine record | Nothing |
