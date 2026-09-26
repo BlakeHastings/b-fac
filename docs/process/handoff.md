@@ -28,7 +28,7 @@ landed on 25 Aug (#156, #157, #162, #163, #170, #171, #174, #176), then #181
 (`assets/machine-load.mjs`, read the box before a wave) on 7 Sep and #192
 (compaction at 85%, a warning ten points before, resume from this file) today.
 
-**Topped up three times on 2026-09-25, last at `3a2055d`, 0.54.21.**
+**Topped up four times on 2026-09-25, last at `cd42cff`, 0.54.24.**
 
 Merged this session, each verified independently before merge (the review record is on each PR):
 
@@ -59,7 +59,11 @@ And into the evening, each verified by running it rather than reading it:
 - **#225** (#188) the merge guards refuse a destructive git command on a tree holding what it would destroy. ADR 0069. **It is live in this repository's sessions**; the override is `git -c guard.destructive=ok`.
 - **#93** closed with its record: the reader stays in copies, held by stamps.
 
-**In flight:** #227 (#154, `check-setup` lists each linked worktree's facts; 0.54.22), verified and rebasing.
+- **#227** (#154) `check-setup` lists each linked worktree's facts and judges none of them.
+- **#230** (#189) **constraint 2 now has detection.** `merge-pr.mjs` writes `Landed-by: merge-pr.mjs` into every squash, and the provenance audit reports a PR commit without it under its own heading. ADR 0071. It was landed with its own branch copy so its squash carried the trailer. **A merge through the GitHub UI now turns `provenance` red, by design.**
+- **#229** (#130) the forge cannot attribute an issue or comment to the factory: measured, recorded as ADR 0072.
+
+**Nothing in flight.** Every open item waits on the owner or on something outside this machine; the list is in the last status update of 2026-09-25 and below under "What needs the owner".
 
 **#123 is unblocked but held**: where per-repository factory state lives is the question #196 has to answer for several factories, so it belongs to #196's design.
 
@@ -100,12 +104,18 @@ material here:
 
 `needs-owner`: #14, #28, #57, #87, #141, **#150** (em dashes versus the
 operator's style rule), and **#151** (omit the plugin version; recommendation yes).
-**#196's design** also waits on the owner. The larger piece of work the owner raised on
+**#196's design** also waits on the owner.
+
+Also asked in chat on 2026-09-25 and not yet answered: **may an agent force-push its own PR branch**
+(one was refused by the permission check; every update since was a merge, which works), and **is this
+checkout's write boundary owned** (`check-setup` reports it unrecorded; every repo fact says owned).
+Held outside this machine: #7 needs a person with Cursor open; #64 and #91 are parked by the owner's
+own words ("We'll ignore stacked PRs"; Claude Code only for now). The larger piece of work the owner raised on
 2026-09-25 is the factory CLI rework above.
 
 ## Dispatchable
 
-The critique findings are all landed. Then #130, #114, #91, #64 and #7, and #189 with the detection its comment recommends, #130, #151, #154, #112, #114, #93, #91,
+The critique findings are all landed. Then #130, #114, #91, #64 and #7, and (#189 is done), #130, #151, #154, #112, #114, #93, #91,
 #64, #7. Blocked: #78 and #79 behind #28, #123.
 
 ## Traps that cost something
