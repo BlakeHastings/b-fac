@@ -56,6 +56,18 @@ skill is calibration.
 
 ## Two questions before the loop
 
+**First check for an existing local factory.** From the target repository,
+resolve `git rev-parse --path-format=absolute --git-common-dir`, then read
+`factory-home` inside that directory if it exists. The file contains the
+absolute path to a directory shared by that repository's worktrees. Read its
+`README.md`, `machine.md`, current handoff, and process
+instructions before asking questions or dispatching work. The handoff is a
+snapshot; verify ticket and pull request state live. An existing machine record
+answers the questions below for this operator until the owner changes it. The
+directory can live under a harness-neutral home such as
+`~/.b-fac/factories/<repo>`; do not assume it lives under a particular harness.
+See `references/local-factories.md` for setup and migration.
+
 Two independent axes, settled at initialisation. They correlate; they are not
 the same question, and all four combinations occur.
 
@@ -82,9 +94,11 @@ What proves the axes separate is **an existing side project you fully control:
 owned, and mostly theirs**, because it already has habits worth keeping. A
 one-axis model gets that case wrong.
 
-**Ask both questions out loud at initialisation, and confirm even when you think
-you know.** The asymmetry is the reason: a wrong guess toward guest costs a
-question, and a wrong guess toward owned opens issues on someone's real tracker.
+**Ask each unanswered question out loud at initialisation.** Do not make a
+returning owner repeat an answer already recorded in the local factory. The
+asymmetry is the reason for asking when the answer is absent: a wrong guess
+toward guest costs a question, and a wrong guess toward owned opens issues on
+someone's real tracker.
 **Never infer the write boundary from a git remote.** A work repo is on GitHub
 too. A remote tells you the factory *can* write there, which was never the
 question; whether it *may* is a fact about the developer's authority, and no
@@ -423,6 +437,7 @@ where setup ends.
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
+| `references/local-factories.md` | Finding or moving a repository's external factory across harnesses |
 
 ## What the loop is worth
 
