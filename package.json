@@ -27,7 +27,7 @@
     "check:plugin-load": "node scripts/check-plugin-load.mjs",
     "check:harnesses": "node tools/harness-verify/verify.mjs",
     "check:harness-pins": "node tools/harness-verify/check-pins.mjs",
-    "check": "npm run test && npm run check:sync && npm run check:types && npm run check:bundle && npm run check:vocabulary && npm run check:citations && npm run check:collisions && npm run check:references && npm run check:size && npm run check:version"
+    "check": "npm run test && npm run check:sync && npm run check:bundle && npm run check:types && npm run check:vocabulary && npm run check:citations && npm run check:collisions && npm run check:references && npm run check:size && npm run check:version"
   },
   "devDependencies": {
     "@commander-js/extra-typings": "15.0.0",

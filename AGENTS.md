@@ -81,12 +81,12 @@ Above a second line, `TRAILER_BASELINE`, it also requires the `Landed-by`
 trailer, and reports a merge without it apart from a commit with no pull
 request. ADR 0071.
 
-The scripts here use Node 22's built-ins and nothing else, except
-`scripts/build-cli.mjs`, which needs the dev dependencies in the committed
-lockfile. So **run `npm ci` once in a fresh clone or worktree** before `npm run
-check`; `check:types` and `check:bundle` say so plainly if you have not. An
-agent worktree's `node_modules` can arrive present but empty, and `npm ci` is
-the fix for that too.
+The scripts here use Node 22's built-ins and nothing else. Two checks are the
+exception, `check:bundle` and `check:types`, which need the dev dependencies in
+the committed lockfile. So **run `npm ci` once in a fresh clone or worktree**
+before `npm run check`. `check:bundle` runs first of the two and says so
+plainly when it has not happened. An agent worktree's `node_modules` can arrive
+present but empty, and `npm ci` is the fix for that too.
 
 CI runs two jobs on a pull request, `Checks` and `Plugin`. Their names are
 matched by `scripts/merge-pr.mjs`, which reads them from the ruleset on `main`,
