@@ -328,9 +328,9 @@ working. Two agents in one wave hit it independently, and neither was told to
 expect it. Tell every agent that builds or tests to
 expect it, and that the answer is a fresh install (`npm ci` or the host's
 equivalent) or a junction to the main checkout's directory, never a change to
-the test that failed. This repository has no dependencies, so it cannot happen
-here. It can in any host repo that has them, and whatever creates the worktree
-creates the directory, so it is out of the skill's reach to prevent.
+the test that failed. It can happen in any repo with dependencies, dev-only
+ones included, and whatever creates the worktree creates the directory, so it
+is out of the skill's reach to prevent.
 
 **A path is an artifact only where nothing else can write to it.** Passing by
 path assumes the path is a stable identity, and a scratch directory several

@@ -172,7 +172,11 @@ npm run check:plugin    # claude plugin validate . --strict
 npm run check:harnesses # four other harnesses still find the skill (needs Docker)
 ```
 
-No dependencies and no lockfile: everything runs on Node 22's built-ins.
+Run `npm ci` once first. The plugin itself has no runtime dependencies and
+installing it runs nothing: the factory CLI ships as one committed bundle,
+`cli/factory.mjs`. Its source is TypeScript and has dev dependencies, pinned in
+the lockfile, which `npm run check` needs to typecheck it and to confirm the
+bundle matches it. ADR 0073.
 `check:harnesses` is the exception: it needs Docker and builds a 2 GB container,
 so it is out of `npm run check` and runs weekly in CI rather than on every pull
 request. ADR 0020 says why, and the reason is not the one you would guess.

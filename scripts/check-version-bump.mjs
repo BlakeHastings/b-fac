@@ -52,7 +52,18 @@ import { execFileSync } from 'node:child_process'
 // marketplace.json is deliberately absent. It is the catalogue entry, read
 // before install and not part of the installed plugin, so editing its blurb is
 // not a release.
-const PAYLOAD = [/^\.agents\/skills\//, /^\.claude\/skills\//, /^\.claude-plugin\/plugin\.json$/]
+//
+// `cli/` joined with the factory CLI. The plugin ships the whole repository
+// (ADR 0014), and `cli/factory.mjs` is a program an installer runs, so a change
+// to it that kept the version would reach `claude plugin update` as no change
+// at all. The source under `cli/src/` is counted too: check:bundle holds it
+// equal to the bundle, so the one never changes without the other. ADR 0073.
+const PAYLOAD = [
+  /^\.agents\/skills\//,
+  /^\.claude\/skills\//,
+  /^\.claude-plugin\/plugin\.json$/,
+  /^cli\//,
+]
 
 const MANIFEST = '.claude-plugin/plugin.json'
 

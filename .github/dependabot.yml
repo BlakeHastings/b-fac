@@ -1,8 +1,11 @@
 version: 2
 updates:
-  # The repo has no runtime dependencies, so this exists for one reason: a
-  # public repo's workflows are a supply-chain surface, and an unattended
-  # action tag is the part that moves under you.
+  # The shipped payload has no runtime dependencies, so this exists for one
+  # reason: a public repo's workflows are a supply-chain surface, and an
+  # unattended action tag is the part that moves under you. The npm dev
+  # dependencies are not watched on purpose: they are pinned exactly, and
+  # moving one changes the committed CLI bundle, so it is a change somebody
+  # makes and rebuilds deliberately. ADR 0073.
   - package-ecosystem: github-actions
     directory: /
     schedule:
