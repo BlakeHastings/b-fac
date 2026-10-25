@@ -43,9 +43,13 @@ jobs:
         with:
           node-version: 22
 
-      # No dependencies on purpose, so there is no install step and no
-      # lockfile to drift. node:test and node:assert are enough. If that ever
-      # stops being true, add `npm ci` here and commit the lockfile.
+      # The source has dev dependencies (TypeScript, commander, esbuild) and the
+      # shipped payload has none: the CLI ships as one bundle. So this job
+      # installs exactly what the committed lockfile says, and the Plugin job
+      # below installs nothing, which is how an installer runs it. ADR 0073.
+      - name: Install the pinned toolchain
+        run: npm ci
+
       - name: Guard tests
         run: npm test
 
@@ -53,6 +57,17 @@ jobs:
       # that stops the copy Claude actually reads from silently going stale.
       - name: Harness mirror in sync
         run: npm run check:sync
+
+      # esbuild strips types without reading them, so nothing else here would
+      # notice a type error in cli/src/.
+      - name: CLI types
+        run: npm run check:types
+
+      # cli/factory.mjs is generated from cli/src/, as the mirror above is from
+      # .agents/skills/, and drifts the same way. A step rather than a job for
+      # the reason given by the version-bump step below.
+      - name: CLI bundle matches its source
+        run: npm run check:bundle
 
       - name: Vocabulary
         run: npm run check:vocabulary

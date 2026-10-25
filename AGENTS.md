@@ -27,6 +27,13 @@ describe how work actually happens here, not an aspiration.
   workflow turns red on a merged pull request without it. A merge with the
   button, `gh pr merge` or a GraphQL mutation all look the same to it, and that
   is intended. ADR 0071.
+- **No runtime dependencies in the shipped payload.** The source may have dev
+  dependencies, pinned in the committed lockfile; what an installer receives
+  needs Node and nothing else, because nothing in an install runs `npm ci`. The
+  factory CLI ships as one bundle, `cli/factory.mjs`, generated from `cli/src/`
+  like the skill mirror is from `.agents/skills/`: edit the source and run
+  `npm run build:cli`, and `npm run check:bundle` fails when they differ.
+  ADR 0073.
 - **A skill body stays under ~500 lines**, with detail pushed into
   `references/`. Progressive disclosure is the whole reason the format works.
   `npm run check:size` fails above 500 and prints the count.
@@ -34,8 +41,11 @@ describe how work actually happens here, not an aspiration.
 ## Running things
 
 ```bash
-npm run check              # tests, mirror drift, vocabulary, citations. The mechanical gate.
+npm ci                     # once per clone or worktree: the pinned dev toolchain
+npm run check              # tests, mirror drift, CLI types and bundle, vocabulary, citations. The mechanical gate.
 npm run sync               # regenerate .claude/skills/ from .agents/skills/
+npm run build:cli          # regenerate cli/factory.mjs from cli/src/
+node cli/factory.mjs status   # the factory CLI, as an installer runs it
 npm run check:size         # every SKILL.md within 500 lines
 npm run check:version      # payload changed, so plugin.json's version must too
 npm run check:plugin       # claude plugin validate . --strict
@@ -71,8 +81,12 @@ Above a second line, `TRAILER_BASELINE`, it also requires the `Landed-by`
 trailer, and reports a merge without it apart from a commit with no pull
 request. ADR 0071.
 
-No dependencies, no lockfile, Node 22 built-ins only. If that stops being true,
-add `npm ci` to `.github/workflows/checks.yml` and commit the lockfile.
+The scripts here use Node 22's built-ins and nothing else. Two checks are the
+exception, `check:bundle` and `check:types`, which need the dev dependencies in
+the committed lockfile. So **run `npm ci` once in a fresh clone or worktree**
+before `npm run check`. `check:bundle` runs first of the two and says so
+plainly when it has not happened. An agent worktree's `node_modules` can arrive
+present but empty, and `npm ci` is the fix for that too.
 
 CI runs two jobs on a pull request, `Checks` and `Plugin`. Their names are
 matched by `scripts/merge-pr.mjs`, which reads them from the ruleset on `main`,

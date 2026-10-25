@@ -310,9 +310,40 @@ if (parseTokens(onInvoke) < SENTINEL_MIN_TOKENS) {
   )
 }
 
+// THE CLI
+// The loader has no component for it: `plugin details` lists skills, agents,
+// hooks and servers, and a program a session runs with `node` is none of
+// those. So the question the inventory answers for a skill is asked of the
+// CLI directly. Run the bundle from the path the loader says the plugin lives
+// at, and it must report the version the loader just read, so a bundle outside
+// the plugin root fails here. CI's Plugin job runs no `npm ci`, so there it
+// also fails a bundle that cannot start without node_modules. ADR 0073.
+const bundle = join(plugin.installPath, 'cli', 'factory.mjs')
+let cliVersion
+try {
+  cliVersion = execFileSync(process.execPath, [bundle, '--version'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim()
+} catch (error) {
+  fail(
+    `The plugin loaded, but its CLI did not run: node ${bundle} --version`,
+    '',
+    error.stderr?.trim() || error.message,
+  )
+}
+if (cliVersion !== plugin.version) {
+  fail(
+    `The loader reports ${plugin.id} at ${plugin.version}, but its CLI says ${cliVersion}.`,
+    'The CLI reads plugin.json beside it, so a mismatch means it is not running',
+    'from the plugin root the loader used.',
+  )
+}
+
 console.log(
   `${plugin.id} loaded from disk with ${found.length} skill${found.length === 1 ? '' : 's'}: ${found.join(', ')}`,
 )
+console.log(`Its CLI runs from ${bundle} and reports the same version, ${cliVersion}.`)
 console.log(`${SENTINEL} costs ${onInvoke} tokens on invoke, so its body loaded too.`)
 console.log(
   `No skill under ${PERSONAL_SKILLS} outranks it with different words, so ` +

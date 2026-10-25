@@ -27,6 +27,7 @@ not one of these.
 | `.agents/skills/**` | the skill itself, the thing being installed |
 | `.claude/skills/**` | the generated mirror, which ships in the same tree |
 | `.claude-plugin/plugin.json` | the manifest, including the blurb users read |
+| `cli/**` | the factory CLI an installer runs, and the source its bundle is held to (ADR 0073) |
 
 **Not the payload**, and so no bump: `docs/`, `scripts/`, `.github/`,
 `package.json`, `AGENTS.md`, `CLAUDE.md`, and `.claude-plugin/marketplace.json`.
