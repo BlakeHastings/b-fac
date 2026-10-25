@@ -104,6 +104,22 @@ If you use one of the untested ones, or you get further than discovery on one of
 the verified ones, please open an issue saying what happened either way. A
 confirmation is as useful as a bug.
 
+## Local customization for a project
+
+When a project already has a B-FAC factory, put its operator-specific process
+records outside the project, for example in `~/.b-fac/factories/<repo>`. Store
+that directory's absolute path in `factory-home` under the project's Git common
+directory. Linked worktrees then share one pointer without adding factory files
+to the project's commits. The orchestrated-delivery skill checks this pointer
+before asking initialisation questions and reads the existing rules and handoff.
+
+This works in Claude Code and Codex because discovery uses Git, rather than a
+harness-specific configuration directory. Claude Code hooks loaded through a
+launcher remain Claude Code controls; other harnesses read the same rules but
+need their own enforcement or verification. See
+[`references/local-factories.md`](.agents/skills/orchestrated-delivery/references/local-factories.md)
+for the discovery and migration steps.
+
 ## What is in here
 
 | Path | What it is |
@@ -139,6 +155,7 @@ demand rather than all at once:
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` — the same eight verbs on beads, which is what guest mode uses |
 | `references/first-run.md` — setting this up in a repo that has none of it yet |
+| `references/local-factories.md` — discovering or moving a repository's external factory |
 
 That table and the one in `SKILL.md` are both written by hand, so
 `npm run check:references` holds them to the directory: a reference document
