@@ -104,7 +104,8 @@ is from the payload, because a mode flag in the command line is a setup step
 that gets copied wrong. With everything wired, the sequence is:
 
 1. **`PostToolUse`** reads the context in use and, once per climb, warns ten
-   points before the threshold. It skips any payload with `agent_id`.
+   points before the threshold. It skips any payload with `agent_id`, and any
+   session started in a linked worktree (below).
 2. **`PreCompact` `auto`** refuses nothing. It prints what the summariser should
    keep.
 3. **`SessionStart` `compact`** prints the handoff back, with the resume
@@ -181,7 +182,32 @@ injecting it is the only thing that works.
 **The warning is cheap on purpose,** since it runs on every tool call of every
 agent. It reads the transcript from the tail and exits on `agent_id` before
 opening anything. Against a 50 MB transcript it took about 50 ms, against 41 ms
-for a bare `node` start.
+for a bare `node` start. Telling a top-level agent from the orchestrator costs
+one `git` call on top, a few milliseconds.
+
+**An agent started as a top-level session has no `agent_id`.** An Orca worker,
+or a headless `claude -p` in a worktree, is the main thread of its own session,
+and by `agent_id` alone it is the orchestrator: warned to top up a handoff that
+is not its own, and refused a manual `/compact` over that handoff's age. So the
+hook also asks where the session started. **A session whose
+`$CLAUDE_PROJECT_DIR` is a linked worktree** (`git rev-parse --git-dir` differs
+from `--git-common-dir`) is treated as a dispatched agent: no warning, and no
+manual refusal. `$CLAUDE_PROJECT_DIR` rather than the payload's `cwd`, because
+`cwd` follows the session when it `cd`s into an agent's worktree to review it,
+and the project directory does not.
+
+Measured on 2026-10-26, from both sides of an Orca launch. The orchestrator ran
+in the main checkout, whose `.git` is a directory, and the agent Orca launched
+ran in a linked worktree. Orca's environment was no answer: the orchestrator ran
+in an Orca terminal and carried the same `ORCA_*` set, apart from a launch token
+that says a session came from Orca's agent launcher, not that it was
+dispatched. b-fac ADR 0075.
+
+**So start the orchestrator in the main checkout.** One started in a linked
+worktree is read as a dispatched agent and loses the warning and the manual
+refusal, without saying so. It loses nothing else: automatic compaction is never
+refused for anyone, and the injected block below is addressed to both readers
+whichever this is.
 
 Hooks are read once at process start, so **restart after wiring these** — and
 note that the *script* is read off disk every time, so a change to what it

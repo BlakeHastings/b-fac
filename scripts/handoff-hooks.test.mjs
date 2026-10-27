@@ -46,9 +46,14 @@ const HOUR = 3_600_000
 // every run and put back only by the cases about them. This repository's own
 // settings set them, so a suite run from inside a session here inherits them,
 // and a case that passed only because of the shell it ran in is not a case.
+//
+// CLAUDE_PROJECT_DIR goes too, for the same reason: inside a session it names
+// this repository, and the hook asks git about that directory to decide whose
+// session it is (ADR 0075). Cases about it set it themselves.
 const THRESHOLD_VARS = ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE']
+const SESSION_VARS = [...THRESHOLD_VARS, 'CLAUDE_PROJECT_DIR']
 const baseEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !THRESHOLD_VARS.includes(key)),
+  Object.entries(process.env).filter(([key]) => !SESSION_VARS.includes(key)),
 )
 
 // The exit code comes off the process rather than out of the output. A hook's
@@ -434,6 +439,84 @@ test('a subagent is never warned, however full its context', () => {
 
   // And it left nothing behind to suppress the orchestrator's own warning.
   assert.match(injected(run(tmpdir(), postToolUse(path, session), [], WATCHED)), /Context is at 95%/)
+})
+
+// --- a dispatched agent with no agent_id --------------------------------------
+//
+// ADR 0075. An agent started as a top-level session (by Orca, or as a headless
+// `claude -p`) has no `agent_id`, so it is told apart by where it started: a
+// linked worktree rather than the main checkout. Real `git worktree add`, for
+// the reason the clock cases below give about fixtures that imitate git.
+
+function linkedWorktree(options) {
+  const root = repo(options)
+  const worktree = `${root}-worker`
+  git(root, ['worktree', 'add', '--quiet', '--detach', worktree, 'main'])
+  return { root, worktree }
+}
+
+test('a top-level session started in a linked worktree is never warned', () => {
+  const { worktree } = linkedWorktree()
+  const path = transcript([assistant(at(95))])
+  const env = { ...WATCHED, CLAUDE_PROJECT_DIR: worktree }
+  const result = run(worktree, postToolUse(path, randomUUID(), { cwd: worktree }), [], env)
+
+  assert.equal(result.code, 0)
+  assert.equal(result.out, '')
+
+  // Nor told, once, that nothing is being watched: that note is an instruction
+  // to top up the handoff too.
+  const unwatched = run(worktree, postToolUse(path, randomUUID(), { cwd: worktree }), [], {
+    CLAUDE_PROJECT_DIR: worktree,
+  })
+  assert.equal(unwatched.out, '')
+})
+
+test('the main checkout is still warned, so the worktree is what decided', () => {
+  // The positive control for the case above: the same repository, the same
+  // fill, and the only difference is which checkout the session started in.
+  const { root } = linkedWorktree()
+  const path = transcript([assistant(at(95))])
+  const env = { ...WATCHED, CLAUDE_PROJECT_DIR: root }
+  const result = run(root, postToolUse(path, randomUUID(), { cwd: root }), [], env)
+
+  assert.match(injected(result), /Context is at 95%/)
+})
+
+test('an orchestrator that has moved into a worktree is still the orchestrator', () => {
+  // Measured: a hook's working directory follows the session into whatever
+  // worktree it is in, while CLAUDE_PROJECT_DIR stays where the session began.
+  // Reviewing an agent's branch from inside its worktree is a normal step.
+  const { root, worktree } = linkedWorktree()
+  const path = transcript([assistant(at(95))])
+  const env = { ...WATCHED, CLAUDE_PROJECT_DIR: root }
+  const result = run(worktree, postToolUse(path, randomUUID(), { cwd: worktree }), [], env)
+
+  assert.match(injected(result), /Context is at 95%/)
+})
+
+test('a dispatched agent’s manual compaction is not refused over the orchestrator’s handoff', () => {
+  const { root, worktree } = linkedWorktree({ handoffAgeHours: 500, commits: 20, track: true })
+
+  const worker = run(worktree, preCompact(worktree, 'manual'), [], { CLAUDE_PROJECT_DIR: worktree })
+  assert.equal(worker.code, 0)
+  assert.equal(worker.err, '')
+  assert.match(worker.out, /implementation\s+agent/, 'the summariser was not told what to keep')
+
+  // The same stale handoff still refuses the orchestrator.
+  const orchestrator = run(root, preCompact(root, 'manual'), [], { CLAUDE_PROJECT_DIR: root })
+  assert.equal(orchestrator.code, 2)
+})
+
+test('a dispatched agent that compacts is still handed the addressed block', () => {
+  // ADR 0042's block already speaks to an agent, and this change does not
+  // narrow who receives it: an agent that lost its brief needs the pointer back
+  // to its issue whether it was a subagent or a top-level session.
+  const { worktree } = linkedWorktree({ handoffAgeHours: 1, track: true })
+  const result = run(worktree, sessionStart(worktree), [], { CLAUDE_PROJECT_DIR: worktree })
+
+  assert.equal(result.code, 0)
+  assert.match(result.out, /IF YOU WERE DISPATCHED AS AN IMPLEMENTATION AGENT/)
 })
 
 test('an unknown window is said once, and no percentage is guessed', () => {
