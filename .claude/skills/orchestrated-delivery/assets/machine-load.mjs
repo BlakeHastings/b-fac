@@ -47,10 +47,12 @@ const asJson = process.argv.includes('--json')
  * The processes worth grouping.
  *
  * `node` is what an agent's tooling runs as and `claude` is the sessions
- * themselves. Everything else on the machine is somebody's browser and is not
- * this script's business: reporting it would drown the two lines that matter.
+ * themselves. `orca` is the Orca IDE, which can dispatch the agents and so sits
+ * on the same machine as all of them. Everything else on the machine is
+ * somebody's browser and is not this script's business: reporting it would
+ * drown the lines that matter.
  */
-const INTERESTING = ['node', 'claude']
+const INTERESTING = ['node', 'claude', 'orca']
 
 /**
  * A process reduced to whose it is.
@@ -71,8 +73,19 @@ const INTERESTING = ['node', 'claude']
  */
 export function whose(name, commandLine) {
   if (name.toLowerCase().startsWith('claude')) return 'claude sessions'
+  if (name.toLowerCase().startsWith('orca')) return 'Orca IDE'
   if (!commandLine) return 'unknown'
   const text = commandLine.replace(/\\/g, '/')
+
+  // Orca's own node processes: its server, the daemon that hosts every
+  // terminal, a session scanner and a file watcher. Each runs on a node binary
+  // Orca ships under `orcad-artifacts`, and none carries a repository, so
+  // counted without this they read as a colleague nobody could name. First
+  // among the paths because it is the executable itself, the strongest
+  // evidence there is.
+  // Read off Linux on 2026-10-26, BlakeHastings/b-fac#241. A `claude` an Orca
+  // terminal starts is still `claude` by name and counts with the sessions.
+  if (/\/orcad-artifacts\//i.test(text)) return 'Orca IDE'
 
   const worktree = text.match(/\/([^/]+)\/\.claude\/worktrees\/([^/"\s]+)/)
   if (worktree) return worktree[1] + ' (worktree ' + worktree[2] + ')'
@@ -153,21 +166,31 @@ function posixProcesses() {
     encoding: 'utf8',
     maxBuffer: 32 * MB,
   })
-  const rows = []
-  for (const line of out.split('\n')) {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
-    if (!match) continue
-    const name = match[3].split('/').pop() ?? match[3]
-    if (!INTERESTING.some((want) => name.startsWith(want))) continue
-    // `rss` is kilobytes on every ps this runs on.
-    rows.push({
-      pid: Number(match[1]),
-      name,
-      bytes: Number(match[2]) * 1024,
-      whose: whose(name, match[4]),
-    })
-  }
-  return rows
+  return out.split('\n').map(posixRow).filter((row) => row !== undefined)
+}
+
+/**
+ * One line of `ps -eo pid=,rss=,comm=,args=`, or undefined when it is not one
+ * of ours.
+ *
+ * The name is `comm` when that is interesting and the executable at the head
+ * of `args` otherwise, because `comm` is whatever a process calls itself and a
+ * runtime can rename it. Orca's bundled node calls every one of its processes
+ * `MainThread`, so a filter on `comm` alone never saw them at all: on
+ * 2026-10-26 that was four processes and about 580 MB nobody counted.
+ */
+export function posixRow(line) {
+  const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/)
+  if (!match) return undefined
+  const [, pid, rss, comm, args] = match
+  // A zombie holds no memory and is not load. Orca leaves two behind its app.
+  if (args.endsWith('<defunct>')) return undefined
+  const interesting = (name) => INTERESTING.some((want) => name.startsWith(want))
+  const executable = args.split(/\s/)[0].split('/').pop() ?? ''
+  const name = [comm.split('/').pop() ?? comm, executable].find(interesting)
+  if (name === undefined) return undefined
+  // `rss` is kilobytes on every ps this runs on.
+  return { pid: Number(pid), name, bytes: Number(rss) * 1024, whose: whose(name, args) }
 }
 
 /** Free space on the volume this repository is on, which is where worktrees land. */
@@ -260,10 +283,10 @@ function main() {
     console.log('there is. It is still the number that decides whether another agent fits.')
   } else if (owners.length === 0) {
     console.log('')
-    console.log('No node or claude processes running. Nothing else is competing for this machine.')
+    console.log('No node, claude or Orca processes running. Nothing else is competing for this machine.')
   } else {
     console.log('')
-    console.log(rows.length + ' node and claude processes, by whose they look like:')
+    console.log(rows.length + ' node, claude and Orca processes, by whose they look like:')
     for (const owner of owners) {
       console.log(
         '  ' +

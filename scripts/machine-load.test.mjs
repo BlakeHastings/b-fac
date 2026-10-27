@@ -15,7 +15,7 @@
 //   npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { whose } from '../.agents/skills/orchestrated-delivery/assets/machine-load.mjs'
+import { posixRow, whose } from '../.agents/skills/orchestrated-delivery/assets/machine-load.mjs'
 
 const NODE = '"C:\\Program Files\\nodejs\\node.exe" '
 const SCRATCH_TAIL = 'claude/C--Users-someone-source-repos-personal-b-fac/c734ce25-2582-43fa-a22f-29f43f38cb35/scratchpad/idle.mjs'
@@ -69,4 +69,53 @@ test('the rules that were there before still answer first', () => {
     'permits (worktree agent-1)',
   )
   assert.equal(whose('node.exe', NODE + 'C:/Users/someone/AppData/Local/npm-cache/_npx/1a2b/node_modules/x.js'), 'npx cache')
+})
+
+// BlakeHastings/b-fac#241: the Orca IDE. Every line below is one `ps -eo
+// pid=,rss=,comm=,args=` printed on Linux on 2026-10-26 with Orca serving its
+// terminals, with the user name changed and long hashes and trailing arguments
+// cut. Orca's bundled node calls itself `MainThread`, which is why a filter on
+// `comm` alone never counted any of it.
+const ORCA_HOME = '/home/someone/.config/orca/orcad-artifacts/linux-x64-glibc/'
+const ORCA_NODE = ORCA_HOME + 'runtimes/node-e32e2d16/bin/node '
+const ORCA_LINES = {
+  'the app, serving':
+    '3777666 107192 orca-ide /home/someone/.local/opt/orca/squashfs-root/orca-ide ' +
+    '/home/someone/.config/orca/serve-supervisor/8fe4/app.asar.unpacked/out/cli/index.js serve --port 6768 --supervise',
+  'its server':
+    '3777809 296800 MainThread ' + ORCA_NODE + ORCA_HOME + '0.1.0+4402cbac17e5/orcad-server.js --bind 0.0.0.0 --port 6768',
+  'the daemon that hosts the terminals':
+    '3777921 103164 MainThread ' + ORCA_NODE + '--max-semi-space-size=4 ' + ORCA_HOME +
+    '0.1.0+4402cbac17e5/daemon-entry.js --socket /home/someone/.config/orca/daemon/daemon-v52.sock',
+  'the session scanner':
+    '3795347 74012 MainThread ' + ORCA_NODE + '--max-old-space-size=384 ' + ORCA_HOME +
+    '0.1.0+4402cbac17e5/session-scanner-service-entry.js',
+  'the file watcher':
+    '3815055 104032 MainThread ' + ORCA_NODE + ORCA_HOME + '0.1.0+4402cbac17e5/parcel-watcher-process-entry.js',
+}
+
+for (const [what, line] of Object.entries(ORCA_LINES)) {
+  test('an Orca process is counted and named: ' + what, () => {
+    const row = posixRow(line)
+    assert.ok(row, 'not counted at all')
+    assert.equal(row.whose, 'Orca IDE')
+  })
+}
+
+test('a claude an Orca terminal started counts with the sessions', () => {
+  // Its parent is a bash Orca started with an rcfile under its config, but the
+  // process itself carries nothing of Orca's, and should not need to.
+  assert.equal(posixRow('3799919 472656 claude claude').whose, 'claude sessions')
+})
+
+test('what Orca leaves behind, and what is not Orca, stays out of its row', () => {
+  // Two zombies sit under the app, holding nothing.
+  assert.equal(posixRow('3777679 0 orca- [orca-ide] <defunct>'), undefined)
+  // The terminals themselves are shells, which this report does not group.
+  const shell = '3799507 10000 bash /bin/bash --rcfile /home/someone/.config/orca/shell-wrappers/6f4f/rcfile'
+  assert.equal(posixRow(shell), undefined)
+  // A project that happens to be called orca reports as that project.
+  assert.equal(whose('node', '/usr/bin/node /home/someone/source/repos/orca/server.js'), 'orca')
+  // A node renamed `MainThread` that is not Orca's is counted under its project.
+  assert.equal(posixRow('42 1000 MainThread /usr/bin/node /home/someone/source/repos/permits/x.js').whose, 'permits')
 })
