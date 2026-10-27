@@ -9,6 +9,25 @@ ADRs, and `orchestrating.md`; this exists only to say where the work stopped and
 what a successor would otherwise reconstruct. If it disagrees with the
 repository, the repository is right.
 
+## 2026-10-26: the dispatch epic, so the loop can run its agents through Orca
+
+**Topped up 2026-10-26, last at 0.62.0**, mid-wave. Read this section first; the rest of the file is the 2026-09-25 edition and older.
+
+The owner now works in the Orca IDE and asked, in their words, to "run a b-fac instance for a given project but have it spin up the different workspaces in orca ... while also keeping b-fac independent of the IDE". That is **epic #237**: dispatch becomes a port in prose (ADR 0024's shape), Claude Code's subagents are the first provider and Orca the second, and which provider a factory uses is a **machine fact** in `machine.md`, never `AGENTS.md`. The `factory` CLI (#196, PR #235) is deliberately not the abstraction yet; #237 says why.
+
+Landed today, each verified independently with the record on the PR:
+
+- **#242** (#241) `machine-load` names Orca's processes. On Linux they were not misfiled, they were **uncounted**: Orca's node renames itself `MainThread`.
+- **#245** (#239) a top-level session started in a **linked worktree** is a dispatched agent, so the handoff hooks stop warning it and never refuse its manual `/compact`. ADR 0075. Its tests were mutated both ways on the asset (not the `scripts/` copy, which the suite does not exercise) and caught both.
+
+Also landed: **#243** (#238) the port itself: `references/dispatch-port.md` with seven verbs derived from the skill, today's subagent text moved word for word into `references/claude-subagents.md`, and a `Dispatch:` line in `machine.md`. ADR 0074. And **#246** (#244) body files go in an ignored `.bodies/` in the agent's own worktree (`.git/info/exclude` in guest mode), and the rule now lives in `working-an-issue.md`, where every agent reads it. `main` is **0.62.0**. Every one of these was payload, so the version line serialised them; that was expected and briefed.
+
+**In flight:** #236 (`check:plugin --strict` fails locally on two warnings, `CLAUDE.md` at the plugin root and `ICON_MISSING`; every agent today hit it and correctly ignored it, which is the problem). ADR 0077 if it needs one; 0076 is #240's.
+
+**#240**, the Orca provider, is the first time b-fac actually starts workers in Orca, and it is `needs-owner`: the question and the recommendation are its latest comment. Two inputs are on #240 already: **an Orca-launched `claude` here stops at "accept Bypass Permissions mode"** (Orca passes `--dangerously-skip-permissions`), and accepting it is the owner's call; and ADR 0075 rests on directory and environment, so a real worker's hook behaviour is part of #240's evidence bar. Orca puts its worktrees at `~/orca/workspaces/<repo>/<name>`, outside the repository.
+
+**Orchestrator mistake, kept:** the wave briefs left out `briefing.md`'s sentence about body files, and two agents collided in the shared scratchpad, the second time after #162. Nothing was lost. #244 is the fix, moving the rule to where every agent reads it.
+
 ## Where things stand
 
 `main` is `f45a658`, **0.54.1**, CI green, `npm run check` green locally (811).
