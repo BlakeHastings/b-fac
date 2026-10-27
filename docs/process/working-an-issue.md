@@ -32,7 +32,7 @@ Do not open a PR you have not run.
 
 ```bash
 npm run check              # tests, mirror drift, vocabulary, citations
-npm run check:plugin       # claude plugin validate . --strict
+npm run check:plugin       # validate --strict, passing only warnings accepted by name
 npm run check:plugin-load  # the real loader finds the skills
 ```
 

@@ -13,7 +13,8 @@ not ready for review.
 - `.claude/skills/` is in sync with `.agents/skills/`
 - no vocabulary from the original engagement has come back
 - the payload cites this repository's ADRs and issues by qualified name, never bare
-- the marketplace and plugin manifests validate under `--strict`
+- the marketplace and plugin manifests validate under `--strict`, with no
+  warning that is not accepted by name (ADR 0077)
 - the Claude Code loader, given this repo as a plugin, reports every skill in
   `.agents/skills/` in its component inventory, with a body of real size
 
