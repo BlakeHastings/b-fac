@@ -345,11 +345,12 @@ truthfully. The isolation was real everywhere except the one place the bodies
 lived.
 
 **The rule lives in `docs/process/working-an-issue.md`, not in the brief**
-(`assets/working-an-issue.md` ships it): body files in a gitignored `.bodies/`
-inside the agent's own worktree, one name per artifact. It sat here for a while as a sentence for every dispatch to carry, and
-the second collision came from a wave whose briefs left it out. Every agent
-reads the process doc without being told; a rule that depends on the
-orchestrator remembering it is one forgotten dispatch from being unwritten.
+(`assets/working-an-issue.md` ships it): body files in an ignored `.bodies/`
+inside the agent's own worktree, one name per artifact. It sat here for a while
+as a sentence for every dispatch to carry, and the second collision came from a
+wave whose briefs left it out. Every agent reads the process doc without being
+told; a rule that depends on the orchestrator remembering it is one forgotten
+dispatch from being unwritten.
 
 **What that does not cover.** It removes the collision the dispatch caused, not
 the class. Any two processes reading one mutable path have this, a person with

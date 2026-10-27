@@ -63,8 +63,10 @@ artifact it carries**: `.bodies/pr-body-172.md`, `.bodies/comment-172.md`.
 Never in a session scratchpad, `/tmp`, the main checkout or any other directory
 a second agent can write to. Two agents sharing one scratchpad have overwritten
 each other's `pr-body.md`, and the read-back cannot catch it, because the
-overwriting body is a perfectly good body. `.bodies/` is in `.gitignore`, so
-`git add -A` does not commit it; add the line if this repo's lacks it.
+overwriting body is a perfectly good body. Keep `.bodies/` out of `git add -A`
+by ignoring it: in `.gitignore` when the factory owns this repo, in
+`.git/info/exclude` when it is a guest here, because a guest does not edit
+tracked files for its own machine-local state.
 
 ## You do not merge. Ever.
 
