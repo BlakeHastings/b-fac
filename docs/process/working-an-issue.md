@@ -80,6 +80,22 @@ The body is the three lenses, filled in honestly. See
 `.github/pull_request_template.md`. An empty section means the lens was skipped;
 write "not applicable, docs only" rather than leaving it blank.
 
+**Write every body in a file, and post it from the file.** A PR, an issue or a
+comment: `gh ... create --body-file <file>` and then
+`node scripts/post-body.mjs <kind>:<n> <file> --check`, or a post through
+`node scripts/post-body.mjs <kind>:<n> <file>` for an artifact that already
+exists. Both read back what was stored.
+`.agents/skills/orchestrated-delivery/references/reviewing.md` has the two
+routes.
+
+**The file goes in `.bodies/` at the root of your own worktree, named for the
+artifact it carries**: `.bodies/pr-body-244.md`, `.bodies/comment-244.md`.
+Never in a session scratchpad, `/tmp`, the main checkout or any other directory
+a second agent can write to. Agents in one wave have shared a scratchpad twice
+and overwritten each other's `pr-body.md`, and the read-back cannot catch it,
+because the overwriting body is a perfectly good body. `.gitignore` excludes
+`.bodies/`, so `git add -A` does not commit it.
+
 ## You do not merge. Ever.
 
 If you are an agent working an issue, these are prohibited, without exception:
