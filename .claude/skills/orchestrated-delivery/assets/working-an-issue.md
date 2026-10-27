@@ -53,6 +53,19 @@ The body is the three lenses, filled in honestly. See
 `.github/pull_request_template.md`. An empty section means the lens was skipped;
 write "not applicable, docs only" rather than leaving it blank.
 
+**Write every body in a file, and post it from the file**, a PR, an issue or a
+comment alike: `--body-file <file>`, never `--body "..."`, and then read back
+what was stored and compare it with the file. `[the script here that posts a
+body and reads it back, if there is one]`.
+
+**The file goes in `.bodies/` at the root of your own worktree, named for the
+artifact it carries**: `.bodies/pr-body-172.md`, `.bodies/comment-172.md`.
+Never in a session scratchpad, `/tmp`, the main checkout or any other directory
+a second agent can write to. Two agents sharing one scratchpad have overwritten
+each other's `pr-body.md`, and the read-back cannot catch it, because the
+overwriting body is a perfectly good body. `.bodies/` is in `.gitignore`, so
+`git add -A` does not commit it; add the line if this repo's lacks it.
+
 ## You do not merge. Ever.
 
 If you are an agent working an issue, these are prohibited, without exception:

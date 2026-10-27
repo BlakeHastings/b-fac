@@ -344,11 +344,12 @@ posted, so it reports the wrong body as posted and verified, entirely
 truthfully. The isolation was real everywhere except the one place the bodies
 lived.
 
-So **tell every agent to write body files inside its own worktree, with a
-distinct filename per artifact**: `pr-body-172.md` under the worktree it already
-owns, rather than `body.md` somewhere a second agent can reach. It costs a
-sentence in the dispatch, and leaving it to each dispatch is how it stayed
-unwritten while working every time.
+**The rule lives in `docs/process/working-an-issue.md`, not in the brief**
+(`assets/working-an-issue.md` ships it): body files in a gitignored `.bodies/`
+inside the agent's own worktree, one name per artifact. It sat here for a while as a sentence for every dispatch to carry, and
+the second collision came from a wave whose briefs left it out. Every agent
+reads the process doc without being told; a rule that depends on the
+orchestrator remembering it is one forgotten dispatch from being unwritten.
 
 **What that does not cover.** It removes the collision the dispatch caused, not
 the class. Any two processes reading one mutable path have this, a person with

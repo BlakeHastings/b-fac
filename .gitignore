@@ -14,3 +14,8 @@ docs/process/issues-created.json
 # `git add -A` from the repo root picks them up silently. parallelism.md
 # records this happening on another project; it happened here too.
 .claude/worktrees/
+
+# Bodies for pull requests, issues and comments, written per artifact inside
+# the worktree that owns them so no other agent can overwrite one between the
+# create and the read-back. docs/process/working-an-issue.md.
+.bodies/
