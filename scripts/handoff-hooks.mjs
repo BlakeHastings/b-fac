@@ -157,7 +157,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 
 // The payload carries the session's `cwd`, so the path is resolved against a
 // measured field rather than against an environment variable that may name a
@@ -297,6 +297,45 @@ function readHandoff(cwd) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Whose session this is, when the payload does not say (ADR 0075)
+// ---------------------------------------------------------------------------
+
+// A subagent's payload carries `agent_id`, and that was the whole test while
+// every implementation agent was a subagent. An agent started as a top-level
+// session (by Orca, or as a headless `claude -p`) carries no `agent_id`, and
+// read by that test alone it is the orchestrator: warned to top up a handoff
+// that is not its own, and refused a manual /compact over that handoff's age.
+//
+// What tells them apart is where the session was started. Measured on
+// 2026-10-26: the orchestrator's process ran in the main checkout, whose
+// `.git` is a directory, and an agent Orca launched ran in a linked worktree,
+// whose `.git` points into the common directory's `worktrees/`. Orca's own
+// variables were no answer, because the orchestrator ran in an Orca terminal
+// too and carried the same set, bar a launch token that marks how a session
+// was started rather than what it was started to do. A linked worktree is the
+// answer every dispatch mechanism here shares, which is why it is the one used.
+//
+// `CLAUDE_PROJECT_DIR` rather than the payload's `cwd`, because the project
+// directory is where the session started and `cwd` follows it around: measured,
+// a hook fired from the orchestrator's process ran in the worktree its agent was
+// working in while `CLAUDE_PROJECT_DIR` still named the main checkout. An
+// orchestrator that `cd`s into an agent's worktree to review it is still the
+// orchestrator.
+//
+// The blind spot is an orchestrator started in a linked worktree. It is read as
+// a dispatched agent and loses the warning and the manual refusal, quietly. It
+// keeps everything else: automatic compaction is never refused for anyone, and
+// the SessionStart block is addressed to both readers either way. Where git
+// cannot be asked, the answer is no, which is the behaviour before this existed.
+function startedInLinkedWorktree(payload) {
+  const dir = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd()
+  const pair = git(dir, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'])
+  if (pair.code !== 0) return false
+  const [gitDir, commonDir] = pair.out.trim().split(/\r?\n/)
+  return resolve(gitDir) !== resolve(commonDir)
+}
+
 const age = (state) => {
   if (state.hours === null) {
     return (
@@ -346,6 +385,13 @@ function preCompact(payload) {
   // cannot refuse anything: a PreCompact hook refuses by exit code, and this
   // one's is 0 on every path that reaches it.
   if (payload.trigger !== 'manual') {
+    process.stdout.write(KEEP_IN_THE_SUMMARY)
+    process.exit(0)
+  }
+
+  // A dispatched agent's /compact is not the orchestrator's to refuse: the
+  // handoff whose age would refuse it is not that agent's work. ADR 0075.
+  if (startedInLinkedWorktree(payload)) {
     process.stdout.write(KEEP_IN_THE_SUMMARY)
     process.exit(0)
   }
@@ -413,6 +459,11 @@ function preCompact(payload) {
 // expensive outcome: an implementation agent handed the orchestrator's handoff
 // as though it were its own state will start doing the orchestrator's next
 // steps, and it is the reader least able to notice, having just lost its brief.
+//
+// An agent dispatched as a top-level session in a linked worktree can be told
+// apart (ADR 0075), and the block stays addressed to both anyway: a subagent
+// still cannot be, since its project directory is the orchestrator's, and the
+// words already say the right thing to an agent of either kind.
 const WHOEVER_YOU_ARE =
   'This hook cannot tell whose context was compacted, so read this part first.\n' +
   '\n' +
@@ -663,6 +714,11 @@ function postToolUse(payload) {
   // every tool call every agent makes.
   if (payload.agent_id) process.exit(0)
   if (!payload.session_id) process.exit(0)
+
+  // An agent dispatched as a top-level session says nothing in its payload, so
+  // this asks git where the session started. One git call per tool call, which
+  // is the price of a reader the payload does not name. ADR 0075.
+  if (startedInLinkedWorktree(payload)) process.exit(0)
 
   const threshold = contextThreshold(process.env)
   const band = readBand(payload.session_id)

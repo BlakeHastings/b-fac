@@ -385,7 +385,7 @@ is only where the work stopped and what a successor would otherwise have to
 reconstruct.
 
 `assets/handoff-hooks.mjs` is the mechanical half. It warns before the
-threshold (main thread only), never refuses an automatic compaction, can refuse
+threshold (the orchestrator only, not an agent), never refuses an automatic compaction, can refuse
 a manual `/compact` when the handoff has aged out, and prints the file back
 into the resumed context afterwards. **After any compaction,
 look for that injected block** — it is either in this context or it is not, so
