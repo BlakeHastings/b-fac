@@ -79,6 +79,9 @@ recognise is a colleague dispatching agents you cannot see. **Read the whole
 list, not your own rows.** Two sessions each behaving reasonably in isolation is
 how a machine fills up.
 
+An Orca IDE's own processes read as `Orca IDE` rather than as a stranger, and a
+`claude` it starts in one of its terminals counts with the other sessions.
+
 **There is deliberately no threshold in it**, for the same reason there is none
 in the section above: a number invented here would be obeyed, would be wrong on
 different hardware, and would be believed because a script said it. It exits 0
