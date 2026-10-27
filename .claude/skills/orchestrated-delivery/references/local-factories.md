@@ -16,8 +16,9 @@ git rev-parse --path-format=absolute --git-common-dir
 
 If `<git-common-dir>/factory-home` exists, read its one absolute path and verify
 the directory exists. Read its `README.md` for the entry points, its `machine.md`
-for the recorded write boundary, and its current handoff and process docs before
-starting the loop. Do not re-ask settled initialisation questions. Verify the
+for the recorded write boundary and dispatch provider, and its current handoff
+and process docs before starting the loop. A `machine.md` with no `Dispatch:`
+line means this harness's own subagents (`references/dispatch-port.md`). Do not re-ask settled initialisation questions. Verify the
 handoff against the live backlog and pull requests before acting.
 
 The pointer is deliberately in the Git common directory. Every worktree sees

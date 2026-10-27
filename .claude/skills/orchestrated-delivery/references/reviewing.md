@@ -79,12 +79,9 @@ artefact it was told to check. Nothing errors and nothing tells you. The report
 you are reading may be a good-faith answer to a smoothed-over version of what
 you asked.
 
-It is on the record, per agent:
-
-```bash
-grep -c '"subtype":"compact_boundary"' \
-  ~/.claude/projects/<slug>/<session_id>/subagents/agent-*.jsonl
-```
+It is on the record, per agent, and reading it is the dispatch port's
+`inspect` verb: `references/dispatch-port.md`, and the provider's file for the
+command.
 
 A non-zero count is not a finding and it does not make the work wrong. What it
 changes is how much a **silence** in the report is worth. An agent that never

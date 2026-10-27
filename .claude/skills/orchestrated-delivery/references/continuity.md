@@ -372,44 +372,19 @@ transcript. b-fac ADR 0042.*
 
 ## Finding out afterwards that an agent compacted
 
-**The transcript says so, and it says whose.** Each subagent gets a transcript
-file of its own beside the session's, and a compaction writes an entry into it:
-
-```
-~/.claude/projects/<slug>/<session_id>.jsonl              yours
-~/.claude/projects/<slug>/<session_id>/subagents/
-    agent-<agent_id>.jsonl                                one per subagent
-```
-
-```bash
-grep -c '"subtype":"compact_boundary"' \
-  ~/.claude/projects/<slug>/<session_id>/subagents/agent-*.jsonl
-```
-
-A non-zero count against an agent whose pull request you are about to review
-means that agent worked from a summary of its brief for part of the run. Your
-own compactions land in the session file instead, with `"isSidechain": false`
-and no `agentId`, so the two never mix. The entry carries `compactMetadata` with
-the trigger and the token count that was discarded.
+**The provider's record says so, and it says whose.** Reading it is the
+dispatch port's `inspect` verb (`references/dispatch-port.md`), and the
+command, with what the record holds, is in the provider's file:
+`references/claude-subagents.md` for the harness's own subagents.
 
 **This is a check and not a gate.** It reports; nothing refuses. Weigh it as
 `references/reviewing.md` says: it does not make the work wrong, it makes the
 report's silences worth less.
 
-**No hook is wired to it, deliberately.** `SubagentStop` carries `agent_id`,
-`agent_type` and an `agent_transcript_path` pointing at exactly that file, so
-one is easy to write, and the measurements say not to. Its stdout does not reach
-you, so it could only write a file you must remember to read, which is what the
-command above already is. Its exit 2 *does* reach the agent and the agent obeys,
-which makes it a gate on the report rather than a check, arriving after the work
-instead of during it. And it never fires for the case that matters most: an
-agent that dies of `Prompt is too long` produces no `SubagentStop` at all, while
-its transcript is still on disk. b-fac ADR 0042.
-
 **Ask in the report contract as well.** The agent can tell: the summary it is
 holding opens with "This session is being continued from a previous conversation
 that ran out of context". Treat its answer as a cross-check against the
-transcript rather than as the detection, because the report is the artefact
+provider's record rather than as the detection, because the report is the artefact
 under suspicion.
 
 ## Where the file lives, in a repo that is not yours

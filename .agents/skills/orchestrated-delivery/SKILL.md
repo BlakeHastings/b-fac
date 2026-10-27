@@ -130,9 +130,9 @@ is itself a change to a repo you are a guest in.
    second one.
 2. Batch what would collide; split what would not.
 3. Write the brief, evidence bar included. `references/briefing.md`.
-4. Dispatch. Implementation agents are `general-purpose` with
-   `isolation: "worktree"`, launched as several tool calls in one message. A
-   read-only agent gets one too if it boots the app. A worktree's gitignored
+4. Dispatch, each builder in its own worktree and branch and the wave started
+   concurrently, through the provider `references/dispatch-port.md` says this
+   machine uses. A read-only agent gets a worktree too if it boots the app. A worktree's gitignored
    dependency directory can arrive present but empty, and the failure then
    names an unrelated test. `references/briefing.md`.
 5. While they run, touch nothing they touch, the machine included. Reviewing,
@@ -395,8 +395,8 @@ its brief reports confidently and the report is your only signal. Two things
 follow. The injected block **also lands in a compacting subagent's context**, so
 it is written for both readers and points a dispatched agent back at its issue,
 which only works if the brief is in the issue rather than in the dispatch
-message. And the compaction is written into that agent's own transcript, so you
-can **check whether a long agent compacted before reviewing its PR**.
+message. And the compaction is on the dispatch provider's record of that agent,
+so you can **check whether a long agent compacted before reviewing its PR**.
 `references/continuity.md` for both, `references/briefing.md` for the brief.
 
 ## Three shapes of agent
@@ -436,6 +436,8 @@ where setup ends.
 | `references/backlog-port.md` | The backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` | Seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
+| `references/dispatch-port.md` | Agents are started by something other than this harness's subagents, or you are judging a runtime that could |
+| `references/claude-subagents.md` | Starting, messaging or inspecting agents as Claude Code subagents, the default provider |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 | `references/local-factories.md` | Finding or moving a repository's external factory across harnesses |
 

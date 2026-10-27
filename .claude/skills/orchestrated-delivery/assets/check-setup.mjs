@@ -1729,6 +1729,15 @@ if (BOUNDARY.mode === UNRECORDED) {
 } else {
   console.log(`Write boundary: ${BOUNDARY.mode}, recorded in ${RECORD_AT}`)
 }
+// Which provider starts this factory's agents is a machine fact beside the
+// boundary (ADR 0074), but unlike the boundary it has a safe default, so an
+// absent line is reported as that default and never as a finding.
+const DISPATCH = /^Dispatch:\s*(\S.*?)\s*$/m.exec(BOUNDARY.record ?? '')?.[1]
+console.log(
+  DISPATCH
+    ? `Dispatch: ${DISPATCH}, recorded in ${RECORD_AT}`
+    : "Dispatch: the harness's own subagents, since no Dispatch: line is recorded",
+)
 if (CHECKLIST === OWNED) {
   console.log(
     DEFAULT

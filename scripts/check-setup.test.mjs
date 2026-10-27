@@ -292,6 +292,18 @@ test('the unedited Backlog placeholder is a note, so a fresh install still exits
   })
 })
 
+test('the dispatch provider is read from the record, and its absence is the default', () => {
+  withRepo((root) => {
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\n')
+    assert.match(check(root).out, /Dispatch: the harness's own subagents, since no Dispatch: line/)
+
+    write(root, `${FACTORY}/machine.md`, 'Write boundary: owned\nDispatch: orca\n')
+    const { out } = check(root)
+    assert.match(out, /Dispatch: orca, recorded in \.git\/factory\/machine\.md/)
+    assert.doesNotMatch(out, /own subagents/, 'a recorded provider was reported as the default')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Owned, and the third state
 // ---------------------------------------------------------------------------

@@ -154,6 +154,8 @@ demand rather than all at once:
 | `references/backlog-port.md` — the backlog is not GitHub's, or you are judging a tool that could be it |
 | `references/github-backlog.md` — seeding or maintaining the issue graph on GitHub |
 | `references/beads-backlog.md` — the same eight verbs on beads, which is what guest mode uses |
+| `references/dispatch-port.md`, when agents are started by something other than this harness's subagents |
+| `references/claude-subagents.md`, starting, messaging or inspecting agents as Claude Code subagents, the default |
 | `references/first-run.md` — setting this up in a repo that has none of it yet |
 | `references/local-factories.md` — discovering or moving a repository's external factory |
 

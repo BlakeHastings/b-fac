@@ -2,10 +2,10 @@
 
 ## Mechanics
 
-Implementation agents: `subagent_type: "general-purpose"` with
-`isolation: "worktree"`, launched as several tool calls in one message so they
-run concurrently. Each gets its own worktree and branch, so agents never see
-each other's uncommitted work and a rebase is contained.
+Implementation agents are the dispatch port's `start`, several at once through
+its `fan out`, in whichever provider this machine records
+(`references/dispatch-port.md`). Each gets its own worktree and branch, so
+agents never see each other's uncommitted work and a rebase is contained.
 
 **Isolation follows what an agent runs, not what it writes.** An auditor reading
 the record, or a hunting pass reading only code, needs no worktree: it changes
@@ -327,10 +327,9 @@ separate job from fixing the loop, and it is the one that stops it recurring.
 
 ## Resuming and recovering
 
-`SendMessage` resumes an agent with its context intact. Much cheaper than
-re-briefing, and the agent already knows why it made its choices. Used for
-rebase instructions, relays, mid-flight steers, collision warnings, corrections,
-and resuming from a preserved commit.
+Resume an agent with its context intact through the dispatch port's `message`
+verb rather than re-briefing a fresh one. `references/dispatch-port.md` has what
+it is used for, and the provider's file has how.
 
 When an agent stops mid-work its worktree survives, usually with uncommitted
 changes. **A dead agent does not report that it died**, so nothing tells you the

@@ -121,6 +121,13 @@ The record is untracked by definition, so it does not travel with a clone and CI
 never has one. Whoever next works this repo on their own machine records it
 again, once.
 
+**The same file says which dispatch provider this operator uses**, on a
+`Dispatch:` line, because that is this operator's harness rather than the
+repository's. Nothing writes it and nothing needs to: a record without one uses
+the harness's own subagents, which is the safe default, so it is not asked at
+initialisation the way the boundary is. Add the line when this machine starts
+its agents some other way. `references/dispatch-port.md`.
+
 ## Seed the backlog after your first pull requests, not before
 
 Issues and pull requests share one number sequence. PR #1 and PR #2 took the
