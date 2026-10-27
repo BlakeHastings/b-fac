@@ -38,7 +38,7 @@ npm run check              # tests, mirror drift, vocabulary, citations. The mec
 npm run sync               # regenerate .claude/skills/ from .agents/skills/
 npm run check:size         # every SKILL.md within 500 lines
 npm run check:version      # payload changed, so plugin.json's version must too
-npm run check:plugin       # claude plugin validate . --strict
+npm run check:plugin       # validate --strict, passing only warnings accepted by name. ADR 0077
 npm run check:plugin-load  # the real loader finds the skills, not just the JSON
 npm run check:bodies       # no issue, PR or comment here is storing a blank body
 npm run check:provenance   # every commit on main came through a PR. ADR 0051

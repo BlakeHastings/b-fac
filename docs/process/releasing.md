@@ -116,9 +116,9 @@ and `CLAUDE.md` sits in it. The file is for people working on this repo, it is
 inert for installers, and ADR 0014 measured the payload and decided to live with
 it. **Any other warning from `tag` is not expected — read it.**
 
-It is only this command. `npm run check:plugin` is
-`claude plugin validate . --strict`, which does not emit this line, so no CI log
-carries it and nothing in CI needs to be told apart from it.
+`claude plugin validate --strict` prints the same sentence from 2.1.310 on, so
+`npm run check:plugin` meets it too. That check passes it, and one other
+accepted warning, by exact text and fails on anything else. ADR 0077.
 
 Publishing anywhere outward (a third-party marketplace, an announcement) is the
 owner's call, not a step in this document. See `docs/process/orchestrating.md`.

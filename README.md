@@ -170,7 +170,7 @@ survey that does not say when it was verified.
 ```bash
 npm run check           # tests, mirror drift, vocabulary
 npm run sync            # regenerate .claude/skills/ from .agents/skills/
-npm run check:plugin    # claude plugin validate . --strict
+npm run check:plugin    # validate --strict, passing only warnings accepted by name
 npm run check:harnesses # four other harnesses still find the skill (needs Docker)
 ```
 

@@ -107,16 +107,19 @@ jobs:
       # build with no commit of ours to explain it. Bump this on purpose.
       #
       # Verified locally on this version that validation descends into
-      # plugin.json for a root-sourced (`./`) plugin, by breaking `keywords`
-      # and watching it fail with `plugins[0] plugin.json → ...`. Before
+      # plugin.json for a root-sourced (`./`) plugin, by adding an unknown
+      # field and watching it fail with `plugins[0] plugin.json → ...`. Before
       # trusting a newer version, re-run that check: a validator that silently
       # stops descending passes everything.
+      #
+      # 2.1.311 rather than the earlier 2.1.226 because check:plugin reads the
+      # validator's `--json` report, which 2.1.226 does not have. ADR 0077.
       #
       # Installed globally rather than invoked through npx so that the two
       # steps below share one pinned copy and run the same npm scripts a
       # developer runs. The version lives here and nowhere else.
       - name: Install Claude Code CLI
-        run: npm install --global @anthropic-ai/claude-code@2.1.226
+        run: npm install --global @anthropic-ai/claude-code@2.1.311
 
       - name: Validate manifests
         run: npm run check:plugin
