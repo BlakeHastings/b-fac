@@ -11,7 +11,7 @@ repository, the repository is right.
 
 ## 2026-10-26: the dispatch epic, so the loop can run its agents through Orca
 
-**Topped up 2026-10-27, at 0.63.0. Epic #237 is closed.** Read this section first; the rest of the file is the 2026-09-25 edition and older.
+**Topped up 2026-10-28, at 0.64.1. Epic #237 is closed.** Read this section first; the rest of the file is the 2026-09-25 edition and older.
 
 The owner now works in the Orca IDE and asked, in their words, to "run a b-fac instance for a given project but have it spin up the different workspaces in orca ... while also keeping b-fac independent of the IDE". That is **epic #237**: dispatch becomes a port in prose (ADR 0024's shape), Claude Code's subagents are the first provider and Orca the second, and which provider a factory uses is a **machine fact** in `machine.md`, never `AGENTS.md`. The `factory` CLI (#196, PR #235) is deliberately not the abstraction yet; #237 says why.
 
@@ -25,6 +25,10 @@ Also landed: **#243** (#238) the port itself: `references/dispatch-port.md` with
 Then **#248** (#236): `check:plugin` passes only the two warnings accepted by name, the plugin-root `CLAUDE.md` and `ICON_MISSING`, and fails on any other. ADR 0077. A local red from it is now a real finding.
 
 And **#249** (#240): `references/orca-dispatch.md`, every command in it run in one real two-worker wave. **The owner accepted bypass-permissions mode for Orca-launched Claude on this machine on 2026-10-27**, recorded as `skipDangerousModePermissionPrompt` in `~/.claude/settings.json`; the decision and its cost are on #240. The merge guard refused the ADR 0027 probe inside both bypass-mode workers, checked in their transcripts. To run waves through Orca, a factory's `machine.md` says `Dispatch: orca-dispatch`; this checkout has no local factory, so it still dispatches through subagents. Open, recorded in the doc: why `worker-release` counted an untouched worker as `user_takeover`.
+
+Then **#252** (#251): the owner asked, 2026-10-27, that workers the factory starts in Orca sit "as sub-workspaces underneath the BFAC workspace that's running", unless they say otherwise. `orca-dispatch.md` now starts every builder with `--worktree new-child --base-branch origin/main`; `new-top-level` only when the owner asks in the conversation, for that wave. Verified: a child of a parent one commit behind still starts at `origin/main`, so no stacked PRs. A coordinator outside an Orca terminal cannot start workers at all.
+
+And **#254** (#253): the `check-outward-writes` test that failed some of the time was git 2.56 on half the `ubuntu-24.04` runners, which now updates a tracking ref on a push to a URL matching a configured remote. Verified by git version per job, and the fix was rerun until it landed on a 2.56 runner. Image 20261025 has 2.56.0, 20261012 has 2.55.0.
 
 **Found on this machine, not fixed:** a personal copy at `~/.claude/skills/orchestrated-delivery`, dated 2 September, shadows the plugin, so `check:plugin-load` fails locally and a session here may load the stale skill. It is the owner's file; told them.
 
