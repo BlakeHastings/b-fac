@@ -678,6 +678,8 @@ Nor any route that is neither git nor gh, which is the gate's list again. Nor a
 push whose destination was a URL rather than a named remote, or one that was
 made and then deleted, or one older than the reflog's expiry. All three erase or
 never leave the evidence, and all three are measured and named in the file.
+From git 2.56 the first narrows: a URL equal to exactly one configured remote's
+push URL updates that remote's tracking ref, so the report finds it as a push.
 Nor whether the gate was loaded, which is the probe's question: the report
 prints the probe line and **refuses to run it for you**, because a hook sees
 tool calls and not the child processes a script spawns, so an answer collected

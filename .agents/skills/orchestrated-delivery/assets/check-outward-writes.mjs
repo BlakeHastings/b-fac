@@ -81,10 +81,16 @@
 //     `npm publish`, `docker push`, `scp`, an editor's forge integration. The
 //     gate cannot refuse these and this cannot see them. Nothing here narrows
 //     that gap; it only stops it being invisible in the *push* direction.
-//   - **A push whose destination is a URL rather than a named remote.**
+//   - **A push whose destination is a URL that is no configured remote's.**
 //     Measured: `git push https://host/x/y HEAD:refs/heads/z` updates no
 //     remote-tracking ref and writes no reflog entry. `--remote` is the partial
-//     answer, since the branch is on the remote afterwards either way.
+//     answer, since the branch is on the remote afterwards either way. Before
+//     git 2.56 that held for every URL. From 2.56, a URL equal to exactly one
+//     configured remote's push URL (after `insteadOf` rewriting) updates that
+//     remote's tracking ref with `update by push`, so it is found here like any
+//     push. Read from git's release notes and source, and seen in CI (#253). A
+//     URL spelled differently from the configured one, or matching two remotes,
+//     still leaves nothing.
 //   - **A push that was undone.** `git push --delete` removes the
 //     remote-tracking ref, and deleting a ref deletes its reflog. `git remote
 //     rename` replaces every entry with one `remote: renamed` line. Both erase
@@ -503,8 +509,8 @@ function refusalSection() {
 // ---------------------------------------------------------------------------
 // Source 3: the remote's own branch list, which is opt-in and never a verdict
 //
-// This is the one source that catches a push by URL, since the branch is on the
-// remote afterwards however it got there. It is also the one that cannot
+// This is the one source that catches a push by a URL the reflog cannot tie to a
+// remote, since the branch is on the remote afterwards however it got there. It is also the one that cannot
 // attribute anything: a colleague pushing a branch whose name matches one of
 // ours produces the identical observation. One false accusation is enough for a
 // detection layer to stop being read, so this reports and never fails.
@@ -666,7 +672,8 @@ const UNSAYABLE = [
   '  - whether anything left by a route that is neither git nor gh: curl, glab,',
   '    npm publish, docker push, scp, an editor\'s own forge integration',
   '  - whether a push was made by URL rather than to a named remote, or made and',
-  '    then deleted. Both leave no reflog entry. `--remote` sees the first if the',
+  '    then deleted. Both leave no reflog entry, except a URL that git 2.56 or later',
+  '    matches to exactly one configured remote. `--remote` sees the first if the',
   '    branch is still there',
   '',
   'So the publish sentence is shorter than it was and it is not gone: say what this',
