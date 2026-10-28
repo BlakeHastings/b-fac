@@ -11,7 +11,7 @@ repository, the repository is right.
 
 ## 2026-10-26: the dispatch epic, so the loop can run its agents through Orca
 
-**Topped up 2026-10-26, last at 0.62.0**, mid-wave. Read this section first; the rest of the file is the 2026-09-25 edition and older.
+**Topped up 2026-10-27, at 0.63.0. Epic #237 is closed.** Read this section first; the rest of the file is the 2026-09-25 edition and older.
 
 The owner now works in the Orca IDE and asked, in their words, to "run a b-fac instance for a given project but have it spin up the different workspaces in orca ... while also keeping b-fac independent of the IDE". That is **epic #237**: dispatch becomes a port in prose (ADR 0024's shape), Claude Code's subagents are the first provider and Orca the second, and which provider a factory uses is a **machine fact** in `machine.md`, never `AGENTS.md`. The `factory` CLI (#196, PR #235) is deliberately not the abstraction yet; #237 says why.
 
@@ -22,9 +22,13 @@ Landed today, each verified independently with the record on the PR:
 
 Also landed: **#243** (#238) the port itself: `references/dispatch-port.md` with seven verbs derived from the skill, today's subagent text moved word for word into `references/claude-subagents.md`, and a `Dispatch:` line in `machine.md`. ADR 0074. And **#246** (#244) body files go in an ignored `.bodies/` in the agent's own worktree (`.git/info/exclude` in guest mode), and the rule now lives in `working-an-issue.md`, where every agent reads it. `main` is **0.62.0**. Every one of these was payload, so the version line serialised them; that was expected and briefed.
 
-**In flight:** #236 (`check:plugin --strict` fails locally on two warnings, `CLAUDE.md` at the plugin root and `ICON_MISSING`; every agent today hit it and correctly ignored it, which is the problem). ADR 0077 if it needs one; 0076 is #240's.
+Then **#248** (#236): `check:plugin` passes only the two warnings accepted by name, the plugin-root `CLAUDE.md` and `ICON_MISSING`, and fails on any other. ADR 0077. A local red from it is now a real finding.
 
-**#240**, the Orca provider, is the first time b-fac actually starts workers in Orca, and it is `needs-owner`: the question and the recommendation are its latest comment. Two inputs are on #240 already: **an Orca-launched `claude` here stops at "accept Bypass Permissions mode"** (Orca passes `--dangerously-skip-permissions`), and accepting it is the owner's call; and ADR 0075 rests on directory and environment, so a real worker's hook behaviour is part of #240's evidence bar. Orca puts its worktrees at `~/orca/workspaces/<repo>/<name>`, outside the repository.
+And **#249** (#240): `references/orca-dispatch.md`, every command in it run in one real two-worker wave. **The owner accepted bypass-permissions mode for Orca-launched Claude on this machine on 2026-10-27**, recorded as `skipDangerousModePermissionPrompt` in `~/.claude/settings.json`; the decision and its cost are on #240. The merge guard refused the ADR 0027 probe inside both bypass-mode workers, checked in their transcripts. To run waves through Orca, a factory's `machine.md` says `Dispatch: orca-dispatch`; this checkout has no local factory, so it still dispatches through subagents. Open, recorded in the doc: why `worker-release` counted an untouched worker as `user_takeover`.
+
+**Found on this machine, not fixed:** a personal copy at `~/.claude/skills/orchestrated-delivery`, dated 2 September, shadows the plugin, so `check:plugin-load` fails locally and a session here may load the stale skill. It is the owner's file; told them.
+
+**Still open and waiting:** PR #235 (#232, the factory CLI skeleton, epic #196) holds 0.55.0 and ADR 0073 and needs a rebase and a review; the owner has not asked for it yet. #123 waits on #196; #64 and #91 are parked by the owner (no stacked PRs, Claude Code only for now); #7 needs a person with Cursor open; #114 is unchanged.
 
 **Orchestrator mistake, kept:** the wave briefs left out `briefing.md`'s sentence about body files, and two agents collided in the shared scratchpad, the second time after #162. Nothing was lost. #244 is the fix, moving the rule to where every agent reads it.
 
