@@ -11,7 +11,9 @@ provider.
 
 `references/claude-subagents.md` is one implementation of them: the harness's
 own subagents, which is what this skill described before the port existed and
-is what a factory uses when nothing else is recorded. Read this file when a
+is what a factory uses when nothing else is recorded.
+`references/orca-dispatch.md` is the second: Orca's `orca` CLI, which starts
+each agent as a top-level session in a worktree of its own. Read this file when a
 factory starts its agents some other way, when you are judging whether a
 runtime could carry the loop, or when you are about to write a tool's name and
 mean a verb.
@@ -53,7 +55,8 @@ b-fac ADR 0037 already draw:
 Dispatch: claude-subagents
 ```
 
-The value names a provider file in this directory without its extension.
+The value names a provider file in this directory without its extension:
+`claude-subagents` or `orca-dispatch`.
 **A factory with no `Dispatch:` line uses the harness's own subagents**, which is
 `references/claude-subagents.md` in Claude Code. That default is why this is
 not a third question asked out loud at initialisation: the two questions in

@@ -438,6 +438,7 @@ where setup ends.
 | `references/beads-backlog.md` | The same eight verbs on beads, which is what guest mode uses |
 | `references/dispatch-port.md` | Agents are started by something other than this harness's subagents, or you are judging a runtime that could |
 | `references/claude-subagents.md` | Starting, messaging or inspecting agents as Claude Code subagents, the default provider |
+| `references/orca-dispatch.md` | The same verbs through the `orca` CLI, when `machine.md` records `Dispatch: orca-dispatch` |
 | `references/first-run.md` | Setting up, in a repo with none of this or one with plenty |
 | `references/local-factories.md` | Finding or moving a repository's external factory across harnesses |
 
