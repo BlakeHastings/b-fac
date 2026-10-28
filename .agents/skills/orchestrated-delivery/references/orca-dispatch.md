@@ -20,8 +20,9 @@ command below came from it or from `--help`, and the verbs are this skill's.
 
 Everything here was run on 27 October 2026 against Orca **1.4.242** and Claude
 Code **2.1.312** on Linux, in one two-worker wave on this skill's own
-repository: BlakeHastings/b-fac#240. Commands rot; re-run before trusting, and
-say so when a line here turns out wrong.
+repository: BlakeHastings/b-fac#240. The placement section was measured the
+same day in a second wave, BlakeHastings/b-fac#251. Commands rot; re-run before
+trusting, and say so when a line here turns out wrong.
 
 ## Before the first wave: the permission mode is the owner's decision
 
@@ -64,26 +65,37 @@ orca orchestration run-create --objective "<the wave, one line>" --json
 
 It binds to the calling terminal's `ORCA_TERMINAL_HANDLE`. A subagent of yours
 inherits that variable, so a Run it creates is bound to your terminal, not its
-own. Started outside an Orca terminal: unmeasured.
+own. **Outside an Orca terminal it is refused**: with `ORCA_TERMINAL_HANDLE`
+unset, both `run-create` and `worker-start` answered
+`"code": "no_active_sender_terminal"` and asked for `--from <your own handle>`.
+A coordinator that is not in an Orca terminal has no handle of its own to give,
+and passing another pane's handle acts on that pane's mailbox, so it starts no
+workers through this provider.
 
 Then one `worker-start` per builder:
 
 ```bash
 orca orchestration worker-start --spec "<the whole brief>" --task-title "<issue> <slug>" \
-  --worktree new-top-level --repo id:<repo-id> --name <area>-<n>-<slug> \
+  --worktree new-child --repo id:<repo-id> --name <area>-<n>-<slug> \
   --base-branch origin/main --agent claude --setup run --json
 ```
 
-- **`--worktree new-top-level` is part of the verb, never a choice.** Orca's
-  default is the coordinator's own workspace, and its placement reference says
-  to make a worktree only when asked. Every builder here needs one.
+- **`--worktree new-child` is the default, and a worktree is never optional.**
+  Orca's own default is the coordinator's workspace, and its placement reference
+  says to make a worktree only when asked. Every builder here needs one. Where
+  it sits in Orca is the next section.
+- **`--base-branch origin/main` stays on every start.** It is the git base, and
+  it is a separate decision from the placement. See below for how that was
+  shown.
 - **`--repo id:<repo-id>`**, from `orca repo list --json`. Orca infers the repo
   from the caller's directory, and an orchestrator working from a checkout Orca
   did not create cannot rely on that.
 - **The worktree lands outside the repository**, at
-  `~/orca/workspaces/<repo>/<name>`, and it is an ordinary linked worktree: it
-  appears in `git worktree list`, so the sweep in `references/parallelism.md`
-  finds it.
+  `~/orca/workspaces/<repo>/<name>`, for a child as for a top-level one: the
+  children of the main checkout landed at `~/orca/workspaces/b-fac/probe-251-a`
+  and `-b`, not under the parent's directory. It is an ordinary linked worktree:
+  it appears in `git worktree list`, so the sweep in
+  `references/parallelism.md` finds it.
 - **The branch is Orca's name, not yours.** `--name probe/240-a` produced the
   directory `probe-240-a` and the branch `BlakeHastings/probe-240-a`: the slash
   became a hyphen and a per-user prefix was added. So the brief does not name a
@@ -130,6 +142,69 @@ Two lines of that preamble disagree with this skill, and the brief settles both:
   `.bodies/report-<n>.md` in its own worktree and pass that path as
   `--report-path`. The three sentences are the notification; the file is the
   report.
+
+## Placement: workers are children of the coordinator's workspace
+
+**The owner's rule: a worker the factory starts sits under the factory's own
+workspace in Orca, unless the owner says otherwise.** `new-child` does that.
+Orca's placement reference says that "Orca lineage, Git base, filesystem
+isolation, coordination parentage, UI grouping, and execution host are separate
+decisions", and the BlakeHastings/b-fac#251 wave showed that `new-child` changes only the first and
+the UI grouping.
+
+**The parent is the workspace of the terminal that called `worker-start`**,
+the one its `ORCA_WORKSPACE_ID` names, in both runs. In the measured wave the coordinator was the
+main checkout on `main`, a checkout Orca registered but did not create, and
+`new-child` worked from it. `orca worktree list --json` then showed both
+workers with `"parentWorktreeId"` set to the main checkout, the main checkout
+listing both under `"childWorktreeIds"`, and a lineage record with
+`"capture": {"source": "explicit-cli-flag"}`. A subagent inherits the variable,
+so its workers are children of your workspace, not of its own worktree.
+
+**The git base is `--base-branch`, never the parent's branch.** A coordinator
+on `main` cannot show that, since its branch and `origin/main` are the same
+commit, so a second coordinator workspace was made one commit behind, at
+`origin/main~1`, and two children started from an Orca terminal in it: one
+with `--base-branch origin/main`, one with none. Both branches' reflogs read:
+
+```
+BlakeHastings/probe-251-inorca-c@{0}: branch: Created from refs/remotes/origin/main
+BlakeHastings/probe-251-inorca-d@{0}: branch: Created from refs/remotes/origin/main
+```
+
+Both sat at `origin/main`'s commit, not the parent's, while both were listed as
+the parent's children. So a child does not stack on its parent's branch even
+with no `--base-branch`; the flag stays on every start anyway, because it says
+the base out loud. The main checkout's two children gave the same reflog line,
+and each worker's own `git merge-base HEAD origin/main` was `origin/main`'s
+commit.
+
+**A child is still its own linked worktree on its own branch.** Each worker
+reported a `--git-dir` of `<repo>/.git/worktrees/<name>` and a branch of its
+own, and `git worktree list` listed both, so b-fac ADR 0075's test still reads
+a worker as dispatched.
+
+**Removing a child leaves the parent alone.** `orca worktree rm` on each child,
+without `--force`, left the main checkout on `main` at the same commit, with an
+empty `"childWorktreeIds"`. **Removing a parent orphans its children rather than
+taking them with it.** Measured on the probe parent only, never on a
+coordinator's workspace: after `orca worktree rm` on it, both children were
+still linked worktrees with live agents, and their `"parentWorktreeId"` had
+become `null`, so they were top-level workspaces. Closing a parent tab without
+removing the worktree: unmeasured.
+
+**`new-top-level` is used only when the owner asks for it, in the conversation,
+for that wave.** It is not a `machine.md` line: the owner's rule is about what
+the factory does unless told otherwise, and a standing line would undo the
+default without anyone saying so in the session it applies to. Swap the flag
+and nothing else changes; the git base, the directory and the branch name are
+the same.
+
+**Remote placement takes `new-top-level`.** `worker-start --help` says "Remote
+current and new-child are invalid", so a worker placed with `--on` on another
+Orca server uses `--worktree new-top-level` with an exact remote repository
+selector. Not measured here; remote placement is out of this provider's scope
+so far.
 
 ## `await`
 
@@ -222,7 +297,10 @@ orca worktree rm --worktree path:<worktree> --json
 **`worker-release` may close nothing.** Both measured releases answered
 `"state": "retained", "reason": "user_takeover", "processAction": "none"`, and
 both agents were still running. Worker B had been typed into; worker A had not,
-and why Orca counted it as taken over is unexplained. Do not follow it with
+and why Orca counted it as taken over is unexplained. In the BlakeHastings/b-fac#251 wave all four
+releases, of workers nobody had typed into, answered `"state": "released",
+"processAction": "closed_agent_terminal"`. So read the answer each time rather
+than assume either. Do not follow a retained release with
 `orca terminal close`; Orca's own guidance says never to.
 
 **`orca worktree rm` does not force.** Without `--force` it refused a worktree
@@ -240,7 +318,8 @@ deregistered it from Orca. Gitignored files, such as the report under
 `.bodies/`, did not block it, so **read the report before removing**. It tries to
 delete the branch and keeps one it cannot prove merged; both probe branches,
 never pushed, were kept, and went with `git branch -D` once the work was known
-to be throwaway.
+to be throwaway. The BlakeHastings/b-fac#251 wave matched: the two branches holding a probe commit
+were kept, and the three with no commit of their own were deleted by Orca.
 
 ## What reaches a worker
 
