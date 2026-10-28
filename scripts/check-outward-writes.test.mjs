@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ASSETS = fileURLToPath(new URL('../.agents/skills/orchestrated-delivery/assets/', import.meta.url))
 const CHECK = join(ASSETS, 'check-outward-writes.mjs')
@@ -555,9 +555,13 @@ test('--remote names a branch on the remote and still does not fail the report',
   const repo = hosted()
   try {
     record(repo.root, 'guest')
-    // Pushed by a route this file cannot see: a URL, so no remote-tracking ref
-    // and no reflog entry. Measured behaviour, and the reason --remote exists.
-    git(repo.root, 'push', '--quiet', repo.remote, 'HEAD:refs/heads/main')
+    // Pushed by a route this file cannot see: a URL that is no configured
+    // remote's URL, so no remote-tracking ref and no reflog entry, on every git.
+    // The same path spelled as `file://` is that URL. The bare path would not
+    // be: it is origin's URL character for character, and from git 2.56 a push
+    // to it updates origin's tracking ref (the next test). That is #253, which
+    // failed here on every CI runner that had 2.56 and on none with 2.55.
+    git(repo.root, 'push', '--quiet', pathToFileURL(repo.remote).href, 'HEAD:refs/heads/main')
     assert.equal(git(repo.root, 'for-each-ref', 'refs/remotes'), '')
 
     const blind = run(repo.root)
@@ -568,6 +572,40 @@ test('--remote names a branch on the remote and still does not fail the report',
     assert.equal(code, 0, 'an unattributable observation must never fail this report')
     assert.match(out, /also exist on origin/)
     assert.match(out, /main/)
+  } finally {
+    cleanup(repo)
+  }
+})
+
+// git 2.56.0 changed what a push by URL leaves behind: "When the push remote is
+// specified as a URL, the fetch refspec of a uniquely matching configured
+// remote is now used to find and update the remote-tracking branch" (its
+// release notes; `repo_remote_for_push_tracking` in remote.c). So a URL equal to
+// exactly one configured remote's push URL now reads as a push to that remote,
+// reflog entry and all, and the report can attribute it. Before 2.56 it left
+// nothing. Both halves are asserted, so whichever git runs this pins the prose.
+const [gitMajor, gitMinor] = git(tmpdir(), '--version').match(/(\d+)\.(\d+)/).slice(1).map(Number)
+const urlPushIsTracked = gitMajor > 2 || (gitMajor === 2 && gitMinor >= 56)
+
+test(`a push to origin's own URL is ${urlPushIsTracked ? 'found, as a push to origin' : 'invisible'} on git ${gitMajor}.${gitMinor}`, () => {
+  const repo = hosted()
+  try {
+    record(repo.root, 'guest')
+    const url = git(repo.root, 'remote', 'get-url', 'origin')
+    assert.equal(url, repo.remote)
+    git(repo.root, 'push', '--quiet', url, 'HEAD:refs/heads/main')
+
+    const { code, out } = run(repo.root)
+    if (urlPushIsTracked) {
+      assert.match(git(repo.root, 'reflog', 'show', '--format=%gs', 'refs/remotes/origin/main'), /^update by push$/)
+      assert.equal(code, 1)
+      assert.match(out, /\[ FOUND/)
+      assert.match(out, /refs\/remotes\/origin\/main/)
+    } else {
+      assert.equal(git(repo.root, 'for-each-ref', 'refs/remotes'), '')
+      assert.equal(code, 0)
+      assert.match(out, /\[ CLEAR/)
+    }
   } finally {
     cleanup(repo)
   }

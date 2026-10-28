@@ -145,7 +145,9 @@ failure, applied to the mechanism that would otherwise reintroduce it.
 
 **`--remote` is opt-in and can never fail the report.** `git ls-remote` is the
 only source that sees a push made by URL, since no remote-tracking ref is
-created for one. Measured. It is also the only source that cannot attribute
+created for one. Measured. (Corrected by #253: from git 2.56 a URL equal to
+exactly one configured remote's push URL does update that remote's tracking ref
+and is read as a push, so this holds for any other URL, not for every one.) It is also the only source that cannot attribute
 anything: a colleague pushing a branch whose name matches ours produces the
 identical observation. **One false accusation is enough for a detection layer to
 stop being read**, which this repository has written down about
